@@ -266,7 +266,12 @@ struct Conversation {
     // outward signals: no OS notification, no tray ball, no workspace ball, and no
     // red unread counter. No backend supports it, so it lives only in our cache.
     bool                  locallyMuted = false;
-    NotificationLevel     notifLevel   = NotificationLevel::Default;
+    // A name the user gave this group DM in msga ("Name conversation…" in the
+    // chats-list menu). Purely local: shown instead of the member list on every
+    // surface that titles the conversation, never sent anywhere, so it works on
+    // any backend and on OAuth workspaces alike. Lives only in our cache.
+    QString               localName;
+    NotificationLevel     notifLevel = NotificationLevel::Default;
     QString canvasFileId; // channel canvas file id (conversations.info "properties.canvas"); empty
                           // = none
     bool    canvasIsEmpty = false;
@@ -297,6 +302,22 @@ struct Conversation {
     bool                notFound                               = false;
     bool                operator==(const Conversation &) const = default;
 };
+
+// The name to title a group DM with before falling back to its member list:
+// the user's local alias first, else a name the service itself reports for it
+// (a Slack MPDM renamed in the official client, a Teams group chat topic).
+// Slack's auto-generated "mpdm-alice--bob-1" is an id, not a name, and yields
+// empty — callers then derive the title from the members. Empty for every other
+// conversation kind.
+inline QString groupDmCustomName(const Conversation &c) {
+    if (c.kind != ConvKind::Mpim)
+        return {};
+    if (!c.localName.isEmpty())
+        return c.localName;
+    if (!c.name.isEmpty() && !c.name.startsWith(QLatin1String("mpdm-")))
+        return c.name;
+    return {};
+}
 
 // Resolve a conversation's *effective* notification level — the single source
 // of truth for both OS notifications and unread-badge colors.

@@ -78,6 +78,9 @@ public:
     }
     // Resolved display name for a visual row (DMs → user displayName, channels → conv.name).
     QString                        resolvedName(int row) const;
+    // Name resolution for one conversation, independent of any visual row (a
+    // group DM with its localName cleared yields its member-list title).
+    QString                        resolvedConvName(const Conversation &c) const;
     // Every conversation held, name-resolved and ordered most-recent first.
     std::vector<NamedConversation> namedConversations() const;
     // conv id → epoch seconds of the last time it was opened in this app. App-
@@ -151,6 +154,9 @@ signals:
     void setNotificationLevelRequested(ConversationId id, NotificationLevel level);
     void muteConversationRequested(ConversationId id, bool muted);
     void leaveConversationRequested(ConversationId id);
+    // "Name conversation…" on a group DM — the host opens the naming dialog and
+    // stores the result via Session::setConvLocalName.
+    void renameConversationRequested(ConversationId id);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -189,25 +195,23 @@ protected:
     void paintNavEntryRow(
         QPainter &p, int row, int y, const QPixmap &icon, const QString &label, bool unread = false
     ) const;
-    void    paintAddChannelsRow(QPainter &p, int row, int y) const;
-    void    paintShowMoreRow(QPainter &p, int row, int y, int count) const;
+    void   paintAddChannelsRow(QPainter &p, int row, int y) const;
+    void   paintShowMoreRow(QPainter &p, int row, int y, int count) const;
     // Hit/paint rect of the "+" button on the Direct messages section header.
-    QRect   dmPlusRect(int rowY) const;
-    void    updateScrollRange();
+    QRect  dmPlusRect(int rowY) const;
+    void   updateScrollRange();
     // True for 1:1 IMs whose counterpart is a bot/app (incl. Slackbot) —
     // these are grouped under "Agents & apps" instead of "Direct messages".
-    bool    isAppConv(const Conversation &c) const;
-    // Name resolution for one conversation, independent of any visual row.
-    QString resolvedConvName(const Conversation &c) const;
+    bool   isAppConv(const Conversation &c) const;
     // Ordering signal: the later of the visit stamp and the conv's own activity.
-    qint64  activitySeconds(const Conversation &c) const;
+    qint64 activitySeconds(const Conversation &c) const;
     // Schedule a repaint of every visible row whose avatar belongs to `userId`
     // (DM/MPDM rows use conv.dmUser). Cheap row scan, no rebuild.
-    void    updateRowsForUser(const QString &userId);
+    void   updateRowsForUser(const QString &userId);
     // Rebuild _convs from _allConvs, filtering deactivated / raw-ID DM users.
-    void    rebuildFilteredConvs();
+    void   rebuildFilteredConvs();
     // Rebuild _rows from _convs according to current section collapse state.
-    void    rebuildRows();
+    void   rebuildRows();
 
     // Icon pixmaps colorized with nav-side theme tokens. Rebuilt on
     // themeChanged — a static-local cache would keep the old theme's tint.

@@ -328,6 +328,8 @@ QString SearchWidget::resolveConvName(const SearchResult &r) const {
             // For DMs resolve the other person's display name, not the raw user ID.
             if (conv->kind == ConvKind::Im && conv->dmUser)
                 return _session->userDisplayName(*conv->dmUser);
+            if (const QString custom = groupDmCustomName(*conv); !custom.isEmpty())
+                return custom;
             if (conv->kind == ConvKind::Mpim && conv->dmUser) {
                 if (const auto *user = _session->findUser(*conv->dmUser))
                     return user->displayName.isEmpty() ? user->name : user->displayName;

@@ -50,7 +50,7 @@ namedConversationsFor(Session *session, const QHash<QString, qint64> &visitedAt)
     // list is tens of thousands of entries, and Emoji::expandCodes per name is
     // what makes the sidebar's full rebuild noticeable.
     QSet<QString> wanted;
-    bool          anyMpdmByName = false;
+    QSet<QString> wantedNames; // members of group DMs the API named but didn't list
     for (const auto &c : convs) {
         if (!c.isMember)
             continue;
@@ -58,16 +58,19 @@ namedConversationsFor(Session *session, const QHash<QString, qint64> &visitedAt)
             wanted.insert(c.dmUser->value);
         for (const auto &m : c.members)
             wanted.insert(m.value);
-        if (c.kind == ConvKind::Mpim && c.members.empty())
-            anyMpdmByName = true;
+        if (c.kind == ConvKind::Mpim && c.members.empty() && groupDmCustomName(c).isEmpty()) {
+            for (const QString &uname : parseMpdmUsernames(c.name))
+                wantedNames.insert(uname);
+        }
     }
+    const bool               anyMpdmByName = !wantedNames.isEmpty();
     QHash<QString, PeerInfo> peers;
     QHash<QString, QString>  usernameToId; // only filled when some group DM needs it
-    peers.reserve(wanted.size());
+    peers.reserve(wanted.size() + wantedNames.size());
     for (const auto &u : users) {
         if (anyMpdmByName && !u.name.isEmpty())
             usernameToId.insert(u.name, u.id.value);
-        if (!wanted.contains(u.id.value))
+        if (!wanted.contains(u.id.value) && !wantedNames.contains(u.name))
             continue;
         peers.insert(
             u.id.value,
@@ -109,7 +112,9 @@ namedConversationsFor(Session *session, const QHash<QString, qint64> &visitedAt)
                 nc.name = session->userDisplayName(*c.dmUser);
         } else if (c.kind == ConvKind::Mpim) {
             QStringList names;
-            if (!c.members.empty()) {
+            if (const QString custom = groupDmCustomName(c); !custom.isEmpty()) {
+                names.append(custom);
+            } else if (!c.members.empty()) {
                 for (const auto &uid : c.members) {
                     if (!me.value.isEmpty() && uid == me)
                         continue;

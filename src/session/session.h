@@ -253,6 +253,9 @@ public:
     void setNotificationLevel(ConversationId conv, NotificationLevel level);
     // Toggle the local "mute this person" switch (no backend support; cache-only).
     void setConvMuted(ConversationId conv, bool muted);
+    // Set (or clear, with an empty string) the user's local name for a group DM
+    // — see Conversation::localName. Cache-only; no backend is involved.
+    void setConvLocalName(ConversationId conv, const QString &name);
 
     // Per-thread mute (local; no public API). A muted thread's replies stop
     // badging and notifying — matching Slack's "Mute thread" — except explicit

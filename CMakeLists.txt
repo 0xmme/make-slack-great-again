@@ -269,6 +269,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/icon_button/icon_button.cpp
     src/ui/dropdown/dropdown.cpp
     src/ui/create_channel_dialog/create_channel_dialog.cpp
+    src/ui/rename_conversation_dialog/rename_conversation_dialog.cpp
     src/ui/imap_add_account/imap_add_account_dialog.cpp
     src/ui/session_import_dialog/session_import_dialog.cpp
     src/ui/profile_dialog/profile_dialog.cpp

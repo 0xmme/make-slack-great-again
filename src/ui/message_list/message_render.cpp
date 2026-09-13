@@ -271,9 +271,13 @@ QString convPlaceLabel(const QString &convId, const Session *session) {
         const User *u = session->findUser(*c->dmUser);
         return u ? u->displayLabel() : QString();
     }
-    // Group DMs carry Slack's internal "mpdm-a--b--c-1" name — never show it.
-    if (c->kind == ConvKind::Mpim)
-        return QCoreApplication::translate("MsgRender", "group message");
+    // Group DMs carry Slack's internal "mpdm-a--b--c-1" name — never show it;
+    // a name the user gave the group is fine.
+    if (c->kind == ConvKind::Mpim) {
+        const QString custom = groupDmCustomName(*c);
+        return custom.isEmpty() ? QCoreApplication::translate("MsgRender", "group message")
+                                : custom;
+    }
     return c->name.isEmpty() ? QString() : "#" + c->name;
 }
 

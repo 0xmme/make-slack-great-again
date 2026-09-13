@@ -193,6 +193,42 @@ TEST_CASE("the revealed app DM is retired once the selection moves away") {
     REQUIRE(list.conversationId(list.selectedIndex()) == ConversationId{"C1"});
 }
 
+// A group DM is titled by its members — unless the user named it ("Name
+// conversation…"), in which case the alias is the title on every surface the
+// list feeds (header, quick switcher, notifications).
+TEST_CASE("a group DM's local name replaces the member list as its title", "[groupdm][name]") {
+    ConvListWidget list(nullptr);
+    User           bob;
+    bob.id          = UserId{"U2"};
+    bob.name        = "bob";
+    bob.displayName = "Bob Builder";
+    User carol;
+    carol.id          = UserId{"U3"};
+    carol.name        = "carol";
+    carol.displayName = "Carol Danvers";
+    list.setUsers({bob, carol});
+
+    Conversation g;
+    g.id       = ConversationId{"G1"};
+    g.kind     = ConvKind::Mpim;
+    g.name     = "mpdm-bob--carol-1";
+    g.isMember = true;
+    g.members  = {UserId{"U2"}, UserId{"U3"}};
+    g.unread   = 1; // keeps it out of the relevance filter
+    list.setConversations({channel("C1", "general"), g});
+    const int row = list.rowForId(ConversationId{"G1"});
+    REQUIRE(row >= 0);
+    CHECK(list.resolvedName(row) == "Bob Builder, Carol Danvers");
+
+    g.localName = "Launch crew";
+    list.setConversations({channel("C1", "general"), g});
+    CHECK(list.resolvedName(list.rowForId(ConversationId{"G1"})) == "Launch crew");
+    // The host asks for the member-list title to use as the dialog placeholder.
+    Conversation bare = g;
+    bare.localName.clear();
+    CHECK(list.resolvedConvName(bare) == "Bob Builder, Carol Danvers");
+}
+
 TEST_CASE("selectConversation is a no-op for an unknown id") {
     ConvListWidget list(nullptr);
     list.setConversations({channel("C1", "general")});

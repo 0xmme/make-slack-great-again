@@ -1246,6 +1246,9 @@ static void carryLocalConvState(Conversation &fresh, const Conversation &old) {
     // it, so carry it forward.
     if (old.locallyMuted)
         fresh.locallyMuted = true;
+    // Same for the group DM's local name.
+    if (fresh.localName.isEmpty())
+        fresh.localName = old.localName;
     // last_read / latest were dropped from conversations.list responses; keep the
     // newest value we know (cached from a previous run's activity sweep or
     // realtime events).
@@ -2777,6 +2780,20 @@ void Session::setConvMuted(ConversationId conv, bool muted) {
     for (auto &c : convs) {
         if (c.id == conv) {
             c.locallyMuted = muted;
+            break;
+        }
+    }
+    _conversations = std::move(convs);
+    scheduleSaveUnreads(); // local-only state, same as setNotificationLevel
+}
+
+void Session::setConvLocalName(ConversationId conv, const QString &name) {
+    auto convs = _conversations.current();
+    for (auto &c : convs) {
+        if (c.id == conv) {
+            if (c.localName == name.trimmed())
+                return;
+            c.localName = name.trimmed();
             break;
         }
     }

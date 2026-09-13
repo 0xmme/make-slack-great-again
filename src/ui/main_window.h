@@ -215,6 +215,9 @@ private:
 
     // "Find a channel" dialog; initialTab 0 = Channels, 1 = People.
     void openBrowseDialog(int initialTab);
+    // "Name conversation…" on a group DM: dialog → Session::setConvLocalName,
+    // then the header/composer of the open chat follow the new title.
+    void renameConversation(ConversationId id);
 
     // Ctrl/Cmd+K: quick switcher over the active workspace's conversations.
     void openQuickSwitcher();

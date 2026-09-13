@@ -380,6 +380,8 @@ static QJsonObject toJson(const Conversation &c) {
         o["st"] = true;
     if (c.locallyMuted)
         o["lm"] = true;
+    if (!c.localName.isEmpty())
+        o["ln"] = c.localName;
     if (c.notifLevel != NotificationLevel::Default)
         o["nl"] = static_cast<int>(c.notifLevel);
     return o;
@@ -402,6 +404,7 @@ static Conversation convFromJson(const QJsonObject &o) {
         c.isStarred = o["st"].toBool();
     if (o.contains("lm"))
         c.locallyMuted = o["lm"].toBool();
+    c.localName = o["ln"].toString();
     if (o.contains("nl"))
         c.notifLevel = static_cast<NotificationLevel>(o["nl"].toInt());
     return c;

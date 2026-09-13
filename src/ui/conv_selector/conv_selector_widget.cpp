@@ -279,7 +279,9 @@ void ConvSelectorWidget::rebuildList(const QString &filter) {
             // back to parsing the usernames out of the name and resolving them.
             QStringList  names;
             const UserId me = _session->meUserId();
-            if (!conv.members.empty()) {
+            if (const QString custom = groupDmCustomName(conv); !custom.isEmpty()) {
+                names.append(custom);
+            } else if (!conv.members.empty()) {
                 for (const auto &uid : conv.members) {
                     if (!me.value.isEmpty() && uid == me)
                         continue;

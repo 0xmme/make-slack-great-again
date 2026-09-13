@@ -38,6 +38,7 @@
 #include "forward_dialog/forward_dialog.h"
 #include "move_to_thread_dialog/move_to_thread_dialog.h"
 #include "create_channel_dialog/create_channel_dialog.h"
+#include "rename_conversation_dialog/rename_conversation_dialog.h"
 #include "profile_dialog/profile_dialog.h"
 #include "status_dialog/status_dialog.h"
 #include "browse_channels_dialog/browse_channels_dialog.h"
@@ -1710,6 +1711,11 @@ void MainWindow::wireConvList() {
                 _session->setConvMuted(id, muted);
         }
     );
+    connect(
+        _convList, &ConvListWidget::renameConversationRequested, this, [this](ConversationId id) {
+            renameConversation(id);
+        }
+    );
     connect(_convList, &ConvListWidget::threadsViewRequested, this, [this] { openThreadsView(); });
     connect(_convList, &ConvListWidget::savedMessagesRequested, this, [this] {
         openSavedMessagesView();
@@ -1733,6 +1739,44 @@ void MainWindow::wireConvList() {
         }
         dlg->deleteLater();
     });
+}
+
+void MainWindow::renameConversation(ConversationId id) {
+    if (!_session || !_convList)
+        return;
+    const auto *conv = _session->findConversation(id);
+    if (!conv || conv->kind != ConvKind::Mpim)
+        return;
+    // Placeholder = what the list falls back to without an alias.
+    Conversation bare = *conv;
+    bare.localName.clear();
+    const QString derived = _convList->resolvedConvName(bare);
+
+    RenameConversationDialog dlg(conv->localName, derived, this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    const QString name = dlg.name();
+    // The dialog's nested loop may have outlived the conversation (a reload
+    // reassigns the roster) — re-find rather than reuse `conv`.
+    if (!_session->findConversation(id))
+        return;
+    _session->setConvLocalName(id, name);
+
+    // The chats list repaints off the roster change; the header and the composer
+    // placeholder were set when the chat was opened, so re-aim them now.
+    if (id != _currentConvId)
+        return;
+    const int row = _convList->rowForId(id);
+    if (row < 0)
+        return;
+    const QString title = _convList->resolvedName(row);
+    if (_convNameLabel)
+        _convNameLabel->setText(title);
+    if (_composer)
+        _composer->setPlaceholderText(
+            title.isEmpty() ? tr("Message") : tr("Message %1").arg(title)
+        );
+    updateHeaderForConv(id);
 }
 
 void MainWindow::openBrowseDialog(int initialTab) {
@@ -2435,6 +2479,8 @@ void MainWindow::notifyReminderDue(const QString &teamId, const EvReminderDue &e
         if (conv->kind == ConvKind::Im) {
             if (conv->dmUser)
                 where = session->userDisplayName(*conv->dmUser);
+        } else if (!groupDmCustomName(*conv).isEmpty()) {
+            where = groupDmCustomName(*conv);
         } else if (conv->kind == ConvKind::Mpim) {
             QStringList  names;
             const UserId me = session->meUserId();

@@ -624,6 +624,9 @@ QString ConvListWidget::resolvedConvName(const Conversation &conv) const {
             return _session->userDisplayName(*conv.dmUser);
     }
     if (conv.kind == ConvKind::Mpim) {
+        // A name the user (or the service) gave the group beats the member list.
+        if (const QString custom = groupDmCustomName(conv); !custom.isEmpty())
+            return Emoji::expandCodes(custom);
         QStringList names;
         if (!conv.members.empty()) {
             for (const auto &uid : conv.members) {
@@ -925,6 +928,14 @@ void ConvListWidget::showMpdmContextMenu(int row, QPoint globalPos) {
     const bool  starred = conv.isStarred;
     auto       *menu    = new ContextMenu(viewport());
 
+    // A local alias for the group (Slack's "Name conversation"): shown instead
+    // of the member list, stored only in our cache. Prefilled/cleared via the
+    // dialog the host opens.
+    menu->addItem(
+        conv.localName.isEmpty() ? tr("Name conversation…") : tr("Rename conversation…"),
+        [this, id = conv.id] { emit renameConversationRequested(id); }
+    );
+    menu->addSeparator();
     menu->addItem(
         starred ? tr("Unstar conversation") : tr("Star conversation"),
         [this, id = conv.id, starred] { emit starConversationRequested(id, !starred); }

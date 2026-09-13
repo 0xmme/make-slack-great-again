@@ -5094,6 +5094,66 @@ TEST_CASE("namedConversationsFor tolerates a null session", "[session][quickswit
     CHECK(namedConversationsFor(nullptr, {}).empty());
 }
 
+// ── Group DM local name ("Name conversation…") ────────────────────────────────
+//
+// The alias is ours alone: no backend stores it, so it must survive both a
+// roster reload (carryLocalConvState) and an app restart (the cache).
+
+TEST_CASE_METHOD(
+    SessionFixture, "group DM local name titles the conversation", "[session][groupdm][name]"
+) {
+    // No DM with Bob here on purpose: a group DM the API only named (no
+    // `members`) must still resolve its people to display names on its own.
+    restartSession({kGeneral, kMpdm}, {kAlice, kBob});
+    REQUIRE(findNamed(namedConversationsFor(session.get(), {}), "G1")->name == "Bob Builder");
+
+    session->setConvLocalName(kMpdm.id, "  Launch crew  ");
+    const auto *conv = session->findConversation(kMpdm.id);
+    REQUIRE(conv != nullptr);
+    CHECK(conv->localName == "Launch crew"); // trimmed
+    CHECK(groupDmCustomName(*conv) == "Launch crew");
+    CHECK(findNamed(namedConversationsFor(session.get(), {}), "G1")->name == "Launch crew");
+
+    // Clearing goes back to the member list.
+    session->setConvLocalName(kMpdm.id, "");
+    CHECK(session->findConversation(kMpdm.id)->localName.isEmpty());
+    CHECK(findNamed(namedConversationsFor(session.get(), {}), "G1")->name == "Bob Builder");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "group DM local name survives a roster reload and a restart",
+    "[session][groupdm][name]"
+) {
+    restartSession({kGeneral, kMpdm}, {kAlice, kBob});
+    session->setConvLocalName(kMpdm.id, "Launch crew");
+
+    // conversations.list comes back without the alias (the server never had it).
+    stub->_convs = std::vector<Conversation>{kGeneral, kMpdm};
+    session->reloadConversationsForTest();
+    REQUIRE(session->findConversation(kMpdm.id) != nullptr);
+    CHECK(session->findConversation(kMpdm.id)->localName == "Launch crew");
+
+    // Restart: the cache is the only copy.
+    restartSession({kGeneral, kMpdm}, {kAlice, kBob});
+    REQUIRE(session->findConversation(kMpdm.id) != nullptr);
+    CHECK(session->findConversation(kMpdm.id)->localName == "Launch crew");
+    CHECK(findNamed(namedConversationsFor(session.get(), {}), "G1")->name == "Launch crew");
+}
+
+TEST_CASE("groupDmCustomName honours a server-side name, never the mpdm id", "[groupdm][name]") {
+    Conversation c;
+    c.kind = ConvKind::Mpim;
+    c.name = "mpdm-alice--bob-1";
+    CHECK(groupDmCustomName(c).isEmpty());
+    c.name = "Launch crew"; // a Slack MPDM renamed in the official client
+    CHECK(groupDmCustomName(c) == "Launch crew");
+    c.localName = "Mine";
+    CHECK(groupDmCustomName(c) == "Mine"); // the local alias wins
+    c.kind = ConvKind::PublicChannel;
+    CHECK(groupDmCustomName(c).isEmpty()); // channels are never aliased
+}
+
 // ── undoSend ──────────────────────────────────────────────────────────────────
 //
 // sendMessage()/uploadFiles() return the optimistic ghost's ts; undoSend()
