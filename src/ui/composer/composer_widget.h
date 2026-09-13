@@ -12,6 +12,7 @@
 #include <QString>
 #include <QTimer>
 #include <QWidget>
+#include <functional>
 
 class QAbstractButton;
 class QFrame;
@@ -31,9 +32,12 @@ class FormattingToolbar;
 class AttachmentStrip;
 class EditModeBanner;
 class StyledLineEdit;
+class UndoSendPill;
 
 // Slack-style composer: formatting toolbar + text area + bottom action bar.
-// Enter sends; Shift+Enter inserts a newline.
+// Enter sends and Shift+Enter inserts a newline — or, with the "send with
+// Ctrl+Enter" option (Ui::Shortcuts::ctrlEnterSends), Ctrl+Enter sends and
+// Enter inserts the newline. Ctrl+Enter sends in both modes.
 class ComposerWidget : public QWidget {
     Q_OBJECT
 public:
@@ -99,6 +103,21 @@ public:
     // brought to the foreground onto an active conversation).
     void focusInput();
 
+    // Undo send. The host calls this from INSIDE its sendRequested /
+    // uploadRequested handler, once Session has handed back the ghost ts: for
+    // kUndoSendMs a "Message sent · Undo" chip floats above the box, and Ctrl+Z
+    // in the empty editor (or a click on the chip) runs `undo` and puts the
+    // sent text, attachments and subject back into the editor. The offer is
+    // withdrawn by the next send, a conversation switch (takeDraft), a session
+    // change, or hiding the composer — the sent input belongs to the
+    // conversation it was sent from and must never resurface anywhere else.
+    void                 offerUndoSend(std::function<void()> undo);
+    // The usual wiring: no-op unless the session can delete messages; undoes
+    // through Session::undoSend(conv, ghostTs).
+    void                 offerUndoSend(const ConversationId &conv, const Ts &ghostTs);
+    bool                 undoSendOffered() const { return static_cast<bool>(_undoSend); }
+    static constexpr int kUndoSendMs = 5000;
+
     // Pending file list (files queued for upload when the message is sent).
     const QStringList &pendingFiles() const { return _pendingFiles; }
     void               addPendingFile(const QString &filePath);
@@ -124,6 +143,8 @@ signals:
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void moveEvent(QMoveEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dragMoveEvent(QDragMoveEvent *event) override;
     void dragLeaveEvent(QDragLeaveEvent *event) override;
@@ -150,6 +171,11 @@ private:
     void setEditorMrkdwn(const QString &text);
     // Refresh pill colors after a theme change.
     void recolorMentionPills();
+    // Undo send (see offerUndoSend): run the pending undo and restore the sent
+    // input; drop the offer; keep the chip anchored to the box.
+    void undoSend();
+    void withdrawUndoSend();
+    void placeUndoPill();
 
     QFrame            *_box          = nullptr;
     StyledLineEdit    *_subject      = nullptr; // email subject line (optional)
@@ -188,4 +214,11 @@ private:
     // Typing indicator debounce: fires typingStarted() at most once per 3 s while typing
     QTimer _typingTimer;
     bool   _typingPending = false;
+
+    // Undo send: the chip, its countdown, the host's undo action and what the
+    // last send took out of the editor (restored on undo).
+    UndoSendPill         *_undoPill = nullptr;
+    QTimer                _undoTimer;
+    std::function<void()> _undoSend;
+    ComposerDraft         _lastSent;
 };

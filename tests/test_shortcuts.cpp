@@ -248,3 +248,77 @@ TEST_CASE("Shortcuts: a StandardKey entry still renders and installs", "[shortcu
     QWidget win;
     CHECK(Shortcuts::install(Shortcut::CloseFrontmost, &win, [] {}) != nullptr);
 }
+
+// ── Send key: Enter vs Ctrl+Enter ────────────────────────────────────────────
+
+namespace {
+// Restores the default mode when a test leaves scope, whatever it set.
+struct CtrlEnterMode {
+    explicit CtrlEnterMode(bool on) { Shortcuts::setCtrlEnterSends(on); }
+    ~CtrlEnterMode() { Shortcuts::setCtrlEnterSends(false); }
+};
+} // namespace
+
+TEST_CASE(
+    "Shortcuts: by default Enter and Ctrl+Enter send, Shift+Enter is a newline",
+    "[shortcuts][sendkey]"
+) {
+    CtrlEnterMode   mode(false);
+    const QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    const QKeyEvent ctrlEnter(QEvent::KeyPress, Qt::Key_Return, Qt::ControlModifier);
+    const QKeyEvent shiftEnter(QEvent::KeyPress, Qt::Key_Return, Qt::ShiftModifier);
+    CHECK(Shortcuts::matches(Shortcut::SendMessage, &enter));
+    CHECK(Shortcuts::matches(Shortcut::SendMessage, &ctrlEnter));
+    CHECK_FALSE(Shortcuts::matches(Shortcut::SendMessage, &shiftEnter));
+    CHECK(Shortcuts::matches(Shortcut::NewLine, &shiftEnter));
+    CHECK_FALSE(Shortcuts::matches(Shortcut::NewLine, &enter));
+    CHECK(Shortcuts::keyChips(Shortcut::SendMessage) == QStringList{"Enter"});
+}
+
+TEST_CASE(
+    "Shortcuts: with Ctrl+Enter sending, a bare Enter is the newline", "[shortcuts][sendkey]"
+) {
+    CtrlEnterMode   mode(true);
+    const QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    const QKeyEvent ctrlEnter(QEvent::KeyPress, Qt::Key_Return, Qt::ControlModifier);
+    const QKeyEvent shiftEnter(QEvent::KeyPress, Qt::Key_Return, Qt::ShiftModifier);
+    CHECK_FALSE(Shortcuts::matches(Shortcut::SendMessage, &enter));
+    CHECK(Shortcuts::matches(Shortcut::SendMessage, &ctrlEnter));
+    CHECK(Shortcuts::matches(Shortcut::NewLine, &enter));
+    CHECK(Shortcuts::matches(Shortcut::NewLine, &shiftEnter)); // still works
+    CHECK(Shortcuts::keyChips(Shortcut::NewLine).constFirst() == "Enter");
+    // The help panel / tooltip follow the mode.
+    const auto chips = Shortcuts::keyChips(Shortcut::SendMessage);
+    REQUIRE(chips.size() == 2);
+    CHECK(chips.back() == "Enter");
+}
+
+TEST_CASE("Shortcuts: keypad Enter counts as Return", "[shortcuts][sendkey]") {
+    CtrlEnterMode   mode(false);
+    const QKeyEvent keypad(QEvent::KeyPress, Qt::Key_Enter, Qt::KeypadModifier);
+    CHECK(Shortcuts::matches(Shortcut::SendMessage, &keypad));
+    const QKeyEvent keypadShift(
+        QEvent::KeyPress, Qt::Key_Enter, Qt::KeypadModifier | Qt::ShiftModifier
+    );
+    CHECK(Shortcuts::matches(Shortcut::NewLine, &keypadShift));
+}
+
+TEST_CASE("Shortcuts: nativeKeys renders an arbitrary portable sequence", "[shortcuts][render]") {
+    const QString keys = Shortcuts::nativeKeys(QStringLiteral("Ctrl+Enter"));
+#ifdef Q_OS_MAC
+    CHECK(keys == QString(QChar(0x2318)) + "Enter");
+#else
+    CHECK(keys == "Ctrl+Enter");
+#endif
+}
+
+// ── Undo send ─────────────────────────────────────────────────────────────────
+
+TEST_CASE("Shortcuts: UndoSend is Ctrl/Cmd+Z in the composer", "[shortcuts][undosend]") {
+    const auto seq = Shortcuts::sequence(Shortcut::UndoSend);
+    CHECK(seq[0].keyboardModifiers() == Qt::ControlModifier);
+    CHECK(seq[0].key() == Qt::Key_Z);
+    CHECK(Shortcuts::def(Shortcut::UndoSend).scope == ShortcutScope::Composer);
+    const QKeyEvent ctrlZ(QEvent::KeyPress, Qt::Key_Z, Qt::ControlModifier);
+    CHECK(Shortcuts::matches(Shortcut::UndoSend, &ctrlZ));
+}

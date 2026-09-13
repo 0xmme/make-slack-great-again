@@ -14,9 +14,10 @@
 // ── WelcomeWidget ─────────────────────────────────────────────────────────────
 
 WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
-    _content         = new QWidget(this);
-    auto       *vbox = new QVBoxLayout(_content);
-    const auto &sp   = Th::c().spacing;
+    _content       = new QWidget(this);
+    auto *vbox     = new QVBoxLayout(_content);
+    _vbox          = vbox;
+    const auto &sp = Th::c().spacing;
     vbox->setContentsMargins(0, 0, 0, 0);
     vbox->setSpacing(0);
 
@@ -35,7 +36,31 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
 
     vbox->addSpacing(sp.md);
 
-    // ── Build shortcut rows ───────────────────────────────────────────────────
+    buildRows();
+
+    applyTheme();
+    connect(
+        &ThemeManager::instance(), &ThemeManager::themeChanged, this, &WelcomeWidget::applyTheme
+    );
+}
+
+void WelcomeWidget::refreshShortcuts() {
+    for (QWidget *row : std::as_const(_rows))
+        delete row; // takes its chip/plus/action labels with it
+    _rows.clear();
+    _chipLabels.clear();
+    _plusLabels.clear();
+    _actionLabels.clear();
+    buildRows();
+    applyTheme();
+    repositionContent();
+}
+
+// ── Build shortcut rows ───────────────────────────────────────────────────────
+
+void WelcomeWidget::buildRows() {
+    const auto &sp   = Th::c().spacing;
+    auto       *vbox = _vbox;
 
     // Helper lambdas that build widgets and register them for applyTheme().
     auto makeChip = [this](const QString &text, QWidget *parent) -> QLabel * {
@@ -83,11 +108,6 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
             continue;
         addRow(Ui::Shortcuts::label(def.id), Ui::Shortcuts::keyChips(def.id));
     }
-
-    applyTheme();
-    connect(
-        &ThemeManager::instance(), &ThemeManager::themeChanged, this, &WelcomeWidget::applyTheme
-    );
 }
 
 void WelcomeWidget::applyTheme() {

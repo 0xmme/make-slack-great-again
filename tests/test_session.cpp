@@ -5093,3 +5093,116 @@ TEST_CASE_METHOD(
 TEST_CASE("namedConversationsFor tolerates a null session", "[session][quickswitch]") {
     CHECK(namedConversationsFor(nullptr, {}).empty());
 }
+
+// ── undoSend ──────────────────────────────────────────────────────────────────
+//
+// sendMessage()/uploadFiles() return the optimistic ghost's ts; undoSend()
+// takes that message back whether or not the server has confirmed it yet.
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "undoSend before confirmation drops the ghost, then deletes the confirmed copy",
+    "[session][send][undo]"
+) {
+    auto     c     = collectEvents();
+    const Ts ghost = session->sendMessage(ConversationId{"C1"}, "oops");
+    REQUIRE(c.events.size() == 1);
+    CHECK(std::get<EvMessageNew>(c.events[0]).msg.ts == ghost);
+
+    session->undoSend(ConversationId{"C1"}, ghost);
+    REQUIRE(c.events.size() == 2);
+    REQUIRE(std::holds_alternative<EvMessageDeleted>(c.events[1]));
+    CHECK(std::get<EvMessageDeleted>(c.events[1]).ts == ghost);
+    CHECK(stub->deleted.empty()); // nothing on the server to delete yet
+
+    // The server confirms: the copy is deleted and never shown.
+    Message real;
+    real.ts     = "200.000";
+    real.author = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C1"}, real});
+    REQUIRE(stub->deleted.size() == 1);
+    CHECK(stub->deleted[0].first == ConversationId{"C1"});
+    CHECK(stub->deleted[0].second == "200.000");
+    CHECK(c.events.size() == 2);
+
+    // Undoing twice does nothing more.
+    session->undoSend(ConversationId{"C1"}, ghost);
+    CHECK(stub->deleted.size() == 1);
+    CHECK(c.events.size() == 2);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "undoSend after confirmation deletes the server copy", "[session][send][undo]"
+) {
+    auto     c     = collectEvents();
+    const Ts ghost = session->sendMessage(ConversationId{"C1"}, "sent");
+    Message  real;
+    real.ts     = "300.000";
+    real.author = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C1"}, real});
+    REQUIRE(c.events.size() == 3); // ghost new, ghost deleted, real new
+
+    session->undoSend(ConversationId{"C1"}, ghost);
+    REQUIRE(stub->deleted.size() == 1);
+    CHECK(stub->deleted[0].second == "300.000");
+
+    session->undoSend(ConversationId{"C1"}, ghost); // handle is spent
+    CHECK(stub->deleted.size() == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "undoSend ignores a ghost it never issued", "[session][send][undo]"
+) {
+    auto c = collectEvents();
+    session->undoSend(ConversationId{"C1"}, Ts{"999.000"});
+    session->undoSend(ConversationId{"C1"}, Ts{});
+    CHECK(c.events.empty());
+    CHECK(stub->deleted.empty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "an undone send that then fails reports no error", "[session][send][undo]"
+) {
+    QStringList   errors;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](QString e) { errors << e; }, lt);
+
+    auto     c     = collectEvents();
+    const Ts ghost = session->sendMessage(ConversationId{"C1"}, "never mind");
+    session->undoSend(ConversationId{"C1"}, ghost);
+    REQUIRE(c.events.size() == 2); // ghost new + ghost deleted
+
+    stub->fireEvent(EvSendFailed{ConversationId{"C1"}, "channel_not_found"});
+    CHECK(errors.isEmpty());
+    CHECK(c.events.size() == 2);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "uploadFiles returns the ghost ts too", "[session][upload][undo]"
+) {
+    auto     c     = collectEvents();
+    const Ts ghost = session->uploadFiles(ConversationId{"C1"}, {"/tmp/a.png"}, "pic");
+    REQUIRE(c.events.size() == 1);
+    CHECK(std::get<EvMessageNew>(c.events[0]).msg.ts == ghost);
+    session->undoSend(ConversationId{"C1"}, ghost);
+    REQUIRE(c.events.size() == 2);
+    CHECK(std::get<EvMessageDeleted>(c.events[1]).ts == ghost);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "an undone upload that then fails reports no error", "[session][upload][undo]"
+) {
+    QStringList   errors;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](QString e) { errors << e; }, lt);
+
+    auto     c     = collectEvents();
+    const Ts ghost = session->uploadFiles(ConversationId{"C1"}, {"/tmp/b.png"}, "pic");
+    session->undoSend(ConversationId{"C1"}, ghost);
+    REQUIRE(c.events.size() == 2); // ghost new + ghost deleted
+    REQUIRE(stub->uploadCalls.size() == 1);
+
+    stub->uploadCalls.back().done(false, "upload_error");
+    CHECK(errors.isEmpty());
+    CHECK(c.events.size() == 2); // no second delete for the already-gone ghost
+}

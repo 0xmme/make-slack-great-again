@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QKeyEvent>
+#include <QSettings>
 #include <QShortcut>
 #include <QWidget>
 #include <QtGlobal>
@@ -111,6 +112,14 @@ const std::vector<ShortcutDef> kDefs = {
      kNoStd,
      QT_TRANSLATE_NOOP("Ui::Shortcuts", "Cancel / exit edit"),
      true},
+    // Only while the "Sent · Undo" chip is up and the editor is empty; otherwise
+    // Ctrl+Z stays the editor's own undo.
+    {Shortcut::UndoSend,
+     ShortcutScope::Composer,
+     "Ctrl+Z",
+     kNoStd,
+     QT_TRANSLATE_NOOP("Ui::Shortcuts", "Undo send"),
+     true},
 
     // ── Not advertised in the help panel ──────────────────────────────────────
     {Shortcut::Underline,
@@ -164,6 +173,23 @@ const std::vector<ShortcutDef> kDefs = {
      false},
 };
 
+// Cached so matches() — run on every composer keypress — never opens QSettings.
+// -1 = not read yet.
+int g_ctrlEnterSends = -1;
+
+// The effective '|'-separated portable bindings of a row: the table's, except
+// for the send/newline pair, which the Ctrl+Enter option swaps. Ctrl+Enter
+// sends in both modes — only what a bare Enter does changes.
+QString portableKeys(const ShortcutDef &d) {
+    if (d.id == Shortcut::SendMessage)
+        return Shortcuts::ctrlEnterSends() ? QStringLiteral("Ctrl+Enter")
+                                           : QStringLiteral("Enter|Ctrl+Enter");
+    if (d.id == Shortcut::NewLine)
+        return Shortcuts::ctrlEnterSends() ? QStringLiteral("Enter|Shift+Enter")
+                                           : QStringLiteral("Shift+Enter");
+    return d.keys ? QString::fromLatin1(d.keys) : QString();
+}
+
 // '+' is both the separator and a possible key name, so a trailing empty token
 // means the key itself was '+'.
 QStringList splitKeys(const QString &portable) {
@@ -207,7 +233,7 @@ QString nativeToken(const QString &token) {
 // from Qt for a StandardKey.
 QString primaryPortable(const ShortcutDef &d) {
     if (d.keys)
-        return QString::fromLatin1(d.keys).split('|').constFirst();
+        return portableKeys(d).split('|').constFirst();
     const auto bindings = QKeySequence::keyBindings(d.standard);
     if (bindings.isEmpty())
         return {};
@@ -243,7 +269,7 @@ std::vector<QKeySequence> Shortcuts::sequences(Shortcut id) {
             out.push_back(seq);
         return out;
     }
-    const auto alternates = QString::fromLatin1(d.keys).split('|', Qt::SkipEmptyParts);
+    const auto alternates = portableKeys(d).split('|', Qt::SkipEmptyParts);
     out.reserve(alternates.size());
     for (const auto &alt : alternates)
         out.emplace_back(alt, QKeySequence::PortableText);
@@ -262,8 +288,10 @@ QStringList Shortcuts::keyChips(Shortcut id) {
     return chips;
 }
 
-QString Shortcuts::nativeKeys(Shortcut id) {
-    const QStringList chips = keyChips(id);
+QString Shortcuts::nativeKeys(const QString &portableKeys) {
+    QStringList chips;
+    for (const auto &token : splitKeys(portableKeys))
+        chips << nativeToken(token);
 #ifdef Q_OS_MAC
     // Native macOS style runs the symbols together: ⌘⇧X.
     return chips.join(QString());
@@ -272,22 +300,40 @@ QString Shortcuts::nativeKeys(Shortcut id) {
 #endif
 }
 
+QString Shortcuts::nativeKeys(Shortcut id) {
+    return nativeKeys(primaryPortable(def(id)));
+}
+
 // ── Matching / installing ─────────────────────────────────────────────────────
 
 bool Shortcuts::matches(Shortcut id, const QKeyEvent *e) {
     if (!e)
         return false;
+    // The keypad's Enter and the main Return are one key to every binding here
+    // (the table spells both "Enter", which QKeySequence parses as Key_Enter).
+    const auto normalise = [](int key) { return key == Qt::Key_Enter ? int(Qt::Key_Return) : key; };
     const Qt::KeyboardModifiers pressed = e->modifiers() & kRelevantMods;
     for (const auto &seq : sequences(id)) {
         if (seq.count() != 1) // no multi-stroke bindings in the table
             continue;
         const QKeyCombination combo = seq[0];
-        if (combo.key() != e->key())
+        if (normalise(combo.key()) != normalise(e->key()))
             continue;
         if ((combo.keyboardModifiers() & kRelevantMods) == pressed)
             return true;
     }
     return false;
+}
+
+bool Shortcuts::ctrlEnterSends() {
+    if (g_ctrlEnterSends < 0)
+        g_ctrlEnterSends =
+            QSettings("msga", "msga").value(Shortcuts::kCtrlEnterSendsKey, false).toBool() ? 1 : 0;
+    return g_ctrlEnterSends == 1;
+}
+
+void Shortcuts::setCtrlEnterSends(bool on) {
+    g_ctrlEnterSends = on ? 1 : 0;
 }
 
 QShortcut *Shortcuts::install(Shortcut id, QWidget *owner, std::function<void()> handler) {

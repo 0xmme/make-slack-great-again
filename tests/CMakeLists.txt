@@ -702,6 +702,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/ui/composer/attachment_strip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/formatting_toolbar.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/edit_mode_banner.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/undo_send_pill.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/emoji_picker/emoji_picker_popup.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_catalog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
@@ -818,6 +819,7 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/ui/composer/attachment_strip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/formatting_toolbar.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/edit_mode_banner.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/undo_send_pill.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/mention_completer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/mention_popup/mention_popup.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/thread_panel/thread_panel.cpp

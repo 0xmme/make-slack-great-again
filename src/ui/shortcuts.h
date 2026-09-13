@@ -45,8 +45,12 @@ enum class Shortcut {
     OrderedList,
     BulletList,
     Quote,
+    UndoSend,
 
     // ── Documented only ──────────────────────────────────────────────────────
+    // SendMessage/NewLine swap bindings with the "send with Ctrl+Enter" option
+    // (setCtrlEnterSends): Enter sends by default, Ctrl+Enter when it is on,
+    // and the other key inserts a newline.
     SendMessage,
     NewLine,
     EditLastMessage,
@@ -103,11 +107,23 @@ QStringList keyChips(Shortcut id);
 
 // The primary binding as one native string for a tooltip: "⌘⇧X" / "Ctrl+Shift+X".
 QString nativeKeys(Shortcut id);
+// The same rendering for a portable sequence that isn't a registry row (a
+// settings label describing an alternative binding).
+QString nativeKeys(const QString &portableKeys);
 
 // True when `e` is the press for this binding. For widget-local key handlers
 // (Composer scope); modifiers must match exactly, as the hand-rolled
-// comparisons this replaced did.
+// comparisons this replaced did. Keypad Enter counts as Return.
 bool matches(Shortcut id, const QKeyEvent *e);
+
+// The composer's send key: Enter (default) or Ctrl+Enter, in which case a bare
+// Enter inserts a newline. Read lazily from QSettings (kCtrlEnterSendsKey) on
+// first use, so the table reflects the saved preference from the first
+// keypress. The setter applies to this process only — the settings page is
+// what persists the key — so tests can flip the mode without touching disk.
+constexpr char kCtrlEnterSendsKey[] = "composer/ctrlEnterSends";
+bool           ctrlEnterSends();
+void           setCtrlEnterSends(bool on);
 
 // Creates a window-scope QShortcut per binding on `owner` and wires `handler`.
 // Returns the QShortcut for the primary binding (nullptr if none was installed).

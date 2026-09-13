@@ -396,8 +396,12 @@ void Session::start() {
                         int idx = 0;
                         while (idx < it->size() && (*it)[idx].withFiles)
                             ++idx;
-                        if (idx < it->size())
-                            _eventHub.fire(EvMessageDeleted{ev->conv, it->takeAt(idx).ts});
+                        if (idx < it->size()) {
+                            const PendingSend failed = it->takeAt(idx);
+                            if (failed.undone)
+                                return; // already taken back — nothing to report
+                            _eventHub.fire(EvMessageDeleted{ev->conv, failed.ts});
+                        }
                     }
                     _errorHub.fire(
                         QCoreApplication::translate("Session", "Couldn't send message: %1")
@@ -631,8 +635,19 @@ bool Session::handleNewMessage(const ConversationId &conv, const Message &msg) {
                 ++idx;
             if (idx == it->size())
                 idx = 0; // no same-kind entry; fall back to FIFO
-            const QString fakeTs = it->takeAt(idx).ts;
-            _eventHub.fire(EvMessageDeleted{conv, fakeTs});
+            const PendingSend sent = it->takeAt(idx);
+            if (sent.undone) {
+                // The user took this send back before the server confirmed it:
+                // its ghost is already gone, so remove the server copy and keep
+                // the confirmation off the screen.
+                _backend->deleteMessage(conv, msg.ts);
+                return false;
+            }
+            _eventHub.fire(EvMessageDeleted{conv, sent.ts});
+            _confirmedSends.insert(sent.ts, msg.ts);
+            _confirmedSendOrder.enqueue(sent.ts);
+            while (_confirmedSendOrder.size() > 32)
+                _confirmedSends.remove(_confirmedSendOrder.dequeue());
         }
     }
     return true;
@@ -1832,13 +1847,36 @@ void Session::labelMessage(
         _backend->labelMessage(sourceConv, ts, targetChannel, std::move(done));
 }
 
-void Session::sendMessage(
+Ts Session::sendMessage(
     ConversationId conv, const QString &text, std::optional<Ts> threadRoot, const QString &subject
 ) {
-    postMessage(std::move(conv), text, std::move(threadRoot), subject, {});
+    return postMessage(std::move(conv), text, std::move(threadRoot), subject, {});
 }
 
-void Session::postMessage(
+void Session::undoSend(ConversationId conv, const Ts &ghostTs) {
+    if (!_backend || ghostTs.isEmpty())
+        return;
+    // Still in flight: drop the ghost now, delete the server copy when the
+    // confirmation names its ts (handleNewMessage).
+    if (auto it = _pendingSends.find(conv.value); it != _pendingSends.end()) {
+        for (auto &p : *it) {
+            if (p.ts != ghostTs)
+                continue;
+            if (!p.undone) {
+                p.undone = true;
+                _eventHub.fire(EvMessageDeleted{conv, ghostTs});
+            }
+            return;
+        }
+    }
+    // Already confirmed: the server ts is known.
+    if (const auto it = _confirmedSends.constFind(ghostTs); it != _confirmedSends.constEnd()) {
+        _backend->deleteMessage(conv, it.value());
+        _confirmedSends.erase(it);
+    }
+}
+
+Ts Session::postMessage(
     ConversationId                            conv,
     const QString                            &text,
     std::optional<Ts>                         threadRoot,
@@ -1872,6 +1910,7 @@ void Session::postMessage(
     if (const Conversation *c = findConversation(conv))
         out.sinceTs = c->latestTs;
     _backend->sendMessage(conv, std::move(out), std::move(done));
+    return fakeTs;
 }
 
 QString Session::movedMessageText(const Message &msg, bool withNote) {
@@ -2191,7 +2230,7 @@ void Session::setPhoto(const QString &filePath, std::function<void(bool, QString
     });
 }
 
-void Session::uploadFiles(
+Ts Session::uploadFiles(
     ConversationId     conv,
     const QStringList &filePaths,
     const QString     &text,
@@ -2247,13 +2286,21 @@ void Session::uploadFiles(
         conv, filePaths, text, threadRoot, [this, conv, fakeTs](bool ok, QString error) {
             if (ok)
                 return; // realtime delivery of the real message removes the ghost
-            auto it = _pendingSends.find(conv.value);
+            bool undone = false;
+            auto it     = _pendingSends.find(conv.value);
             if (it != _pendingSends.end())
-                it->removeIf([&](const PendingSend &p) { return p.ts == fakeTs; });
+                it->removeIf([&](const PendingSend &p) {
+                    if (p.ts == fakeTs)
+                        undone = p.undone;
+                    return p.ts == fakeTs;
+                });
+            if (undone)
+                return; // taken back already — the ghost is gone, nothing to report
             _eventHub.fire(EvMessageDeleted{conv, fakeTs});
             _errorHub.fire(QCoreApplication::translate("Session", "Upload failed: %1").arg(error));
         }
     );
+    return fakeTs;
 }
 
 void Session::searchMessages(

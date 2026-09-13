@@ -7,6 +7,7 @@
 #include "ui/update_checker/update_checker.h"
 #include "ui/styled_button/styled_button.h"
 #include "ui/styled_line_edit/styled_line_edit.h"
+#include "ui/shortcuts.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "app_credentials.h"
@@ -359,6 +360,35 @@ void SettingsDialog::buildPanel() {
     threadLayout->addWidget(_threadStandalone);
     threadLayout->addWidget(_threadInline);
     alay->addWidget(threadBox);
+
+    // ── Composer ──────────────────────────────────────────────────────
+    auto *composerHeading = new QLabel(tr("Composer"), appearPage);
+    composerHeading->setObjectName("sectionHeading");
+    alay->addWidget(composerHeading);
+
+    auto *composerBox = new QGroupBox(appearPage);
+    composerBox->setObjectName("composerBox");
+    auto *composerLayout = new QVBoxLayout(composerBox);
+    composerLayout->setSpacing(sp.md);
+    composerLayout->setContentsMargins(0, 0, 0, 0);
+
+    // Key names come from the registry so macOS reads ⌘ rather than "Ctrl".
+    _ctrlEnterSends = new QCheckBox(
+        tr("Send with %1").arg(Ui::Shortcuts::nativeKeys(QStringLiteral("Ctrl+Enter"))), composerBox
+    );
+    composerLayout->addWidget(_ctrlEnterSends);
+    auto *ctrlEnterDesc = new QLabel(
+        tr("%1 starts a new line instead of sending. %2 sends either way.")
+            .arg(
+                Ui::Shortcuts::nativeKeys(QStringLiteral("Enter")),
+                Ui::Shortcuts::nativeKeys(QStringLiteral("Ctrl+Enter"))
+            ),
+        composerBox
+    );
+    ctrlEnterDesc->setObjectName("unreadsDesc"); // themed alongside daysDesc
+    ctrlEnterDesc->setWordWrap(true);
+    composerLayout->addWidget(ctrlEnterDesc);
+    alay->addWidget(composerBox);
 
     // ── Conversations ─────────────────────────────────────────────────
     auto *sidebarHeading = new QLabel(tr("Conversations"), appearPage);
@@ -1922,6 +1952,7 @@ void SettingsDialog::loadAppearance() {
     _unreadsOnly->setChecked(
         QSettings("msga", "msga").value("appearance/unreadsOnly", false).toBool()
     );
+    _ctrlEnterSends->setChecked(Ui::Shortcuts::ctrlEnterSends());
 
     for (auto *card : _themeCards)
         card->setChecked(card->themeId() == ThemeManager::instance().themeId());
@@ -1942,6 +1973,13 @@ void SettingsDialog::saveAppearance() {
 
     const bool unreadsOnly = _unreadsOnly->isChecked();
     QSettings("msga", "msga").setValue("appearance/unreadsOnly", unreadsOnly);
+
+    const bool ctrlEnter        = _ctrlEnterSends->isChecked();
+    const bool sendKeyDidChange = ctrlEnter != Ui::Shortcuts::ctrlEnterSends();
+    QSettings("msga", "msga").setValue(Ui::Shortcuts::kCtrlEnterSendsKey, ctrlEnter);
+    Ui::Shortcuts::setCtrlEnterSends(ctrlEnter);
+    if (sendKeyDidChange)
+        emit sendKeyChanged();
 
     // Applies + persists + re-emits themeChanged (a no-op when unchanged).
     ThemeManager::instance().setFontSizeId(

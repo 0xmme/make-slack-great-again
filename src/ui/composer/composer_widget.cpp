@@ -4,6 +4,7 @@
 #include "formatting_toolbar.h"
 #include "attachment_strip.h"
 #include "edit_mode_banner.h"
+#include "undo_send_pill.h"
 #include "ui/emoji_picker/emoji_picker_popup.h"
 #include "mention_completer.h"
 #include "ui/mention_popup/mention_popup.h"
@@ -386,6 +387,12 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
         _typingPending = true; // re-arm: next keypress will emit again
     });
 
+    _undoPill = new UndoSendPill(this);
+    connect(_undoPill, &UndoSendPill::undoClicked, this, &ComposerWidget::undoSend);
+    _undoTimer.setSingleShot(true);
+    _undoTimer.setInterval(kUndoSendMs);
+    connect(&_undoTimer, &QTimer::timeout, this, &ComposerWidget::withdrawUndoSend);
+
     auto       *outerLayout = new QVBoxLayout(this);
     const auto &sp          = Th::c().spacing;
     outerLayout->setContentsMargins(sp.lg, sp.md, sp.lg, sp.md);
@@ -685,6 +692,8 @@ void ComposerWidget::setPlaceholderText(const QString &text) {
 }
 
 void ComposerWidget::setSession(Session *session) {
+    if (session != _session)
+        withdrawUndoSend(); // the pending undo action belongs to the old session
     _session = session;
     if (_emojiPicker)
         _emojiPicker->setSession(session);
@@ -923,6 +932,20 @@ void ComposerWidget::adjustEditorHeight() {
 void ComposerWidget::resizeEvent(QResizeEvent *event) {
     QWidget::resizeEvent(event);
     adjustEditorHeight();
+    // The box's own geometry settles after this event, once the layout runs.
+    if (_undoPill->isVisible())
+        QMetaObject::invokeMethod(this, &ComposerWidget::placeUndoPill, Qt::QueuedConnection);
+}
+
+void ComposerWidget::moveEvent(QMoveEvent *event) {
+    QWidget::moveEvent(event);
+    if (_undoPill->isVisible())
+        QMetaObject::invokeMethod(this, &ComposerWidget::placeUndoPill, Qt::QueuedConnection);
+}
+
+void ComposerWidget::hideEvent(QHideEvent *event) {
+    withdrawUndoSend();
+    QWidget::hideEvent(event);
 }
 
 void ComposerWidget::updateSendState() {
@@ -1086,8 +1109,20 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                 _edit->setCurrentCharFormat(QTextCharFormat());
             }
 
-            if (key == Qt::Key_Return && !(mod & Qt::ShiftModifier)) {
+            // Send key from the registry: Enter (and Ctrl+Enter), or only
+            // Ctrl+Enter when the "send with Ctrl+Enter" option is on. Any
+            // other Enter falls through to the editor, which inserts the
+            // newline itself.
+            if (Ui::Shortcuts::matches(Ui::Shortcut::SendMessage, ke)) {
                 trySend();
+                return true;
+            }
+
+            // Ctrl+Z takes back the send just made while the editor is still
+            // empty; with text in it, it stays the editor's own undo.
+            if (_undoSend && _edit->document()->isEmpty() &&
+                Ui::Shortcuts::matches(Ui::Shortcut::UndoSend, ke)) {
+                undoSend();
                 return true;
             }
 
@@ -1424,7 +1459,12 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
     // ── PopupTooltip hover ────────────────────────────────────────────────────
     if (auto *w = qobject_cast<QWidget *>(obj); w && _tooltipBtns.contains(w)) {
         if (event->type() == QEvent::HoverEnter) {
-            _tooltip->showAbove(_tooltipBtns[w], QRect(w->mapToGlobal(QPoint(0, 0)), w->size()));
+            // The send hint is rebuilt per hover: its key follows the
+            // Ctrl+Enter option, which can change while the composer lives.
+            const QString text = (w == _sendBtn)
+                                     ? tip(tr("Send message"), Ui::Shortcut::SendMessage)
+                                     : _tooltipBtns[w];
+            _tooltip->showAbove(text, QRect(w->mapToGlobal(QPoint(0, 0)), w->size()));
         } else if (event->type() == QEvent::HoverLeave) {
             _tooltip->hide();
         }
@@ -1464,6 +1504,16 @@ void ComposerWidget::trySend() {
             emit commandRequested(name.toLower(), sp < 0 ? QString() : text.mid(sp + 1).trimmed());
             return;
         }
+    }
+
+    // A new send supersedes any undo still on offer. What leaves the editor
+    // now is what an undo of THIS send puts back.
+    withdrawUndoSend();
+    if (_editingTs.isEmpty()) {
+        _lastSent.text  = text;
+        _lastSent.files = files;
+        if (_subject && _subject->isVisible())
+            _lastSent.subject = _subject->text();
     }
 
     _pendingFiles.clear();
@@ -1623,6 +1673,10 @@ ComposerDraft ComposerWidget::takeDraft() {
     // somewhere else. Exiting first drops the edit text and the read-only file
     // chips; the user's own pending attachments survive into the capture below.
     exitEditMode();
+    // The undo offer (and the sent input it would restore) is bound to the
+    // conversation being left; carrying it over would let a click on the chip
+    // drop that text into whatever chat is shown next.
+    withdrawUndoSend();
 
     ComposerDraft draft;
     draft.text  = currentText();
@@ -1647,6 +1701,64 @@ void ComposerWidget::restoreDraft(const ComposerDraft &draft) {
     if (_subject && !draft.subject.isEmpty())
         _subject->setText(draft.subject);
     updateSendState();
+}
+
+// ── Undo send ─────────────────────────────────────────────────────────────────
+
+void ComposerWidget::offerUndoSend(std::function<void()> undo) {
+    if (!undo)
+        return;
+    _undoSend = std::move(undo);
+    placeUndoPill();
+    _undoTimer.start();
+}
+
+void ComposerWidget::offerUndoSend(const ConversationId &conv, const Ts &ghostTs) {
+    if (!_session || ghostTs.isEmpty() || !_session->capabilities().deleteMessage)
+        return;
+    // Plain pointer on purpose: Session is not a QObject, and every path that
+    // retires a session (logout, workspace switch) goes through takeDraft() or
+    // setSession(), both of which withdraw the offer first.
+    Session *session = _session;
+    offerUndoSend([session, conv, ghostTs] { session->undoSend(conv, ghostTs); });
+}
+
+void ComposerWidget::undoSend() {
+    if (!_undoSend)
+        return;
+    const auto          undo = std::move(_undoSend);
+    const ComposerDraft sent = _lastSent;
+    withdrawUndoSend();
+    undo();
+
+    // Put the message back. Anything typed since the send stays: the sent text
+    // goes in front of it, its files join the pending ones.
+    exitEditMode();
+    const QString typed = currentText();
+    setText(typed.isEmpty() ? sent.text : sent.text + '\n' + typed);
+    for (const QString &f : sent.files)
+        if (!_pendingFiles.contains(f))
+            _pendingFiles.append(f);
+    if (!sent.files.isEmpty())
+        _attachStrip->rebuild(_pendingFiles, _editModeFiles);
+    if (_subject && !sent.subject.isEmpty() && _subject->text().trimmed().isEmpty())
+        _subject->setText(sent.subject);
+    updateSendState();
+    focusInput();
+}
+
+void ComposerWidget::withdrawUndoSend() {
+    _undoTimer.stop();
+    _undoSend = nullptr;
+    _lastSent = {};
+    if (_undoPill)
+        _undoPill->hide();
+}
+
+void ComposerWidget::placeUndoPill() {
+    if (!_undoSend || !isVisible())
+        return;
+    _undoPill->showAbove(QRect(_box->mapToGlobal(QPoint(0, 0)), _box->size()));
 }
 
 // ── Dialogs ───────────────────────────────────────────────────────────────────

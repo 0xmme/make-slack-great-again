@@ -570,6 +570,14 @@ QWidget *MainWindow::buildMainPage() {
         _messageList,
         &MessageListWidget::setThreadsInline
     );
+    // Enter vs Ctrl+Enter: the composers read the registry per keypress; only
+    // the welcome screen's shortcut panel holds built rows to refresh.
+    connect(
+        _settingsDialog,
+        &SettingsDialog::sendKeyChanged,
+        _welcomeTips,
+        &WelcomeWidget::refreshShortcuts
+    );
     // The global default notification level decides what unconfigured channels
     // notify/badge about; apply it now and re-resolve everything when it changes.
     _convList->setDefaultNotifyLevel(globalDefaultNotifLevel());
@@ -1002,8 +1010,11 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     );
 
     connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
-        if (_session && !_currentConvId.value.isEmpty())
+        if (!_session || _currentConvId.value.isEmpty())
+            return;
+        const Ts ghost =
             _session->sendMessage(_currentConvId, text, std::nullopt, _composer->subjectText());
+        _composer->offerUndoSend(_currentConvId, ghost);
     });
     connect(
         _composer,
@@ -1019,8 +1030,10 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         &ComposerWidget::uploadRequested,
         this,
         [this](const QStringList &filePaths, const QString &text) {
-            if (_session && !_currentConvId.value.isEmpty())
-                _session->uploadFiles(_currentConvId, filePaths, text);
+            if (!_session || _currentConvId.value.isEmpty())
+                return;
+            const Ts ghost = _session->uploadFiles(_currentConvId, filePaths, text);
+            _composer->offerUndoSend(_currentConvId, ghost);
         }
     );
     connect(

@@ -22,6 +22,8 @@
 #include <QWindow>
 
 #include "ui/composer/composer_widget.h"
+#include "ui/composer/undo_send_pill.h"
+#include "ui/shortcuts.h"
 #include "session/session.h"
 #include "backend/backend.h"
 #include "text/mrkdwn_parser.h"
@@ -1092,4 +1094,215 @@ TEST_CASE("setScheduleVisible toggles the schedule-send dropdown", "[composer][s
 
     c.setScheduleVisible(true);
     CHECK(drop->isVisible());
+}
+
+// ── Send key: Enter vs Ctrl+Enter ────────────────────────────────────────────
+
+namespace {
+void sendKeyMod(ComposerWidget *c, int key, Qt::KeyboardModifiers mods) {
+    QKeyEvent press(QEvent::KeyPress, key, mods);
+    QApplication::sendEvent(editOf(c), &press);
+}
+struct CtrlEnterMode {
+    explicit CtrlEnterMode(bool on) { Ui::Shortcuts::setCtrlEnterSends(on); }
+    ~CtrlEnterMode() { Ui::Shortcuts::setCtrlEnterSends(false); }
+};
+} // namespace
+
+TEST_CASE(
+    "Enter sends by default, Shift+Enter and Ctrl+Enter as documented", "[composer][sendkey]"
+) {
+    CtrlEnterMode  mode(false);
+    ComposerWidget c;
+    QStringList    sent;
+    QObject::connect(&c, &ComposerWidget::sendRequested, &c, [&](const QString &t) { sent << t; });
+    showWithText(&c, "hello");
+
+    sendKeyMod(&c, Qt::Key_Return, Qt::ShiftModifier);
+    CHECK(sent.isEmpty()); // newline, not a send
+    CHECK_FALSE(c.currentText().isEmpty());
+
+    sendKey(&c, Qt::Key_Return);
+    REQUIRE(sent.size() == 1);
+    CHECK(sent.constFirst().startsWith("hello"));
+    CHECK(c.currentText().isEmpty());
+
+    typeText(&c, "again");
+    sendKeyMod(&c, Qt::Key_Return, Qt::ControlModifier);
+    REQUIRE(sent.size() == 2); // Ctrl+Enter sends in the default mode too
+}
+
+TEST_CASE(
+    "With the Ctrl+Enter option, Enter inserts a newline and Ctrl+Enter sends",
+    "[composer][sendkey]"
+) {
+    CtrlEnterMode  mode(true);
+    ComposerWidget c;
+    int            sends = 0;
+    QObject::connect(&c, &ComposerWidget::sendRequested, &c, [&](const QString &) { ++sends; });
+    showWithText(&c, "first");
+
+    sendKey(&c, Qt::Key_Return);
+    CHECK(sends == 0);
+    CHECK(editOf(&c)->document()->blockCount() == 2); // the editor took the Enter
+
+    sendKeyMod(&c, Qt::Key_Return, Qt::ControlModifier);
+    CHECK(sends == 1);
+    CHECK(c.currentText().isEmpty());
+}
+
+// ── Undo send ─────────────────────────────────────────────────────────────────
+//
+// The host offers the undo from inside its sendRequested handler; Ctrl+Z in the
+// empty editor (or a click on the chip) runs it and puts the sent input back.
+
+namespace {
+// Host stand-in: every send is offered for undo; `undone` records which ones
+// the composer took back.
+struct UndoHost {
+    QStringList undone;
+    void        wire(ComposerWidget *c) {
+        QObject::connect(c, &ComposerWidget::sendRequested, c, [this, c](const QString &t) {
+            c->offerUndoSend([this, t] { undone << t; });
+        });
+        QObject::connect(
+            c,
+            &ComposerWidget::uploadRequested,
+            c,
+            [this, c](const QStringList &files, const QString &t) {
+                c->offerUndoSend([this, files, t] { undone << files.join(',') + '|' + t; });
+            }
+        );
+    }
+};
+void ctrlZ(ComposerWidget *c) {
+    sendKeyMod(c, Qt::Key_Z, Qt::ControlModifier);
+}
+} // namespace
+
+TEST_CASE("Ctrl+Z after a send runs the undo and restores the text", "[composer][undosend]") {
+    ComposerWidget c;
+    UndoHost       host;
+    host.wire(&c);
+    showWithText(&c, "oops wrong chat");
+
+    sendKey(&c, Qt::Key_Return);
+    REQUIRE(c.currentText().isEmpty());
+    CHECK(c.undoSendOffered());
+    auto *pill = c.window()->findChild<UndoSendPill *>("undoSendPill");
+    REQUIRE(pill);
+    CHECK(pill->isVisible());
+
+    ctrlZ(&c);
+    CHECK(host.undone == QStringList{"oops wrong chat"});
+    CHECK(c.currentText() == "oops wrong chat");
+    CHECK_FALSE(c.undoSendOffered());
+    CHECK_FALSE(pill->isVisible());
+
+    // A second Ctrl+Z (now the editor's own undo) must not re-run the send undo.
+    ctrlZ(&c);
+    CHECK(host.undone.size() == 1);
+}
+
+TEST_CASE("Clicking the chip undoes and keeps text typed since in place", "[composer][undosend]") {
+    ComposerWidget c;
+    UndoHost       host;
+    host.wire(&c);
+    showWithText(&c, "sent text");
+    sendKey(&c, Qt::Key_Return);
+    typeText(&c, "typed after");
+
+    // With text in the editor Ctrl+Z is the editor's undo, not ours.
+    ctrlZ(&c);
+    CHECK(host.undone.isEmpty());
+    CHECK(c.undoSendOffered());
+
+    auto *pill = c.window()->findChild<UndoSendPill *>("undoSendPill");
+    REQUIRE(pill);
+    QMouseEvent click(
+        QEvent::MouseButtonPress,
+        QPointF(5, 5),
+        pill->mapToGlobal(QPoint(5, 5)),
+        Qt::LeftButton,
+        Qt::LeftButton,
+        Qt::NoModifier
+    );
+    QApplication::sendEvent(pill, &click);
+    CHECK(host.undone == QStringList{"sent text"});
+    CHECK(c.currentText() == "sent text\ntyped after");
+}
+
+TEST_CASE("Undo restores attachments alongside the text", "[composer][undosend]") {
+    ComposerWidget c;
+    UndoHost       host;
+    host.wire(&c);
+    showWithText(&c, "with a file");
+    c.addPendingFile("/tmp/msga-test-undo.png");
+    sendKey(&c, Qt::Key_Return);
+    REQUIRE(c.pendingFiles().isEmpty());
+    REQUIRE(c.undoSendOffered());
+
+    ctrlZ(&c);
+    CHECK(host.undone == QStringList{"/tmp/msga-test-undo.png|with a file"});
+    CHECK(c.pendingFiles() == QStringList{"/tmp/msga-test-undo.png"});
+    CHECK(c.currentText() == "with a file");
+}
+
+TEST_CASE("A new send supersedes the previous undo offer", "[composer][undosend]") {
+    ComposerWidget c;
+    UndoHost       host;
+    host.wire(&c);
+    showWithText(&c, "first");
+    sendKey(&c, Qt::Key_Return);
+    typeText(&c, "second");
+    sendKey(&c, Qt::Key_Return);
+
+    ctrlZ(&c);
+    CHECK(host.undone == QStringList{"second"});
+    CHECK(c.currentText() == "second");
+    ctrlZ(&c); // nothing left to take back
+    CHECK(host.undone.size() == 1);
+}
+
+TEST_CASE("Leaving the conversation withdraws the undo offer", "[composer][undosend]") {
+    // The chip's restore would otherwise drop the sent text into the NEXT chat.
+    ComposerWidget c;
+    UndoHost       host;
+    host.wire(&c);
+    showWithText(&c, "for chat A");
+    sendKey(&c, Qt::Key_Return);
+    REQUIRE(c.undoSendOffered());
+
+    CHECK(c.takeDraft().isEmpty());
+    CHECK_FALSE(c.undoSendOffered());
+    ctrlZ(&c);
+    CHECK(host.undone.isEmpty());
+    CHECK(c.currentText().isEmpty());
+}
+
+TEST_CASE("Hiding the composer withdraws the undo offer", "[composer][undosend]") {
+    ComposerWidget c;
+    UndoHost       host;
+    host.wire(&c);
+    showWithText(&c, "bye");
+    sendKey(&c, Qt::Key_Return);
+    REQUIRE(c.undoSendOffered());
+    c.hide();
+    CHECK_FALSE(c.undoSendOffered());
+}
+
+TEST_CASE("offerUndoSend by ghost ts needs a session that can delete", "[composer][undosend]") {
+    ComposerWidget c;
+    c.offerUndoSend(ConversationId{"C1"}, Ts{"1.000"});
+    CHECK_FALSE(c.undoSendOffered());
+
+    // A session whose backend lacks deleteMessage (StubBackend2 reports no
+    // capabilities) gets no offer either — the chip would be a dead control.
+    auto *stub   = new StubBackend2;
+    stub->_me    = UserId{"U1"};
+    stub->_convs = std::vector<Conversation>{};
+    Session session(std::unique_ptr<Backend>(stub), "T_TEST");
+    c.setSession(&session);
+    c.offerUndoSend(ConversationId{"C1"}, Ts{"1.000"});
+    CHECK_FALSE(c.undoSendOffered());
 }

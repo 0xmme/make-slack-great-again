@@ -546,18 +546,21 @@ private:
         _composer->setScheduleVisible(false);
         _composer->setPlaceholderText(tr("Reply in thread…"));
         connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
-            if (_session) {
-                _session->sendMessage(_item.conv, text, _item.root.ts);
-                markRead();
-            }
+            if (!_session)
+                return;
+            const Ts ghost = _session->sendMessage(_item.conv, text, _item.root.ts);
+            _composer->offerUndoSend(_item.conv, ghost);
+            markRead();
         });
         connect(
             _composer,
             &ComposerWidget::uploadRequested,
             this,
             [this](const QStringList &filePaths, const QString &text) {
-                if (_session)
-                    _session->uploadFiles(_item.conv, filePaths, text, _item.root.ts);
+                if (!_session)
+                    return;
+                const Ts ghost = _session->uploadFiles(_item.conv, filePaths, text, _item.root.ts);
+                _composer->offerUndoSend(_item.conv, ghost);
             }
         );
         connect(_composer, &ComposerWidget::typingStarted, this, [this] {

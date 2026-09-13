@@ -51,12 +51,22 @@ public:
     rpl::producer<> parallelUsageNotice() const { return _parallelUsageHub.events(); }
 
     // Send a message (optionally as a thread reply) and optimistically insert it.
-    void sendMessage(
+    // Returns the optimistic copy's client-side ts — the handle undoSend() takes.
+    Ts sendMessage(
         ConversationId    conv,
         const QString    &text,
         std::optional<Ts> threadRoot = {},
         const QString    &subject    = {}
     );
+
+    // Take back a message just sent through sendMessage()/uploadFiles(), given
+    // the ghost ts they returned. The optimistic copy disappears at once; the
+    // server copy is deleted when it exists — immediately if the send has been
+    // confirmed, otherwise the moment the confirming message arrives (which is
+    // then swallowed rather than shown). A send that already failed, or a ghost
+    // this session never issued, is a no-op. The UI offers this for a few
+    // seconds after each send (the composer's "Sent · Undo" chip).
+    void undoSend(ConversationId conv, const Ts &ghostTs);
 
     // Edit an existing message.
     void editMessage(ConversationId conv, Ts ts, const QString &newText);
@@ -132,7 +142,8 @@ public:
     void setPhoto(const QString &filePath, std::function<void(bool ok, QString err)> done = {});
 
     // --- Phase 3 ---
-    void uploadFiles(
+    // Returns the optimistic copy's ts, like sendMessage().
+    Ts uploadFiles(
         ConversationId     conv,
         const QStringList &filePaths,
         const QString     &text,
@@ -258,13 +269,13 @@ public:
     bool isThreadFollowed(const ConversationId &conv, const Ts &root) const;
     void markThreadFollowed(const ConversationId &conv, const Ts &root);
     // sendMessage() with an outcome callback (see Backend::sendMessage).
-    void postMessage(
-        ConversationId                            conv,
-        const QString                            &text,
-        std::optional<Ts>                         threadRoot,
-        const QString                            &subject,
-        std::function<void(bool ok, QString err)> done
-    );
+    Ts   postMessage(
+          ConversationId                            conv,
+          const QString                            &text,
+          std::optional<Ts>                         threadRoot,
+          const QString                            &subject,
+          std::function<void(bool ok, QString err)> done
+      );
 
     // The user read this thread up to `upTo`: move the server-side thread read
     // cursor (so the official clients agree) and record it as the Threads-feed
@@ -678,8 +689,15 @@ private:
     struct PendingSend {
         QString ts; // fake client-side ts of the optimistic copy
         bool    withFiles = false;
+        // undoSend() ran before the server confirmed: the ghost is already gone,
+        // and the confirming message must be deleted instead of shown.
+        bool    undone    = false;
     };
     QHash<QString, QList<PendingSend>> _pendingSends; // conv.value → FIFO queue
+    // Recently confirmed sends, ghost ts → server ts, so undoSend() can still
+    // find the message to delete once the ghost has been replaced. Bounded FIFO.
+    QHash<QString, Ts>                 _confirmedSends;
+    QQueue<QString>                    _confirmedSendOrder;
     // Messages awaiting a conversations.info fetch for a conversation we don't
     // track yet (see fetchUnknownConversation). A present key means a fetch is
     // in flight; the queued messages drain when it completes.

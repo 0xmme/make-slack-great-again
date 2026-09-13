@@ -6,11 +6,16 @@
 
 class QLabel;
 class QFrame;
+class QVBoxLayout;
 
 class WelcomeWidget : public QWidget {
     Q_OBJECT
 public:
     explicit WelcomeWidget(QWidget *parent = nullptr);
+
+    // Rebuild the shortcut rows from the registry — the send/newline bindings
+    // change with the "send with Ctrl+Enter" option.
+    void refreshShortcuts();
 
 protected:
     void resizeEvent(QResizeEvent *e) override;
@@ -19,8 +24,10 @@ protected:
 private:
     void applyTheme();
     void repositionContent();
+    void buildRows();
 
     QWidget         *_content = nullptr;
+    QVBoxLayout     *_vbox    = nullptr; // rows are appended to it by buildRows()
     QLabel          *_title   = nullptr;
     QFrame          *_rule    = nullptr;
     QList<QLabel *>  _chipLabels;

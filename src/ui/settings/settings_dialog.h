@@ -63,6 +63,9 @@ signals:
     void agentsAppsVisibilityChanged(bool visible);
     // Emitted when the "Show only unread conversations" toggle is saved.
     void unreadsOnlyChanged(bool on);
+    // Emitted when the composer's send key (Enter vs Ctrl+Enter) is saved with
+    // a new value; the welcome screen's shortcut panel re-reads the registry.
+    void sendKeyChanged();
     // Emitted after conv/visitedAt is wiped so the conv list can re-seed from API data.
     void stateCleared();
     // Emitted when notification settings (incl. the global default level) are
@@ -152,6 +155,7 @@ private:
     QRadioButton             *_fontLarge        = nullptr;
     QCheckBox                *_showAgentsApps   = nullptr;
     QCheckBox                *_unreadsOnly      = nullptr;
+    QCheckBox                *_ctrlEnterSends   = nullptr;
     QList<ThemePreviewCard *> _themeCards; // one per registry theme
     // Language the app actually started with — the restart note shows whenever
     // the combo selection differs from this, even across settings re-opens.

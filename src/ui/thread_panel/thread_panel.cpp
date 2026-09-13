@@ -120,16 +120,20 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     layout->addWidget(_composer);
 
     connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
-        if (_session && !_conv.value.isEmpty() && !_rootTs.isEmpty())
-            _session->sendMessage(_conv, text, _rootTs);
+        if (!_session || _conv.value.isEmpty() || _rootTs.isEmpty())
+            return;
+        const Ts ghost = _session->sendMessage(_conv, text, _rootTs);
+        _composer->offerUndoSend(_conv, ghost);
     });
     connect(
         _composer,
         &ComposerWidget::uploadRequested,
         this,
         [this](const QStringList &filePaths, const QString &text) {
-            if (_session && !_conv.value.isEmpty() && !_rootTs.isEmpty())
-                _session->uploadFiles(_conv, filePaths, text, _rootTs);
+            if (!_session || _conv.value.isEmpty() || _rootTs.isEmpty())
+                return;
+            const Ts ghost = _session->uploadFiles(_conv, filePaths, text, _rootTs);
+            _composer->offerUndoSend(_conv, ghost);
         }
     );
     connect(
