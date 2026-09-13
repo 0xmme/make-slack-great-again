@@ -14,6 +14,7 @@
 #include <QTimer>
 
 #include "session/session.h"
+#include "ui/conv_list/named_conversation.h"
 #include "backend/backend.h"
 #include "backend/common_commands.h"
 #include "cache/workspace_cache.h"
@@ -4993,4 +4994,102 @@ TEST_CASE_METHOD(
         }
     CHECK(hits == 1);
     CHECK(stub->messageAtCalls.size() == 1);
+}
+
+// ── namedConversationsFor — the quick switcher's view of a background workspace
+// A workspace that isn't on screen has a Session but no ConvListWidget; the
+// resolver must hand the switcher the same names and drops the sidebar would.
+
+static const NamedConversation *findNamed(const std::vector<NamedConversation> &v, const char *id) {
+    for (const auto &nc : v)
+        if (nc.id.value == id)
+            return &nc;
+    return nullptr;
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "namedConversationsFor resolves channel, DM and group DM names",
+    "[session][quickswitch]"
+) {
+    Conversation mpdmByMembers = kMpdm;
+    mpdmByMembers.id           = ConversationId{"G2"};
+    mpdmByMembers.name         = "mpdm-nobody--knows-2";
+    mpdmByMembers.members      = {UserId{"U1"}, UserId{"U2"}};
+    restartSession({kGeneral, kRandom, kDmBob, kMpdm, mpdmByMembers}, {kAlice, kBob});
+
+    const auto named = namedConversationsFor(session.get(), {});
+
+    const auto *general = findNamed(named, "C1");
+    REQUIRE(general != nullptr);
+    CHECK(general->name == "general");
+    CHECK(general->kind == ConvKind::PublicChannel);
+
+    // A DM is named after its peer, not its raw "U2".
+    const auto *dm = findNamed(named, "D1");
+    REQUIRE(dm != nullptr);
+    CHECK(dm->name == "Bob Builder");
+    CHECK(dm->kind == ConvKind::Im);
+
+    // Group DMs: parsed from the mpdm- name or taken from members — in both
+    // cases without ourselves (U1 = Alice).
+    const auto *byName = findNamed(named, "G1");
+    REQUIRE(byName != nullptr);
+    CHECK(byName->name == "Bob Builder");
+    const auto *byMembers = findNamed(named, "G2");
+    REQUIRE(byMembers != nullptr);
+    CHECK(byMembers->name == "Bob Builder");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "namedConversationsFor drops what the sidebar drops", "[session][quickswitch]"
+) {
+    Conversation dmGone = kDmBob;
+    dmGone.id           = ConversationId{"D3"};
+    dmGone.name         = "U3";
+    dmGone.dmUser       = UserId{"U3"}; // deactivated
+    Conversation left   = kRandom;
+    left.id             = ConversationId{"C9"};
+    left.name           = "left-this";
+    left.isMember       = false;
+    restartSession({kGeneral, dmGone, left, kDmBob}, {kAlice, kBob, kGone});
+
+    const auto named = namedConversationsFor(session.get(), {});
+    CHECK(findNamed(named, "C1") != nullptr);
+    CHECK(findNamed(named, "D1") != nullptr);
+    CHECK(findNamed(named, "D3") == nullptr); // peer deactivated
+    CHECK(findNamed(named, "C9") == nullptr); // not a member
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "namedConversationsFor orders by visit stamp and activity",
+    "[session][quickswitch]"
+) {
+    Conversation busy = kRandom;
+    busy.id           = ConversationId{"C5"};
+    busy.name         = "busy";
+    busy.latestTs     = "1700000000.000100";
+    restartSession({kGeneral, kRandom, busy}, {kAlice, kBob});
+
+    // random was opened here after busy's last message → it leads; busy takes
+    // its activity from latestTs; general has neither and sinks.
+    QHash<QString, qint64> visited;
+    visited.insert("C2", 1700000500);
+    const auto named = namedConversationsFor(session.get(), visited);
+
+    std::vector<QString> order;
+    for (const auto &nc : named)
+        if (nc.id.value == "C1" || nc.id.value == "C2" || nc.id.value == "C5")
+            order.push_back(nc.id.value);
+    REQUIRE(order.size() == 3);
+    CHECK(order[0] == "C2");
+    CHECK(order[1] == "C5");
+    CHECK(order[2] == "C1");
+    CHECK(findNamed(named, "C5")->activitySeconds == 1700000000);
+    CHECK(findNamed(named, "C2")->activitySeconds == 1700000500);
+}
+
+TEST_CASE("namedConversationsFor tolerates a null session", "[session][quickswitch]") {
+    CHECK(namedConversationsFor(nullptr, {}).empty());
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "workspace_switcher.h"
+#include "workspace_bubble.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "ui/image_cache.h"
@@ -125,11 +126,7 @@ void WorkspaceSwitcher::setImageCache(ImageCache *cache) {
 }
 
 QPixmap WorkspaceSwitcher::scaleIcon(const QPixmap &src) const {
-    const qreal dpr  = devicePixelRatioF();
-    const int   phys = qRound(kBubble * dpr);
-    QPixmap     px   = src.scaled(phys, phys, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    px.setDevicePixelRatio(dpr);
-    return px;
+    return Ui::scaleWorkspaceIcon(src, kBubble, devicePixelRatioF());
 }
 
 void WorkspaceSwitcher::loadIcons() {
@@ -181,8 +178,7 @@ int WorkspaceSwitcher::hitTest(const QPoint &pos) const {
 }
 
 QColor WorkspaceSwitcher::bubbleColor(const QString &teamId) const {
-    const int hue = static_cast<int>((qHash(teamId) * 37u) % 360u);
-    return QColor::fromHsl(hue, Th::c().workspaceHslSaturation, Th::c().workspaceHslLightness);
+    return Ui::workspaceBubbleColor(teamId);
 }
 
 // ── Painting ──────────────────────────────────────────────────────────────────
@@ -193,39 +189,17 @@ void WorkspaceSwitcher::paintBubble(
     const bool  active = (ep.info.teamId == _activeId);
     const qreal radius = kRadius * (r.width() / kBubble); // keep shape under lift scale
 
-    QColor bg = bubbleColor(ep.info.teamId);
-    if (active)
-        bg = bg.lighter(125);
-    else if (hov)
-        bg = bg.lighter(115);
-    p.setBrush(bg);
-    p.setPen(Qt::NoPen);
-    p.drawRoundedRect(r, radius, radius);
-
-    if (!ep.icon.isNull()) {
-        QPainterPath clip;
-        clip.addRoundedRect(r, radius, radius);
-        p.setClipPath(clip);
-        p.drawPixmap(r, ep.icon, QRectF(ep.icon.rect()));
-        p.setClipping(false);
-    } else {
-        // Letter fallback
-        const QChar ch = ep.info.name.isEmpty() ? QChar('?') : ep.info.name.at(0).toUpper();
-        p.setPen(Qt::white);
-        QFont f = font();
-        f.setPixelSize(17);
-        f.setBold(true);
-        p.setFont(f);
-        p.drawText(r, Qt::AlignCenter, QString(ch));
-    }
-
-    // White ring for active / hover
-    if (active || hov) {
-        p.setPen(QPen(QColor(255, 255, 255, active ? 200 : 100), active ? 2.0 : 1.5));
-        p.setBrush(Qt::NoBrush);
-        const qreal inset = 0.75;
-        p.drawRoundedRect(r.adjusted(inset, inset, -inset, -inset), radius - inset, radius - inset);
-    }
+    Ui::paintWorkspaceBubble(
+        p,
+        r,
+        {.teamId  = ep.info.teamId,
+         .name    = ep.info.name,
+         .icon    = ep.icon,
+         .active  = active,
+         .hovered = hov,
+         .radius  = radius},
+        font()
+    );
 
     // Unread dot: red for important (DMs/mentions), blue for regular unreads
     if (ep.info.unread > 0 || ep.info.mentions > 0) {

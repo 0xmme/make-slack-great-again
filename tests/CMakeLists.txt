@@ -356,6 +356,9 @@ add_msga_test(test_fake_backend
 add_msga_qt_test(test_session
     test_session.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/conv_list/named_conversation.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -455,6 +458,7 @@ add_msga_widget_test(test_workspace_switcher
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/workspace_switcher/workspace_switcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/workspace_switcher/workspace_bubble.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
@@ -671,6 +675,10 @@ add_msga_widget_test(test_move_to_thread_dialog
 add_msga_widget_test(test_quick_switcher
     test_quick_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/quick_switcher/quick_switcher_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/quick_switcher/workspace_tab_strip.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/workspace_switcher/workspace_bubble.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_list_view.cpp
     ${CMAKE_SOURCE_DIR}/src/util/fuzzy_match.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
@@ -721,6 +729,7 @@ add_msga_widget_test(test_composer
 add_msga_widget_test(test_conv_list_widget
     test_conv_list_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/conv_list/conv_list_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/conv_list/named_conversation.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
     ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/file_chip_widget.cpp

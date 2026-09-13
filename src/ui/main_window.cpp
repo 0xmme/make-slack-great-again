@@ -1780,13 +1780,42 @@ void MainWindow::openQuickSwitcher() {
     if (AppDialog::topmostVisible(this))
         return;
 
-    auto *dlg = new QuickSwitcherDialog(_convList->namedConversations(), _imgCache, this);
-    connect(dlg, &QuickSwitcherDialog::conversationActivated, this, [this](ConversationId id) {
-        // Same path as a search result / notification open: it moves the list
-        // highlight and drives openConversation(), and un-hides a conversation
-        // the relevance filter or a collapsed section was holding back.
-        _convList->selectConversation(id);
-    });
+    // One tab per live workspace, in the rail's order. The active one takes its
+    // names from the sidebar (freshest visit stamps, the exact filter it
+    // applies); a background one has only its Session, so it is resolved from
+    // that. A workspace whose Session hasn't been brought up yet (first seconds
+    // after launch) has nothing to list and gets no tab.
+    std::vector<QuickSwitcherDialog::Workspace> workspaces;
+    const QStringList order = _switcher ? _switcher->workspaceIds() : QStringList{_activeTeamId};
+    for (const QString &teamId : order) {
+        const auto it = _sessions.find(teamId);
+        if (it == _sessions.end() || !it->second.session)
+            continue;
+        const auto rec = recordForHandle(teamId);
+        workspaces.push_back(
+            {.teamId  = teamId,
+             .name    = rec.displayName,
+             .iconUrl = rec.iconUrl,
+             .conversations =
+                 teamId == _activeTeamId
+                     ? _convList->namedConversations()
+                     : namedConversationsFor(it->second.session.get(), _convList->visitedAt())}
+        );
+    }
+    if (workspaces.empty())
+        return;
+
+    auto *dlg = new QuickSwitcherDialog(std::move(workspaces), _activeTeamId, _imgCache, this);
+    connect(
+        dlg,
+        &QuickSwitcherDialog::conversationActivated,
+        this,
+        [this](const QString &teamId, ConversationId id) {
+            // Same path as a notification open: switches workspace if needed,
+            // moves the list highlight and drives openConversation().
+            openConversationIn(teamId, id);
+        }
+    );
     dlg->exec();
     dlg->deleteLater();
 }
@@ -3112,6 +3141,37 @@ void MainWindow::openMessageTarget(const ConversationId &conv, const Ts &ts, con
     );
 }
 
+void MainWindow::openConversationIn(const QString &teamId, const ConversationId &conv) {
+    // The conversation may belong to a background workspace — bring it up first.
+    if (!teamId.isEmpty() && teamId != _activeTeamId) {
+        if (!_sessions.count(teamId))
+            return; // logged out meanwhile
+        activateWorkspace(teamId);
+    }
+    if (!_convList)
+        return;
+    // Route through the conv list's selection rather than calling
+    // openConversation(row) directly. selectConversation() moves the list's
+    // highlight to the target and emits conversationSelected, which drives
+    // openConversation() (message list + header) — so the header title, the
+    // header avatar AND the highlighted row all land on the target
+    // conversation together. Opening the message list directly would switch
+    // the messages but leave the header and the list selection on the
+    // previously-open conversation. selectConversation() also un-collapses
+    // the section and overrides the relevance filter, so a conversation the
+    // filter has hidden (a DM with no recent activity) still opens —
+    // rowForId() alone would return -1 and silently do nothing.
+    _convList->selectConversation(conv);
+    // selectConversation() suppresses the signal when the target row is
+    // already the selected one (e.g. a stale highlight left over from a
+    // workspace switch); drive the open directly so the view still updates.
+    if (_currentConvId != conv) {
+        const int row = _convList->rowForId(conv);
+        if (row >= 0)
+            openConversation(row);
+    }
+}
+
 void MainWindow::openNotifTarget(
     const QString &teamId, const ConversationId &conv, const Ts &threadRoot, const Ts &msgTs
 ) {
@@ -3120,31 +3180,7 @@ void MainWindow::openNotifTarget(
     activateWindow();
     if (conv.value.isEmpty())
         return;
-    // The notification may belong to a background workspace — bring it up first.
-    if (!teamId.isEmpty() && teamId != _activeTeamId)
-        activateWorkspace(teamId);
-    if (_convList) {
-        // Route through the conv list's selection rather than calling
-        // openConversation(row) directly. selectConversation() moves the list's
-        // highlight to the target and emits conversationSelected, which drives
-        // openConversation() (message list + header) — so the header title, the
-        // header avatar AND the highlighted row all land on the notified
-        // conversation together. Opening the message list directly would switch
-        // the messages but leave the header and the list selection on the
-        // previously-open conversation. selectConversation() also un-collapses
-        // the section and overrides the relevance filter, so a notification for
-        // a conversation the filter has hidden (a DM with no recent activity)
-        // still opens — rowForId() alone would return -1 and silently do nothing.
-        _convList->selectConversation(conv);
-        // selectConversation() suppresses the signal when the target row is
-        // already the selected one (e.g. a stale highlight left over from a
-        // workspace switch); drive the open directly so the view still updates.
-        if (_currentConvId != conv) {
-            const int row = _convList->rowForId(conv);
-            if (row >= 0)
-                openConversation(row);
-        }
-    }
+    openConversationIn(teamId, conv);
     // A thread-reply notification: the reply isn't in the channel timeline, so
     // open the thread it belongs to (no-op for a plain message — empty root).
     openThreadPanel(conv, threadRoot);

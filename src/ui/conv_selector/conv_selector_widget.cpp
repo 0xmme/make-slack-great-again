@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "conv_selector_widget.h"
 #include "session/session.h"
+#include "ui/conv_list/named_conversation.h"
 #include "ui/popup_placement.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
@@ -21,24 +22,6 @@
 #include <QVBoxLayout>
 
 static constexpr int kDropMaxH = 200;
-
-// Slack names a group DM "mpdm-alice--bob--carol-1"; pull the member usernames
-// back out so we can show display names instead of the raw id. Mirrors the
-// conversation list's helper of the same name.
-static QStringList parseMpdmUsernames(const QString &name) {
-    QString s = name;
-    if (s.startsWith("mpdm-"))
-        s = s.mid(5);
-    // Strip a trailing numeric suffix like "-1".
-    const int lastDash = s.lastIndexOf('-');
-    if (lastDash > 0) {
-        bool ok = false;
-        s.mid(lastDash + 1).toInt(&ok);
-        if (ok)
-            s = s.left(lastDash);
-    }
-    return s.split("--", Qt::SkipEmptyParts);
-}
 
 ConvSelectorWidget::ConvSelectorWidget(Session *session, QWidget *parent)
     : QWidget(parent), _session(session) {

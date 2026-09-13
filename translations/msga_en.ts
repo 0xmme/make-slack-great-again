@@ -171,92 +171,92 @@ Set MSGA_TEAMS_CLIENT_ID in credentials.cmake and rebuild.</translation>
         </translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1713"/>
+        <location filename="../src/session/session.cpp" line="1769"/>
         <source>Unknown user</source>
         <translation>Unknown user</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1827"/>
+        <location filename="../src/session/session.cpp" line="1883"/>
         <source>Moved from the channel · originally posted by %1 on %2 at %3</source>
         <translation>Moved from the channel · originally posted by %1 on %2 at %3</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1862"/>
+        <location filename="../src/session/session.cpp" line="1918"/>
         <source>Couldn't move the message — the original is still in place.</source>
         <translation>Couldn't move the message — the original is still in place.</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1941"/>
+        <location filename="../src/session/session.cpp" line="1997"/>
         <source>No such user: %1</source>
         <translation>No such user: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1992"/>
+        <location filename="../src/session/session.cpp" line="2048"/>
         <source>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</source>
         <translation>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2008"/>
+        <location filename="../src/session/session.cpp" line="2064"/>
         <source>Command /%1 failed: %2</source>
         <translation>Command /%1 failed: %2</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2043"/>
+        <location filename="../src/session/session.cpp" line="2099"/>
         <source>Could not change presence: %1</source>
         <translation>Could not change presence: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2061"/>
+        <location filename="../src/session/session.cpp" line="2117"/>
         <source>Could not set status: %1</source>
         <translation>Could not set status: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2082"/>
+        <location filename="../src/session/session.cpp" line="2138"/>
         <source>Could not update notifications: %1</source>
         <translation>Could not update notifications: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2104"/>
+        <location filename="../src/session/session.cpp" line="2160"/>
         <source>Could not update profile: %1</source>
         <translation>Could not update profile: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2125"/>
+        <location filename="../src/session/session.cpp" line="2181"/>
         <source>Could not update avatar: %1</source>
         <translation>Could not update avatar: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2198"/>
+        <location filename="../src/session/session.cpp" line="2254"/>
         <source>Upload failed: %1</source>
         <translation>Upload failed: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2240"/>
+        <location filename="../src/session/session.cpp" line="2296"/>
         <source>Could not load canvas: %1</source>
         <translation>Could not load canvas: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2271"/>
+        <location filename="../src/session/session.cpp" line="2327"/>
         <source>Could not create canvas: %1</source>
         <translation>Could not create canvas: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2287"/>
+        <location filename="../src/session/session.cpp" line="2343"/>
         <source>Canvas edit failed: %1</source>
         <translation>Canvas edit failed: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2305"/>
+        <location filename="../src/session/session.cpp" line="2361"/>
         <source>Canvas deletion failed: %1</source>
         <translation>Canvas deletion failed: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2753"/>
+        <location filename="../src/session/session.cpp" line="2882"/>
         <source>Couldn't set the reminder: %1</source>
         <translation>Couldn't set the reminder: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2782"/>
+        <location filename="../src/session/session.cpp" line="2911"/>
         <source>Couldn't remove the reminder: %1</source>
         <translation>Couldn't remove the reminder: %1</translation>
     </message>
@@ -330,7 +330,7 @@ Set MSGA_TEAMS_CLIENT_ID in credentials.cmake and rebuild.</translation>
 <context>
     <name>BrowseListView</name>
     <message>
-        <location filename="../src/ui/browse_channels_dialog/browse_list_view.cpp" line="246"/>
+        <location filename="../src/ui/browse_channels_dialog/browse_list_view.cpp" line="272"/>
         <source>Joined</source>
         <translation>Joined</translation>
     </message>
@@ -599,142 +599,142 @@ This action cannot be undone.</translation>
 <context>
     <name>ConvListWidget</name>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="857"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="850"/>
         <source>Open a direct message</source>
         <translation>Open a direct message</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="886"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="879"/>
         <source>Notify you about…</source>
         <translation>Notify you about…</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="888"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="881"/>
         <source>All new posts</source>
         <translation>All new posts</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="895"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="888"/>
         <source>Just mentions</source>
         <translation>Just mentions</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="902"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="895"/>
         <source>Mute and hide</source>
         <translation>Mute and hide</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="916"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="909"/>
         <source>Unstar channel</source>
         <translation>Unstar channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="916"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="909"/>
         <source>Star channel</source>
         <translation>Star channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="923"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="916"/>
         <source>Leave channel</source>
         <translation>Leave channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="936"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="929"/>
         <source>Unstar conversation</source>
         <translation>Unstar conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="936"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="929"/>
         <source>Star conversation</source>
         <translation>Star conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="943"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="936"/>
         <source>Leave conversation</source>
         <translation>Leave conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="954"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="947"/>
         <source>Unmute</source>
         <translation>Unmute</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="954"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="947"/>
         <source>Mute</source>
         <translation>Mute</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1029"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1022"/>
         <source>Find a channel</source>
         <translation>Find a channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1030"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1023"/>
         <source>Create a channel</source>
         <translation>Create a channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1184"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1177"/>
         <source>Channels</source>
         <translation>Channels</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1185"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1178"/>
         <source>Direct messages</source>
         <translation>Direct messages</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1186"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1179"/>
         <source>Starred</source>
         <translation>Starred</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1187"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1180"/>
         <source>Agents &amp; apps</source>
         <translation>Agents &amp; apps</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1253"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1249"/>
         <source>Threads</source>
         <translation>Threads</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1262"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1258"/>
         <source>Saved messages</source>
         <translation>Saved messages</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1282"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1278"/>
         <source>Add channels</source>
         <translation>Add channels</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1302"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1298"/>
         <source>%1 more %2</source>
         <translation>%1 more %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1302"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1298"/>
         <source>channel</source>
         <translation>channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1302"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1298"/>
         <source>channels</source>
         <translation>channels</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1494"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1490"/>
         <source>EXT</source>
         <translation>EXT</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1516"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1512"/>
         <source>you</source>
         <translation>you</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1558"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="1554"/>
         <source>you</source>
         <translation>you</translation>
     </message>
@@ -742,7 +742,7 @@ This action cannot be undone.</translation>
 <context>
     <name>ConvSelectorWidget</name>
     <message>
-        <location filename="../src/ui/conv_selector/conv_selector_widget.cpp" line="61"/>
+        <location filename="../src/ui/conv_selector/conv_selector_widget.cpp" line="44"/>
         <source>Search channels and people…</source>
         <translation>Search channels and people…</translation>
     </message>
@@ -1144,167 +1144,167 @@ This action cannot be undone.</translation>
         <translation>Login failed</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1899"/>
+        <location filename="../src/ui/main_window.cpp" line="1939"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1899"/>
+        <location filename="../src/ui/main_window.cpp" line="1939"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2161"/>
+        <location filename="../src/ui/main_window.cpp" line="2201"/>
         <source>Someone</source>
         <translation>Someone</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2300"/>
+        <location filename="../src/ui/main_window.cpp" line="2340"/>
         <source>Someone</source>
         <translation>Someone</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2306"/>
+        <location filename="../src/ui/main_window.cpp" line="2346"/>
         <source>Started a huddle</source>
         <translation>Started a huddle</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2309"/>
+        <location filename="../src/ui/main_window.cpp" line="2349"/>
         <source>%1 started a huddle</source>
         <translation>%1 started a huddle</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2339"/>
+        <location filename="../src/ui/main_window.cpp" line="2379"/>
         <source>Join</source>
         <translation>Join</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2407"/>
+        <location filename="../src/ui/main_window.cpp" line="2447"/>
         <source>Reminder</source>
         <translation>Reminder</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2407"/>
+        <location filename="../src/ui/main_window.cpp" line="2447"/>
         <source>Reminder — %1</source>
         <translation>Reminder — %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2426"/>
+        <location filename="../src/ui/main_window.cpp" line="2466"/>
         <source>You asked to be reminded about a message.</source>
         <translation>You asked to be reminded about a message.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2481"/>
+        <location filename="../src/ui/main_window.cpp" line="2521"/>
         <source>Sample User</source>
         <translation>Sample User</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2489"/>
+        <location filename="../src/ui/main_window.cpp" line="2529"/>
         <source>Hey — do you have a minute?</source>
         <translation>Hey — do you have a minute?</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2493"/>
+        <location filename="../src/ui/main_window.cpp" line="2533"/>
         <source>%1: Heads up, the deploy is going out at 3pm</source>
         <translation>%1: Heads up, the deploy is going out at 3pm</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2497"/>
+        <location filename="../src/ui/main_window.cpp" line="2537"/>
         <source>%1 started a huddle</source>
         <translation>%1 started a huddle</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2502"/>
+        <location filename="../src/ui/main_window.cpp" line="2542"/>
         <source>Join</source>
         <translation>Join</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2546"/>
+        <location filename="../src/ui/main_window.cpp" line="2586"/>
         <source>Session expired</source>
         <translation>Session expired</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2549"/>
+        <location filename="../src/ui/main_window.cpp" line="2589"/>
         <source>Your session has expired. Click to sign in again.</source>
         <translation>Your session has expired. Click to sign in again.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2550"/>
+        <location filename="../src/ui/main_window.cpp" line="2590"/>
         <source>Your %1 session has expired. Click to sign in again.</source>
         <translation>Your %1 session has expired. Click to sign in again.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2741"/>
+        <location filename="../src/ui/main_window.cpp" line="2781"/>
         <source>Workspace admin</source>
         <translation>Workspace admin</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2747"/>
+        <location filename="../src/ui/main_window.cpp" line="2787"/>
         <source>Unmute</source>
         <translation>Unmute</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2747"/>
+        <location filename="../src/ui/main_window.cpp" line="2787"/>
         <source>Mute</source>
         <translation>Mute</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2752"/>
+        <location filename="../src/ui/main_window.cpp" line="2792"/>
         <source>Log out</source>
         <translation>Log out</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2752"/>
+        <location filename="../src/ui/main_window.cpp" line="2792"/>
         <source>Log out from %1</source>
         <translation>Log out from %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2811"/>
+        <location filename="../src/ui/main_window.cpp" line="2851"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2818"/>
+        <location filename="../src/ui/main_window.cpp" line="2858"/>
         <source>Reset window size</source>
         <translation>Reset window size</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2823"/>
+        <location filename="../src/ui/main_window.cpp" line="2863"/>
         <source>Quit</source>
         <translation>Quit</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2912"/>
+        <location filename="../src/ui/main_window.cpp" line="2952"/>
         <source>Couldn't apply the label.</source>
         <translation>Couldn't apply the label.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3284"/>
+        <location filename="../src/ui/main_window.cpp" line="3331"/>
         <source>Opens the huddle in Slack for web</source>
         <translation>Opens the huddle in Slack for web</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3294"/>
+        <location filename="../src/ui/main_window.cpp" line="3341"/>
         <source>Unstar conversation</source>
         <translation>Unstar conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3294"/>
+        <location filename="../src/ui/main_window.cpp" line="3341"/>
         <source>Star conversation</source>
         <translation>Star conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3305"/>
+        <location filename="../src/ui/main_window.cpp" line="3352"/>
         <source>Search messages</source>
         <translation>Search messages</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3684"/>
+        <location filename="../src/ui/main_window.cpp" line="3731"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3684"/>
+        <location filename="../src/ui/main_window.cpp" line="3731"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
@@ -1950,19 +1950,34 @@ This action cannot be undone.</translation>
 <context>
     <name>QuickSwitcherDialog</name>
     <message>
-        <location filename="../src/ui/quick_switcher/quick_switcher_dialog.cpp" line="32"/>
+        <location filename="../src/ui/quick_switcher/quick_switcher_dialog.cpp" line="61"/>
         <source>Jump to a conversation…</source>
         <translation>Jump to a conversation…</translation>
     </message>
     <message>
-        <location filename="../src/ui/quick_switcher/quick_switcher_dialog.cpp" line="52"/>
+        <location filename="../src/ui/quick_switcher/quick_switcher_dialog.cpp" line="103"/>
         <source>No conversations match.</source>
         <translation>No conversations match.</translation>
     </message>
     <message>
-        <location filename="../src/ui/quick_switcher/quick_switcher_dialog.cpp" line="61"/>
+        <location filename="../src/ui/quick_switcher/quick_switcher_dialog.cpp" line="117"/>
+        <source>%1 to move · %2 to switch workspace · %3 to open</source>
+        <translation>%1 to move · %2 to switch workspace · %3 to open</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/quick_switcher/quick_switcher_dialog.cpp" line="118"/>
         <source>%1 to move · %2 to open</source>
         <translation>%1 to move · %2 to open</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/quick_switcher/quick_switcher_dialog.cpp" line="249"/>
+        <source>No matches in %1. Other workspaces have some.</source>
+        <translation>No matches in %1. Other workspaces have some.</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/quick_switcher/quick_switcher_dialog.cpp" line="251"/>
+        <source>No conversations match.</source>
+        <translation>No conversations match.</translation>
     </message>
 </context>
 <context>
@@ -2926,62 +2941,62 @@ It follows the app language until you pick one here.</translation>
         <translation>Enter a model name, or fetch the list from the server</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2013"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2022"/>
         <source>No changes to save.</source>
         <translation>No changes to save.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2017"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2026"/>
         <source>Saved. Restarting…</source>
         <translation>Saved. Restarting…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2065"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2074"/>
         <source>Last checked: %1</source>
         <translation>Last checked: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2073"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2082"/>
         <source>Update checks not available.</source>
         <translation>Update checks not available.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2078"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2087"/>
         <source>Checking for updates…</source>
         <translation>Checking for updates…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2081"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2090"/>
         <source>Update downloaded — restart the app to apply.</source>
         <translation>Update downloaded — restart the app to apply.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2095"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2104"/>
         <source>Checking for updates…</source>
         <translation>Checking for updates…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2099"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2108"/>
         <source>msga is up to date.</source>
         <translation>msga is up to date.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2103"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2112"/>
         <source>Version %1 available — downloading…</source>
         <translation>Version %1 available — downloading…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2106"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2115"/>
         <source>Downloading update… %1%</source>
         <translation>Downloading update… %1%</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2110"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2119"/>
         <source>Update downloaded — restart the app to apply.</source>
         <translation>Update downloaded — restart the app to apply.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="2115"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="2124"/>
         <source>Check failed: %1</source>
         <translation>Check failed: %1</translation>
     </message>
@@ -3450,12 +3465,12 @@ It follows the app language until you pick one here.</translation>
 <context>
     <name>WorkspaceSwitcher</name>
     <message>
-        <location filename="../src/ui/workspace_switcher/workspace_switcher.cpp" line="448"/>
+        <location filename="../src/ui/workspace_switcher/workspace_switcher.cpp" line="422"/>
         <source>Add workspace</source>
         <translation>Add workspace</translation>
     </message>
     <message>
-        <location filename="../src/ui/workspace_switcher/workspace_switcher.cpp" line="451"/>
+        <location filename="../src/ui/workspace_switcher/workspace_switcher.cpp" line="425"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>

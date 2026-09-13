@@ -80,6 +80,10 @@ public:
     QString                        resolvedName(int row) const;
     // Every conversation held, name-resolved and ordered most-recent first.
     std::vector<NamedConversation> namedConversations() const;
+    // conv id → epoch seconds of the last time it was opened in this app. App-
+    // wide (ids are unique across workspaces), so a background workspace's
+    // conversations can be ranked from it too (namedConversationsFor()).
+    const QHash<QString, qint64>  &visitedAt() const { return _visitedAt; }
     int                            selectedIndex() const { return _selected; }
     // Number of visual rows currently laid out (conversations plus the section
     // headers and action rows between them).

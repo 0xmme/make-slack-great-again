@@ -176,6 +176,12 @@ private:
     // so open the thread panel at that root, matching what Slack does on click.
     // msgTs (reminder clicks) additionally scrolls to and flashes that exact
     // message — in the channel, or inside the thread when threadRoot is set.
+    // Switch to `teamId` (if it isn't the active workspace) and open `conv`
+    // there through the conv list's selection — the one path that moves the
+    // header, the highlighted row and the message list together, and reveals
+    // a row the relevance filter or a collapsed section is hiding. Shared by
+    // notification clicks and the quick switcher. Empty teamId = active one.
+    void openConversationIn(const QString &teamId, const ConversationId &conv);
     void openNotifTarget(
         const QString        &teamId,
         const ConversationId &conv,

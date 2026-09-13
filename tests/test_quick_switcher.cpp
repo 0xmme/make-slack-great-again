@@ -12,6 +12,13 @@
 //   - The top match is always preselected, so Enter opens without an arrow press
 //   - Up/Down move the selection and wrap; Enter emits the selected id
 //   - No match → the empty notice replaces the list and Enter is inert
+//   - Several workspaces: one tab per workspace above the list, opening on the
+//     active one; ←/→ and Tab step through them and wrap; the list follows the
+//     tab; a query re-aims the tab at the workspace with the best match (ties
+//     keep the shown tab); a hand-picked tab holds while it still has matches
+//     and lets go when the query is cleared or runs dry; activation reports
+//     the tab's workspace; one workspace shows no tabs and keeps ←/→ for the
+//     caret
 //
 // Assertions go through BrowseListView's count()/visibleCount()/selectedRow()
 // accessors and the dialog's signal, none of which depend on geometry, so the
@@ -30,6 +37,7 @@
 #include "backend/domain.h"
 #include "ui/browse_channels_dialog/browse_list_view.h"
 #include "ui/quick_switcher/quick_switcher_dialog.h"
+#include "ui/quick_switcher/workspace_tab_strip.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
@@ -323,9 +331,10 @@ TEST_CASE("QuickSwitcher: Enter emits the selected conversation", "[quickswitch]
     QuickSwitcherDialog dlg({kBob, kGeneral, kDesign}, nullptr);
     ConversationId      activated;
     QObject::connect(
-        &dlg, &QuickSwitcherDialog::conversationActivated, &dlg, [&activated](ConversationId id) {
-            activated = id;
-        }
+        &dlg,
+        &QuickSwitcherDialog::conversationActivated,
+        &dlg,
+        [&activated](const QString &, ConversationId id) { activated = id; }
     );
 
     sendKey(&dlg, Qt::Key_Down); // → general
@@ -337,9 +346,10 @@ TEST_CASE("QuickSwitcher: Enter after filtering opens the top match", "[quickswi
     QuickSwitcherDialog dlg(kAll, nullptr);
     ConversationId      activated;
     QObject::connect(
-        &dlg, &QuickSwitcherDialog::conversationActivated, &dlg, [&activated](ConversationId id) {
-            activated = id;
-        }
+        &dlg,
+        &QuickSwitcherDialog::conversationActivated,
+        &dlg,
+        [&activated](const QString &, ConversationId id) { activated = id; }
     );
 
     field(&dlg)->setText("desi");
@@ -351,9 +361,10 @@ TEST_CASE("QuickSwitcher: a row click emits it too", "[quickswitch][activate]") 
     QuickSwitcherDialog dlg({kBob, kGeneral}, nullptr);
     ConversationId      activated;
     QObject::connect(
-        &dlg, &QuickSwitcherDialog::conversationActivated, &dlg, [&activated](ConversationId id) {
-            activated = id;
-        }
+        &dlg,
+        &QuickSwitcherDialog::conversationActivated,
+        &dlg,
+        [&activated](const QString &, ConversationId id) { activated = id; }
     );
 
     // The same hook the virtual list invokes on a click.
@@ -367,4 +378,264 @@ TEST_CASE("QuickSwitcher: activation closes the dialog", "[quickswitch][activate
     REQUIRE(dlg.isVisible());
     sendKey(&dlg, Qt::Key_Return);
     CHECK_FALSE(dlg.isVisible());
+}
+
+// ── Several workspaces ────────────────────────────────────────────────────────
+//
+// Workspace A (active) holds the usual four; workspace B holds #general too,
+// plus #backend and a DM with Zed — names that only B can answer for.
+
+static WorkspaceTabStrip *tabs(QWidget *dlg) {
+    return dlg->findChild<WorkspaceTabStrip *>("quickSwitcherTabs");
+}
+
+static const NamedConversation kBackend = {
+    .id              = ConversationId{"C21"},
+    .name            = "backend",
+    .kind            = ConvKind::PublicChannel,
+    .activitySeconds = 500,
+};
+static const NamedConversation kZed = {
+    .id              = ConversationId{"D21"},
+    .name            = "Zed Zephyr",
+    .kind            = ConvKind::Im,
+    .activitySeconds = 400,
+};
+static const NamedConversation kGeneralB = {
+    .id              = ConversationId{"C22"},
+    .name            = "general",
+    .kind            = ConvKind::PublicChannel,
+    .activitySeconds = 50,
+};
+
+static std::vector<QuickSwitcherDialog::Workspace> twoWorkspaces() {
+    return {
+        {.teamId = "slack:TA", .name = "Acme", .iconUrl = {}, .conversations = kAll},
+        {.teamId        = "slack:TB",
+         .name          = "Beta Corp",
+         .iconUrl       = {},
+         .conversations = {kBackend, kZed, kGeneralB}},
+    };
+}
+
+TEST_CASE("QuickSwitcher: one tab per workspace, opening on the active one", "[quickswitch][ws]") {
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TB", nullptr);
+    dlg.show();
+    REQUIRE(tabs(&dlg) != nullptr);
+    CHECK(tabs(&dlg)->isVisible());
+    CHECK(tabs(&dlg)->count() == 2);
+    CHECK(tabs(&dlg)->currentIndex() == 1);
+    CHECK(tabs(&dlg)->currentTeamId() == "slack:TB");
+    // The list is that workspace's recent chats.
+    CHECK(list(&dlg)->count() == 3);
+    CHECK(list(&dlg)->idAt(0) == "C21");
+}
+
+TEST_CASE("QuickSwitcher: an unknown active id falls back to the first tab", "[quickswitch][ws]") {
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TZ", nullptr);
+    CHECK(tabs(&dlg)->currentIndex() == 0);
+    CHECK(list(&dlg)->count() == 4);
+}
+
+TEST_CASE("QuickSwitcher: a single workspace shows no tabs", "[quickswitch][ws]") {
+    QuickSwitcherDialog dlg(kAll, nullptr);
+    dlg.show();
+    REQUIRE(tabs(&dlg) != nullptr);
+    CHECK_FALSE(tabs(&dlg)->isVisible());
+    // ←/→ stay with the field — nothing to switch, and the caret needs them.
+    field(&dlg)->setText("bob");
+    field(&dlg)->setCursorPosition(3);
+    sendKey(&dlg, Qt::Key_Left);
+    CHECK(field(&dlg)->cursorPosition() == 2);
+    CHECK(tabs(&dlg)->currentIndex() == 0);
+}
+
+TEST_CASE("QuickSwitcher: ←/→ and Tab step through the workspaces and wrap", "[quickswitch][ws]") {
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+    REQUIRE(tabs(&dlg)->currentIndex() == 0);
+
+    sendKey(&dlg, Qt::Key_Right);
+    CHECK(tabs(&dlg)->currentIndex() == 1);
+    CHECK(list(&dlg)->count() == 3); // the list follows the tab
+    sendKey(&dlg, Qt::Key_Right);
+    CHECK(tabs(&dlg)->currentIndex() == 0); // wraps
+    CHECK(list(&dlg)->count() == 4);
+    sendKey(&dlg, Qt::Key_Left);
+    CHECK(tabs(&dlg)->currentIndex() == 1); // wraps the other way
+    sendKey(&dlg, Qt::Key_Tab);
+    CHECK(tabs(&dlg)->currentIndex() == 0);
+    sendKey(&dlg, Qt::Key_Backtab);
+    CHECK(tabs(&dlg)->currentIndex() == 1);
+    // The caret was left alone by all of that.
+    field(&dlg)->setText("bob");
+    field(&dlg)->setCursorPosition(3);
+    sendKey(&dlg, Qt::Key_Left);
+    CHECK(field(&dlg)->cursorPosition() == 3);
+}
+
+TEST_CASE("QuickSwitcher: a bubble click switches the tab", "[quickswitch][ws]") {
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+    tabs(&dlg)->setCurrentIndex(1); // what mousePressEvent does on a hit
+    CHECK(list(&dlg)->count() == 3);
+    CHECK(list(&dlg)->selectedRow() == 0);
+}
+
+TEST_CASE(
+    "QuickSwitcher: typing re-aims the tab at the workspace with the match", "[quickswitch][ws]"
+) {
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+    field(&dlg)->setText("zed");
+    CHECK(tabs(&dlg)->currentIndex() == 1);
+    REQUIRE(list(&dlg)->visibleCount() == 1);
+    CHECK(list(&dlg)->idAt(0) == "D21");
+    CHECK(list(&dlg)->selectedRow() == 0);
+
+    // ...and back, when the letters only fit the other workspace.
+    field(&dlg)->setText("design");
+    CHECK(tabs(&dlg)->currentIndex() == 0);
+    CHECK(list(&dlg)->idAt(0) == "C2");
+}
+
+TEST_CASE("QuickSwitcher: the better match wins across workspaces", "[quickswitch][ws]") {
+    // "back" is a verbatim prefix of #backend (B); in A it only scatters
+    // through "Bob Builder" / "Alice, Bob" — B is the probable target.
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+    field(&dlg)->setText("back");
+    CHECK(tabs(&dlg)->currentIndex() == 1);
+    CHECK(list(&dlg)->idAt(0) == "C21");
+}
+
+TEST_CASE("QuickSwitcher: an equal match keeps the shown workspace", "[quickswitch][ws]") {
+    // #general exists in both: no reason to flip away from what is on screen.
+    {
+        QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+        field(&dlg)->setText("general");
+        CHECK(tabs(&dlg)->currentIndex() == 0);
+        CHECK(list(&dlg)->idAt(0) == "C1");
+    }
+    {
+        QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TB", nullptr);
+        field(&dlg)->setText("general");
+        CHECK(tabs(&dlg)->currentIndex() == 1);
+        CHECK(list(&dlg)->idAt(0) == "C22");
+    }
+}
+
+TEST_CASE(
+    "QuickSwitcher: a hand-picked tab holds while it still has matches", "[quickswitch][ws]"
+) {
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+    field(&dlg)->setText("gen"); // both have #general → stays on A
+    REQUIRE(tabs(&dlg)->currentIndex() == 0);
+    sendKey(&dlg, Qt::Key_Right); // the user wants B's #general
+    REQUIRE(tabs(&dlg)->currentIndex() == 1);
+    CHECK(list(&dlg)->idAt(0) == "C22");
+
+    // More letters: A's "general" scores the same, so re-aiming would have
+    // been a tie anyway — but B is now pinned regardless of scores. "b" alone
+    // scores best in A (Bob at a word start) yet B still has #backend: hold.
+    field(&dlg)->setText("b");
+    CHECK(tabs(&dlg)->currentIndex() == 1);
+    CHECK(list(&dlg)->idAt(0) == "C21");
+}
+
+TEST_CASE("QuickSwitcher: a tab picked before typing does not pin", "[quickswitch][ws]") {
+    // Open on B, step to A over an empty field, then type: that was browsing,
+    // not a choice about the query — "nik"-style letters that only B answers
+    // must still re-aim (the Henrik-vs-Nikita report).
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TB", nullptr);
+    sendKey(&dlg, Qt::Key_Left);
+    REQUIRE(tabs(&dlg)->currentIndex() == 0);
+    field(&dlg)->setText("zed");
+    CHECK(tabs(&dlg)->currentIndex() == 1);
+    CHECK(list(&dlg)->idAt(0) == "D21");
+
+    // And with a match on both sides the better one still wins: "b" is a
+    // word-start hit in A (Bob) but a verbatim prefix in B (#backend).
+    field(&dlg)->clear();
+    sendKey(&dlg, Qt::Key_Left);
+    REQUIRE(tabs(&dlg)->currentIndex() == 0);
+    field(&dlg)->setText("back");
+    CHECK(tabs(&dlg)->currentIndex() == 1);
+}
+
+TEST_CASE("QuickSwitcher: a hand-picked tab lets go when it runs dry", "[quickswitch][ws]") {
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+    sendKey(&dlg, Qt::Key_Right);
+    REQUIRE(tabs(&dlg)->currentIndex() == 1);
+    field(&dlg)->setText("design"); // nothing in B, one hit in A
+    CHECK(tabs(&dlg)->currentIndex() == 0);
+    CHECK(list(&dlg)->idAt(0) == "C2");
+}
+
+TEST_CASE("QuickSwitcher: clearing the query releases the pinned tab", "[quickswitch][ws]") {
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+    field(&dlg)->setText("gen");
+    sendKey(&dlg, Qt::Key_Right);
+    REQUIRE(tabs(&dlg)->currentIndex() == 1);
+    field(&dlg)->clear();
+    CHECK(tabs(&dlg)->currentIndex() == 1); // clearing itself moves nothing
+    CHECK(list(&dlg)->visibleCount() == 3);
+    field(&dlg)->setText("bob"); // fresh query → free to re-aim
+    CHECK(tabs(&dlg)->currentIndex() == 0);
+    CHECK(list(&dlg)->idAt(0) == "D1");
+}
+
+TEST_CASE("QuickSwitcher: → onto a dimmed workspace is honoured", "[quickswitch][ws]") {
+    // Nothing in B matches "design"; the user can still look there, and the
+    // notice says where the matches are instead of a bare "nothing".
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+    field(&dlg)->setText("design");
+    REQUIRE(tabs(&dlg)->currentIndex() == 0);
+    sendKey(&dlg, Qt::Key_Right);
+    CHECK(tabs(&dlg)->currentIndex() == 1);
+    CHECK(list(&dlg)->visibleCount() == 0);
+    auto *empty = dlg.findChild<QLabel *>();
+    REQUIRE(empty != nullptr);
+    bool found = false;
+    for (auto *lbl : dlg.findChildren<QLabel *>())
+        found = found || lbl->text().contains("Beta Corp");
+    CHECK(found);
+}
+
+TEST_CASE("QuickSwitcher: activation reports the tab's workspace", "[quickswitch][ws]") {
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+    QString             team;
+    ConversationId      activated;
+    QObject::connect(
+        &dlg,
+        &QuickSwitcherDialog::conversationActivated,
+        &dlg,
+        [&](const QString &t, ConversationId id) {
+            team      = t;
+            activated = id;
+        }
+    );
+    field(&dlg)->setText("zed");
+    sendKey(&dlg, Qt::Key_Return);
+    CHECK(team == "slack:TB");
+    CHECK(activated.value == "D21");
+}
+
+TEST_CASE("QuickSwitcher: the single-workspace form reports an empty team", "[quickswitch][ws]") {
+    QuickSwitcherDialog dlg(kAll, nullptr);
+    QString             team = "unset";
+    QObject::connect(
+        &dlg,
+        &QuickSwitcherDialog::conversationActivated,
+        &dlg,
+        [&](const QString &t, ConversationId) { team = t; }
+    );
+    sendKey(&dlg, Qt::Key_Return);
+    CHECK(team.isEmpty());
+}
+
+TEST_CASE("QuickSwitcher: renders with tabs without crash", "[quickswitch][ws][smoke]") {
+    QuickSwitcherDialog dlg(twoWorkspaces(), "slack:TA", nullptr);
+    dlg.resize(800, 600);
+    field(&dlg)->setText("zed"); // one dimmed tab, one lit
+    QPixmap px(dlg.size());
+    px.fill(Qt::transparent);
+    dlg.render(&px);
+    CHECK(!px.isNull());
 }

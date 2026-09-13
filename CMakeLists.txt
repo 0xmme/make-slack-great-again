@@ -228,6 +228,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/image_viewer/image_viewer.cpp
     src/ui/table_viewer/table_viewer.cpp
     src/ui/conv_list/conv_list_widget.cpp
+    src/ui/conv_list/named_conversation.cpp
     src/ui/conv_footer/conv_footer_widget.cpp
     src/ui/composer/formatting_toolbar.cpp
     src/ui/composer/attachment_strip.cpp
@@ -241,6 +242,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/popup_tooltip/popup_tooltip.cpp
     src/ui/user_profile_card/user_profile_card.cpp
     src/ui/workspace_switcher/workspace_switcher.cpp
+    src/ui/workspace_switcher/workspace_bubble.cpp
     src/ui/settings/settings_dialog.cpp
     src/ui/settings/theme_preview_card.cpp
     src/ui/search/search_widget.cpp
@@ -273,6 +275,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/browse_channels_dialog/browse_channels_dialog.cpp
     src/ui/browse_channels_dialog/browse_list_view.cpp
     src/ui/quick_switcher/quick_switcher_dialog.cpp
+    src/ui/quick_switcher/workspace_tab_strip.cpp
     src/ui/update_checker/update_checker.cpp
     src/ui/update_bar/update_bar.cpp
     src/ui/huddle_banner/huddle_banner.cpp

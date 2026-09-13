@@ -603,21 +603,6 @@ int ConvListWidget::rowForId(ConversationId id) const {
 }
 
 // Parses "mpdm-alice.smith--bob.jones--3" → ["alice.smith", "bob.jones"]
-static QStringList parseMpdmUsernames(const QString &name) {
-    QString s = name;
-    if (s.startsWith("mpdm-"))
-        s = s.mid(5);
-    // Strip trailing numeric suffix like "-1" or "-3"
-    const int lastDash = s.lastIndexOf('-');
-    if (lastDash > 0) {
-        bool ok = false;
-        s.mid(lastDash + 1).toInt(&ok);
-        if (ok)
-            s = s.left(lastDash);
-    }
-    return s.split("--", Qt::SkipEmptyParts);
-}
-
 QString ConvListWidget::resolvedName(int row) const {
     if (row < 0 || row >= (int)_rows.size())
         return {};
