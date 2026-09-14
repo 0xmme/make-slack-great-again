@@ -140,23 +140,33 @@ private:
     // that saves the key and drops straight into results.
     QWidget *buildSetupPage();
     void     saveKeyFromSetup();
+    // Height the setup form needs at the panel's width.
+    int      compactHeight() const;
+    // Size the panel for the current state: full for the grid, compact for the
+    // setup form. Keeps the bottom edge on the anchor (re-showing if visible).
+    void     fitHeight();
+    // Move so the bottom edge sits on the anchor, clamped onto the screen.
+    void     place();
 
     // Deliberately long for a search box: a free GIPHY key allows 100 calls an
     // hour, so the debounce is what keeps a typed phrase to one request rather
     // than one per letter. GifSearch caches on top of this.
     static constexpr int kDebounceMs = 450;
 
-    StyledLineEdit *_search      = nullptr;
-    QStackedLayout *_body        = nullptr; // grid / message / setup
-    GifGrid        *_grid        = nullptr;
-    QLabel         *_message     = nullptr; // Loading / Empty / Error
-    QWidget        *_setup       = nullptr; // NeedsKey
-    StyledLineEdit *_keyEdit     = nullptr; // key field on the setup page
-    QLabel         *_setupText   = nullptr;
-    QLabel         *_setupError  = nullptr;
-    QLabel         *_attribution = nullptr;
-    net::GifSearch *_api         = nullptr;
+    StyledLineEdit *_search           = nullptr;
+    QStackedLayout *_body             = nullptr; // grid / message / setup
+    GifGrid        *_grid             = nullptr;
+    QLabel         *_message          = nullptr; // Loading / Empty / Error
+    QWidget        *_setup            = nullptr; // NeedsKey
+    StyledLineEdit *_keyEdit          = nullptr; // key field on the setup page
+    QLabel         *_setupText        = nullptr;
+    QLabel         *_setupError       = nullptr;
+    QLabel         *_attribution      = nullptr; // footer, shown with the grid/message
+    QLabel         *_setupAttribution = nullptr; // same mark, in the setup page's Save row
+    net::GifSearch *_api              = nullptr;
     QTimer          _debounce;
     QString         _pending; // query the in-flight request belongs to
-    State           _state = State::Loading;
+    State           _state        = State::Loading;
+    int             _anchorX      = 0; // where open() was asked to put the panel:
+    int             _anchorBottom = 0; // left edge, and the bottom edge to grow up from
 };

@@ -462,10 +462,11 @@ GifPickerPopup::GifPickerPopup(QWidget *parent)
             _grid->clear();
             if (keyRejected) {
                 // Back to the setup form with the reason attached — a key GIPHY
-                // refused is fixed by pasting another one, not by retrying.
-                setState(State::NeedsKey);
+                // refused is fixed by pasting another one, not by retrying. The
+                // error goes up first so the compact height accounts for it.
                 _setupError->setText(error);
                 _setupError->show();
+                setState(State::NeedsKey);
                 return;
             }
             setState(State::Error, error);
@@ -484,9 +485,12 @@ QWidget *GifPickerPopup::buildSetupPage() {
     auto       *page = new QWidget(this);
     auto       *lay  = new QVBoxLayout(page);
     const auto &sp   = Th::c().spacing;
-    lay->setContentsMargins(sp.lg, sp.lg, sp.lg, sp.lg);
+    // Insets on top of the popup's own margins, tuned so the VISIBLE gap is the
+    // same on all four sides. The first line's font leading already adds a few
+    // pixels above its glyphs, which is why the top inset is one step smaller
+    // than the bottom one under the Save row.
+    lay->setContentsMargins(sp.lg, sp.md, sp.lg, sp.lg);
     lay->setSpacing(sp.md);
-    lay->addStretch(1);
 
     _setupText = new QLabel(
         tr("Searching GIFs needs a GIPHY API key.\n\n"
@@ -524,9 +528,17 @@ QWidget *GifPickerPopup::buildSetupPage() {
     connect(saveBtn, &QPushButton::clicked, this, &GifPickerPopup::saveKeyFromSetup);
     saveRow->addWidget(saveBtn);
     saveRow->addStretch();
+    // The attribution shares the Save row here: the panel is sized to this
+    // page, and a footer line of its own left a gap under the button twice the
+    // one above the text. GIPHY's terms want the mark visible, not on its own.
+    _setupAttribution = new QLabel(net::GifSearch::attributionText(), page);
+    _setupAttribution->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    // Centred, the small mark sits on the Save label's baseline and reads as
+    // part of the button row; it is set 8px lower (a centred label moves by
+    // half its top margin) so it reads as the footer note it is.
+    _setupAttribution->setContentsMargins(0, 2 * sp.md, 0, 0);
+    saveRow->addWidget(_setupAttribution);
     lay->addLayout(saveRow);
-
-    lay->addStretch(1);
     return page;
 }
 
@@ -535,6 +547,7 @@ void GifPickerPopup::saveKeyFromSetup() {
     if (key.isEmpty()) {
         _setupError->setText(tr("Paste a key first."));
         _setupError->show();
+        fitHeight(); // the form just gained a line
         return;
     }
     _setupError->hide();
@@ -543,8 +556,8 @@ void GifPickerPopup::saveKeyFromSetup() {
     // drop it so the very next search actually exercises the new one.
     _api->clearCache();
     _keyEdit->clear();
-    _search->lineEdit()->setFocus();
     requery(); // straight into trending, so the key visibly works
+    _search->lineEdit()->setFocus();
 }
 
 void GifPickerPopup::applyTheme() {
@@ -567,11 +580,12 @@ void GifPickerPopup::applyTheme() {
             .arg(Th::qss(Th::c().text.danger))
             .arg(Th::c().fonts.sm)
     );
-    _attribution->setStyleSheet(
+    const QString attribution =
         QString("QLabel { color: %1; font-size: %2px; background: transparent; }")
             .arg(Th::qss(Th::c().text.tertiary))
-            .arg(Th::c().fonts.xs)
-    );
+            .arg(Th::c().fonts.xs);
+    _attribution->setStyleSheet(attribution);
+    _setupAttribution->setStyleSheet(attribution);
 }
 
 void GifPickerPopup::setImageCache(ImageCache *cache) {
@@ -596,8 +610,47 @@ void GifPickerPopup::setState(State state, const QString &message) {
     // During setup the form is the whole panel: a search box that cannot search
     // is noise, and it would compete with the key field for focus.
     _search->setVisible(state != State::NeedsKey);
+    // The setup page carries the attribution in its Save row instead.
+    _attribution->setVisible(state != State::NeedsKey);
     if (state == State::NeedsKey)
         _keyEdit->lineEdit()->setFocus();
+    fitHeight();
+}
+
+int GifPickerPopup::compactHeight() const {
+    const QMargins m      = layout()->contentsMargins();
+    const int      innerW = kFullWidth - m.left() - m.right() - 2 * frameWidth();
+    // The setup text wraps, so its height is a function of the width it gets.
+    const int      setupH = _setup->layout()->heightForWidth(innerW);
+    return m.top() + setupH + m.bottom() + 2 * frameWidth();
+}
+
+void GifPickerPopup::fitHeight() {
+    // The results grid wants the whole panel; the setup form is a few lines of
+    // text and a field, and at grid height it sat in a sea of empty space.
+    const int h = _state == State::NeedsKey ? compactHeight() : kFullHeight;
+    if (h == height())
+        return;
+    // A Qt::Popup does not honour move() once shown on Wayland, so a visible
+    // panel (the key was just saved, and the grid needs the room back) is
+    // re-shown at its new size rather than resized in place. Either way the
+    // bottom edge stays where the caller anchored it, just above the button.
+    const bool reshow = isVisible();
+    if (reshow)
+        hide();
+    setFixedHeight(h);
+    place();
+    if (reshow) {
+        show();
+        raise();
+    }
+}
+
+void GifPickerPopup::place() {
+    QPoint pos(_anchorX, _anchorBottom - height());
+    if (QScreen *scr = QGuiApplication::screenAt(QPoint(_anchorX, _anchorBottom - 1)))
+        pos = Ui::clampInto(size(), pos, scr->availableGeometry());
+    move(pos);
 }
 
 void GifPickerPopup::scheduleQuery() {
@@ -628,15 +681,19 @@ void GifPickerPopup::open(const QPoint &globalPos) {
     _debounce.stop();
     _grid->clear();
 
-    QPoint pos = globalPos;
-    if (QScreen *scr = QGuiApplication::screenAt(globalPos))
-        pos = Ui::clampInto(size(), globalPos, scr->availableGeometry());
-    move(pos);
+    // The caller placed the panel's top-left by its CURRENT height (whatever
+    // state it was last in), so the point it actually chose is the bottom edge:
+    // remember that and let the state decide how tall the panel is above it.
+    _anchorX      = globalPos.x();
+    _anchorBottom = globalPos.y() + height();
+
+    requery(); // trending, or the setup form — sets the state and the height
+    place();
     show();
     raise();
-    _search->lineEdit()->setFocus();
-
-    requery(); // trending, or the how-to-get-a-key notice
+    // The setup form has already claimed focus for its key field.
+    if (_state != State::NeedsKey)
+        _search->lineEdit()->setFocus();
 }
 
 bool GifPickerPopup::eventFilter(QObject *obj, QEvent *event) {
