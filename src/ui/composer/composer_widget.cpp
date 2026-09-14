@@ -6,6 +6,9 @@
 #include "edit_mode_banner.h"
 #include "undo_send_pill.h"
 #include "ui/emoji_picker/emoji_picker_popup.h"
+#include "ui/gif_picker/gif_picker_popup.h"
+#include "network/gif_search.h"
+#include "text/link_labels.h"
 #include "mention_completer.h"
 #include "ui/mention_popup/mention_popup.h"
 #include "session/session.h"
@@ -80,6 +83,28 @@ static QTextCharFormat mentionCharFormat(const QString &display, const QString &
     fmt.setProperty(kMentionDisplayProp, display);
     fmt.setProperty(kMentionSeqProp, ++seq);
     return fmt;
+}
+
+// A picked GIF travels as Slack's labelled link, `<url|title>`: other clients
+// show the title where the URL would be (Slack still unfurls the image below
+// it), and the message list here draws it as a badge. '|' and '>' would end the
+// label or the token early, so the title loses them.
+static QString gifLinkToken(const QString &url, const QString &title) {
+    QString label = title.simplified();
+    label.remove('|');
+    label.remove('<');
+    label.remove('>');
+    // GIPHY titles nearly all end in the word "GIF" ("Happy Dancing GIF"); the
+    // badge already says so, and "GIF · Happy Dancing GIF" reads twice.
+    if (label.endsWith(QLatin1String(" GIF"), Qt::CaseInsensitive))
+        label.chop(4);
+    return label.isEmpty() ? "<" + url + ">" : "<" + url + "|" + label + ">";
+}
+
+// What the editor shows for a GIF token — a pill, like a mention, so the
+// opaque URL never appears in the box.
+static QString gifPillDisplay(const QString &label) {
+    return label.isEmpty() ? ComposerWidget::tr("GIF") : ComposerWidget::tr("GIF · %1").arg(label);
 }
 
 // Document text with mention pills replaced by their raw tokens. A pill whose
@@ -531,10 +556,13 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     };
 
     auto *emojiBtn   = makeBbBtn(":/ui/smile.svg", tip(tr("Emoji"), Ui::Shortcut::EmojiPicker));
+    auto *gifBtn     = makeBbBtn(":/ui/gif.svg", tr("Search GIFs"));
+    _gifBtn          = gifBtn;
     auto *mentionBtn = makeBbBtn(":/ui/at-sign.svg", tip(tr("Mention"), QStringLiteral("@")));
 
     bbLayout->addWidget(attachBtn);
     bbLayout->addWidget(emojiBtn);
+    bbLayout->addWidget(gifBtn);
     bbLayout->addWidget(mentionBtn);
     bbLayout->addStretch();
 
@@ -588,6 +616,45 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
         _emojiPicker->setImageCache(_imgCache);
         const QPoint pos = emojiBtn->mapToGlobal(QPoint(0, -_emojiPicker->sizeHint().height() - 4));
         _emojiPicker->open(pos);
+    });
+
+    connect(gifBtn, &QToolButton::clicked, this, [this, gifBtn] {
+        if (!_gifPicker) {
+            _gifPicker = new GifPickerPopup(this);
+            connect(
+                _gifPicker,
+                &GifPickerPopup::gifSelected,
+                this,
+                [this](const QString &url, const QString &title) {
+                    // Sent as a labelled link (see gifLinkToken); shown here as a
+                    // pill carrying that token, the way mentions are. Slack unfurls
+                    // the link into the animated preview underneath either way.
+                    const QString raw     = gifLinkToken(url, title);
+                    const QString display = gifPillDisplay(
+                        raw.contains('|') ? raw.section('|', 1).chopped(1) : QString()
+                    );
+                    auto        cursor = _edit->textCursor();
+                    // Separate the URL from whatever it lands against, judged by the
+                    // character immediately left of the insertion point — NOT by the
+                    // end of the document. With a cursor parked mid-message the two
+                    // disagree, and the URL would be glued onto the preceding word
+                    // ("heyhttps://…"), which neither unfurls nor stays clickable.
+                    // selectionStart() is the right anchor: a selection is about to
+                    // be replaced, so what precedes it is what the URL abuts.
+                    const int   at     = cursor.selectionStart();
+                    const QChar prev   = at > 0 ? cursor.document()->characterAt(at - 1) : QChar();
+                    if (!prev.isNull() && !prev.isSpace())
+                        cursor.insertText(QStringLiteral(" "), QTextCharFormat());
+                    cursor.insertText(display, mentionCharFormat(display, raw));
+                    cursor.insertText(QStringLiteral(" "), QTextCharFormat());
+                    _edit->setTextCursor(cursor);
+                    _edit->setFocus();
+                }
+            );
+        }
+        _gifPicker->setImageCache(_imgCache);
+        const QPoint pos = gifBtn->mapToGlobal(QPoint(0, -_gifPicker->height() - 4));
+        _gifPicker->open(pos);
     });
 
     connect(mentionBtn, &QToolButton::clicked, this, [this] {
@@ -810,9 +877,12 @@ void ComposerWidget::checkMentionPopup() {
 }
 
 void ComposerWidget::setEditorMrkdwn(const QString &text) {
-    // Both <@U…> user mentions and <#C…|name> channel links render as pills; the
-    // raw token travels in each pill's char format so the sent text is unchanged.
-    static const QRegularExpression kMention(QStringLiteral("<([@#])([A-Z0-9]+)(?:\\|([^>]+))?>"));
+    // <@U…> user mentions, <#C…|name> channel links and <url|title> GIF links
+    // render as pills; the raw token travels in each pill's char format so the
+    // sent text is unchanged. Any other <url|label> stays literal.
+    static const QRegularExpression kMention(
+        QStringLiteral("<([@#])([A-Z0-9]+)(?:\\|([^>]+))?>|<(https?://[^|>\\s]+)(?:\\|([^>]+))?>")
+    );
     _edit->clear();
     QTextCursor tc(_edit->document());
     int         pos = 0;
@@ -820,6 +890,16 @@ void ComposerWidget::setEditorMrkdwn(const QString &text) {
     while (it.hasNext()) {
         const auto m = it.next();
         tc.insertText(text.mid(pos, m.capturedStart() - pos), QTextCharFormat());
+        pos = m.capturedEnd();
+        if (!m.captured(4).isEmpty()) {
+            if (LinkLabels::isGiphyMediaUrl(m.captured(4))) {
+                const QString display = gifPillDisplay(m.captured(5));
+                tc.insertText(display, mentionCharFormat(display, m.captured(0)));
+            } else {
+                tc.insertText(m.captured(0), QTextCharFormat());
+            }
+            continue;
+        }
         const bool isChannel = (m.captured(1) == "#");
         QString    display   = m.captured(3); // "|name" label carried in the token
         if (display.isEmpty()) {
@@ -834,7 +914,6 @@ void ComposerWidget::setEditorMrkdwn(const QString &text) {
         }
         display.prepend(isChannel ? '#' : '@');
         tc.insertText(display, mentionCharFormat(display, m.captured(0)));
-        pos = m.capturedEnd();
     }
     tc.insertText(text.mid(pos), QTextCharFormat());
 }
@@ -1461,9 +1540,16 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
         if (event->type() == QEvent::HoverEnter) {
             // The send hint is rebuilt per hover: its key follows the
             // Ctrl+Enter option, which can change while the composer lives.
-            const QString text = (w == _sendBtn)
-                                     ? tip(tr("Send message"), Ui::Shortcut::SendMessage)
-                                     : _tooltipBtns[w];
+            QString text = _tooltipBtns[w];
+            if (w == _sendBtn) {
+                // Rebuilt per hover: its key follows the Ctrl+Enter option,
+                // which can change while the composer lives.
+                text = tip(tr("Send message"), Ui::Shortcut::SendMessage);
+            } else if (w == _gifBtn && !net::GifSearch::configured()) {
+                // Same reason: the key can be set (in Settings, or in the
+                // picker itself) at any point after the button was built.
+                text = tr("Search GIFs — needs a GIPHY API key");
+            }
             _tooltip->showAbove(text, QRect(w->mapToGlobal(QPoint(0, 0)), w->size()));
         } else if (event->type() == QEvent::HoverLeave) {
             _tooltip->hide();

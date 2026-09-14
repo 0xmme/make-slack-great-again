@@ -4,7 +4,7 @@ project(msga LANGUAGES CXX)
 include("${CMAKE_SOURCE_DIR}/credentials.cmake" OPTIONAL)
 include("${CMAKE_SOURCE_DIR}/version.cmake")
 foreach(_var MSGA_CLIENT_ID MSGA_CLIENT_SECRET MSGA_XAPP MSGA_TEAMS_CLIENT_ID
-        MSGA_GOOGLE_CLIENT_ID MSGA_GOOGLE_CLIENT_SECRET)
+        MSGA_GOOGLE_CLIENT_ID MSGA_GOOGLE_CLIENT_SECRET MSGA_GIPHY_KEY)
     if(NOT DEFINED ${_var})
         set(${_var} "")
     endif()
@@ -128,6 +128,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
 
     # Network (transport mechanics, service-agnostic)
     src/network/http_queue.cpp
+    src/network/gif_search.cpp
 
     # Auth (neutral strategy interface + factory; per-service flows live below the seam)
     src/auth/token_store.cpp
@@ -236,6 +237,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/composer/undo_send_pill.cpp
     src/ui/composer/composer_widget.cpp
     src/ui/emoji_picker/emoji_picker_popup.cpp
+    src/ui/gif_picker/gif_picker_popup.cpp
     src/ui/composer/mention_completer.cpp
     src/ui/typing_indicator/typing_indicator.cpp
     src/ui/mention_popup/mention_popup.cpp

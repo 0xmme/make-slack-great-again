@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "settings_dialog.h"
+#include "network/gif_search.h"
 #include "theme_preview_card.h"
 #include "ui/dropdown/dropdown.h"
 #include "ui/icon_button/icon_button.h"
@@ -953,6 +954,77 @@ void SettingsDialog::buildPanel() {
         updateSlackModeUi();
     });
     loadAppCredentials();
+
+    // ── GIF picker section ────────────────────────────────────────────
+    // The composer's GIF button talks to GIPHY, which needs a key. A build can
+    // bake one in (MSGA_GIPHY_KEY); this field is the per-user override, and the
+    // only option for a plain prebuilt binary. Written through SecretStore, so
+    // it follows whatever backend the platform has rather than the plain store.
+    auto *gifHeading = new QLabel(tr("GIF picker"), sysPage);
+    gifHeading->setObjectName("sectionHeading");
+    sylay->addWidget(gifHeading);
+
+    auto *gifDesc = new QLabel(
+        tr("Searching GIFs from the message box needs a GIPHY API key. Free keys allow "
+           "100 searches an hour, which is plenty for personal use."),
+        sysPage
+    );
+    gifDesc->setObjectName("credDesc");
+    gifDesc->setWordWrap(true);
+    sylay->addWidget(gifDesc);
+
+    auto *gifLink =
+        new StyledButton(tr("Get a GIPHY API key…"), StyledButton::Variant::Link, sysPage);
+    connect(gifLink, &QPushButton::clicked, this, [] {
+        QDesktopServices::openUrl(QUrl(net::GifSearch::apiKeyUrl()));
+    });
+    auto *gifLinkRow = new QHBoxLayout;
+    gifLinkRow->addWidget(gifLink);
+    gifLinkRow->addStretch();
+    sylay->addLayout(gifLinkRow);
+
+    // Field, status and Save sit directly on the page: one field does not
+    // need the boxed grouping the multi-field credential sections use.
+    auto *gifFields = new QVBoxLayout;
+    gifFields->setSpacing(sp.sm);
+    gifFields->setContentsMargins(0, 0, 0, 0);
+
+    gifFields->addWidget(new QLabel(tr("API key"), sysPage));
+    _giphyKey = new StyledLineEdit(sysPage);
+    _giphyKey->setSize(StyledLineEdit::Size::Small);
+    _giphyKey->enablePasswordReveal();
+    // A baked-in key is a working default, so say so rather than leaving an
+    // empty box that looks unconfigured.
+    _giphyKey->setPlaceholderText(
+        QString(AppCredentials::giphyKey).isEmpty()
+            ? tr("Paste your GIPHY API key")
+            : tr("Using this build's key — paste one here to override it")
+    );
+    _giphyKey->setText(net::GifSearch::userApiKey());
+    gifFields->addWidget(_giphyKey);
+
+    _giphyStatus = new QLabel(sysPage);
+    _giphyStatus->setObjectName("credStatus");
+    _giphyStatus->setWordWrap(true);
+    _giphyStatus->hide(); // an empty label would still take a line
+    gifFields->addWidget(_giphyStatus);
+
+    auto *gifSaveRow = new QHBoxLayout;
+    auto *gifSaveBtn = new StyledButton(tr("Save"), StyledButton::Variant::Primary, sysPage);
+    gifSaveBtn->setSize(StyledButton::Size::Small);
+    connect(gifSaveBtn, &QPushButton::clicked, this, [this] {
+        const QString key = _giphyKey->text().trimmed();
+        net::GifSearch::setUserApiKey(key);
+        // Takes effect on the next search — the picker reads the key per call.
+        _giphyStatus->setText(key.isEmpty() ? tr("Key cleared.") : tr("Key saved."));
+        _giphyStatus->show();
+    });
+    gifSaveRow->addWidget(gifSaveBtn);
+    gifSaveRow->addStretch();
+    gifFields->addSpacing(sp.md); // set the button off from the field
+    gifFields->addLayout(gifSaveRow);
+
+    sylay->addLayout(gifFields);
 
     // ── Memory section ────────────────────────────────────────────────
     auto *memoryHeading = new QLabel(tr("Memory"), sysPage);

@@ -501,6 +501,32 @@ TEST_CASE("toHtml renders a link nested in bold as <b><a>", "[render][nested]") 
     CHECK(html.contains("Stand-Up</a></b>"));
 }
 
+TEST_CASE("toHtml draws a titled GIPHY link as a GIF badge", "[render][gif]") {
+    const auto twe =
+        MrkdwnParser::parse("<https://media.giphy.com/media/abc123/giphy.gif|Dancing cat>");
+    const QString html = MsgRender::toHtml(twe, nullptr);
+    CHECK(html.contains("<a href='https://media.giphy.com/media/abc123/giphy.gif'"));
+    CHECK(html.contains("<b>GIF</b>"));
+    CHECK(html.contains("Dancing cat"));
+    CHECK(html.contains("background:")); // pill, not a plain link
+    // The URL is the href only — never visible text.
+    CHECK(html.count("media.giphy.com") == 1);
+}
+
+TEST_CASE("toHtml draws a bare GIPHY link as a badge with no title", "[render][gif]") {
+    const auto    twe  = MrkdwnParser::parse("<https://media0.giphy.com/media/v1.Y2lk/200w.gif>");
+    const QString html = MsgRender::toHtml(twe, nullptr);
+    CHECK(html.contains("<b>GIF</b></a>")); // nothing after the marker
+    CHECK(html.count("media0.giphy.com") == 1);
+}
+
+TEST_CASE("toHtml leaves other labelled links as plain anchors", "[render][gif]") {
+    const auto    twe  = MrkdwnParser::parse("<https://giphy.com/gifs/cat-abc|see this>");
+    const QString html = MsgRender::toHtml(twe, nullptr);
+    CHECK_FALSE(html.contains("<b>GIF</b>"));
+    CHECK(html.contains("see this</a>"));
+}
+
 TEST_CASE("toHtml renders marks nested inside a blockquote", "[render][nested]") {
     const auto    twe  = MrkdwnParser::parse("> *bold* word");
     const QString html = MsgRender::toHtml(twe, nullptr);

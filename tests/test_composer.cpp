@@ -589,6 +589,27 @@ TEST_CASE("setText uses the |label of a labeled mention token", "[composer][ment
     CHECK(c.currentText() == "hi <@U1|maria>!");
 }
 
+TEST_CASE("setText shows a GIPHY link token as a GIF pill", "[composer][gif]") {
+    ComposerWidget c;
+    c.setText("look <https://media.giphy.com/media/abc123/giphy.gif|Dancing cat> !");
+    CHECK(editOf(&c)->toPlainText() == QString::fromUtf8("look GIF · Dancing cat !"));
+    CHECK(c.currentText() == "look <https://media.giphy.com/media/abc123/giphy.gif|Dancing cat> !");
+}
+
+TEST_CASE("setText shows an untitled GIPHY link as a bare GIF pill", "[composer][gif]") {
+    ComposerWidget c;
+    c.setText("<https://i.giphy.com/abc123.gif>");
+    CHECK(editOf(&c)->toPlainText() == "GIF");
+    CHECK(c.currentText() == "<https://i.giphy.com/abc123.gif>");
+}
+
+TEST_CASE("setText leaves other labelled links literal", "[composer][gif]") {
+    ComposerWidget c;
+    c.setText("<https://example.com/e|Stand-Up>");
+    CHECK(editOf(&c)->toPlainText() == "<https://example.com/e|Stand-Up>");
+    CHECK(c.currentText() == "<https://example.com/e|Stand-Up>");
+}
+
 TEST_CASE("setText resolves mention display name via session", "[composer][mention]") {
     auto *stub = new StubBackend2;
     User  u;

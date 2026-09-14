@@ -26,6 +26,7 @@ class Session;
 class ImageCache;
 class PopupTooltip;
 class EmojiPickerPopup;
+class GifPickerPopup;
 class MentionCompleter;
 class MentionPopup;
 class FormattingToolbar;
@@ -185,6 +186,7 @@ private:
     AttachmentStrip   *_attachStrip  = nullptr;
     QTextEdit         *_edit         = nullptr;
     QWidget           *_bottomBar    = nullptr; // bottom action bar
+    QToolButton       *_gifBtn       = nullptr; // GIF picker button (tooltip varies)
     QPushButton       *_sendBtn      = nullptr;
     QPushButton       *_dropBtn      = nullptr; // schedule-send dropdown
     QWidget           *_sendGroup    = nullptr; // pill container for send+drop
@@ -202,6 +204,7 @@ private:
 
     PopupTooltip                            *_tooltip        = nullptr;
     EmojiPickerPopup                        *_emojiPicker    = nullptr;
+    GifPickerPopup                          *_gifPicker      = nullptr;
     MentionCompleter                        *_mentionComp    = nullptr;
     MentionPopup                            *_mentionPopup   = nullptr;
     Session                                 *_session        = nullptr;

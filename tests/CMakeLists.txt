@@ -136,6 +136,17 @@ add_msga_test(test_slack_links
     test_slack_links.cpp
 )
 
+# GIPHY wire format behind the composer's GIF picker. Needs Qt6::Network for
+# QNetworkReply/QNetworkAccessManager, even though the parsing under test is
+# pure — GifSearch owns the request as well as the response.
+# Custom main: the key lives in SecretStore, so QSettings has to be redirected
+# at a temp dir before any test touches it.
+add_msga_qt_test(test_gif_search
+    test_gif_search.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/gif_search.cpp
+)
+target_link_libraries(test_gif_search PRIVATE Qt6::Network Qt6::Test)
+
 add_msga_test(test_json_mappers
     test_json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/json_mappers.cpp
@@ -699,6 +710,8 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/composer_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/gif_picker/gif_picker_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/gif_search.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/attachment_strip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/formatting_toolbar.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/edit_mode_banner.cpp
@@ -816,6 +829,8 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/composer_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/gif_picker/gif_picker_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/gif_search.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/attachment_strip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/formatting_toolbar.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/edit_mode_banner.cpp
