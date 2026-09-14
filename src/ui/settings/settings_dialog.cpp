@@ -367,29 +367,11 @@ void SettingsDialog::buildPanel() {
     composerHeading->setObjectName("sectionHeading");
     alay->addWidget(composerHeading);
 
-    auto *composerBox = new QGroupBox(appearPage);
-    composerBox->setObjectName("composerBox");
-    auto *composerLayout = new QVBoxLayout(composerBox);
-    composerLayout->setSpacing(sp.md);
-    composerLayout->setContentsMargins(0, 0, 0, 0);
-
     // Key names come from the registry so macOS reads ⌘ rather than "Ctrl".
     _ctrlEnterSends = new QCheckBox(
-        tr("Send with %1").arg(Ui::Shortcuts::nativeKeys(QStringLiteral("Ctrl+Enter"))), composerBox
+        tr("Send with %1").arg(Ui::Shortcuts::nativeKeys(QStringLiteral("Ctrl+Enter"))), appearPage
     );
-    composerLayout->addWidget(_ctrlEnterSends);
-    auto *ctrlEnterDesc = new QLabel(
-        tr("%1 starts a new line instead of sending. %2 sends either way.")
-            .arg(
-                Ui::Shortcuts::nativeKeys(QStringLiteral("Enter")),
-                Ui::Shortcuts::nativeKeys(QStringLiteral("Ctrl+Enter"))
-            ),
-        composerBox
-    );
-    ctrlEnterDesc->setObjectName("unreadsDesc"); // themed alongside daysDesc
-    ctrlEnterDesc->setWordWrap(true);
-    composerLayout->addWidget(ctrlEnterDesc);
-    alay->addWidget(composerBox);
+    alay->addWidget(_ctrlEnterSends);
 
     // ── Conversations ─────────────────────────────────────────────────
     auto *sidebarHeading = new QLabel(tr("Conversations"), appearPage);
@@ -1811,6 +1793,7 @@ void SettingsDialog::applyTheme() {
     _fontSmall->setStyleSheet(radioQss);
     _fontMedium->setStyleSheet(radioQss);
     _fontLarge->setStyleSheet(radioQss);
+    _ctrlEnterSends->setStyleSheet(checkQss);
     _showAgentsApps->setStyleSheet(checkQss);
     _unreadsOnly->setStyleSheet(checkQss);
     // The explicit colours here override the disabled palette, so the labels

@@ -2350,11 +2350,6 @@ Time and date formats update immediately.</source>
         <translation>%1 で送信</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="382"/>
-        <source>%1 starts a new line instead of sending. %2 sends either way.</source>
-        <translation>%1 は送信ではなく改行になります。%2 はどちらの設定でも送信します。</translation>
-    </message>
-    <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="395"/>
         <source>Conversations</source>
         <translation>会話</translation>

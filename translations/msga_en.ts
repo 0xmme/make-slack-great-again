@@ -2462,11 +2462,6 @@ Time and date formats update immediately.</translation>
         <translation>Send with %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="381"/>
-        <source>%1 starts a new line instead of sending. %2 sends either way.</source>
-        <translation>%1 starts a new line instead of sending. %2 sends either way.</translation>
-    </message>
-    <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="394"/>
         <source>Conversations</source>
         <translation>Conversations</translation>
