@@ -44,6 +44,8 @@ bool isKeychainBacked();
 //
 // A failed promotion keeps the plaintext copy: the keychain can refuse (locked,
 // denied prompt), and scrubbing then would destroy the only copy that exists.
+// After the first refusal in a process no further promotion is attempted (each
+// attempt may raise an OS prompt); it is retried on the next launch.
 QString readMigrating(const QString &key);
 
 // The write counterpart every caller wants: write(), and on a keychain platform
@@ -52,6 +54,11 @@ QString readMigrating(const QString &key);
 // QSettings::remove() — on the QSettings fallback that sequence deletes the
 // value it just stored, and on a keychain platform it deletes the plaintext
 // copy even when the keychain write failed.
+//
+// If the keychain refuses the write, the value is stored in the plaintext
+// QSettings fallback instead (where readMigrating() finds it), so a locked or
+// misconfigured keychain degrades to the pre-keychain behaviour rather than
+// silently dropping the credential. Returns false in that case.
 bool writeScrubbingLegacy(const QString &key, const QString &value);
 
 } // namespace SecretStore

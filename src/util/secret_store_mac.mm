@@ -10,6 +10,7 @@
 #include "util/secret_store.h"
 
 #include <QByteArray>
+#include <QDebug>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
@@ -98,6 +99,13 @@ bool write(const QString &key, const QString &value) {
     }
     CFRelease(q);
     CFRelease(data);
+    if (st != errSecSuccess) {
+        CFStringRef msg = SecCopyErrorMessageString(st, nullptr);
+        qWarning() << "[SecretStore] SecItemAdd/Update failed for" << key << "OSStatus" << st
+                   << (msg ? QString::fromCFString(msg) : QString());
+        if (msg)
+            CFRelease(msg);
+    }
     return st == errSecSuccess;
 }
 
