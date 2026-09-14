@@ -347,6 +347,14 @@ private:
     // Trigger any missing image/attachment downloads for one item (factored out
     // of triggerMissingDownloads so inline-reply items get fetched too).
     void requestItemImages(MessageItem &item);
+    // Decode a file preview's bytes on a pool thread and install the pixmap
+    // (a null sentinel sits in _fileImages meanwhile). fromCache: bytes came
+    // from the disk cache, so an undecodable result triggers a fresh download.
+    void decodeFileImageAsync(const QString &url, QByteArray bytes, bool fromCache = false);
+    void fileImageDecoded(const QString &url, const QByteArray &bytes, QImage img, bool fromCache);
+    // rebuildLayout() + repaint, coalesced to once per event-loop turn.
+    void scheduleRelayout();
+    bool _relayoutPending = false;
     // Drop every item's rendered docs (and collected emoji URLs) so the next
     // paint rebuilds them — used when emoji resolution inputs change.
     void invalidateAllDocs();
@@ -547,14 +555,21 @@ private:
     // Release every player — conversation switch (clear) and widget teardown.
     // Reopening recreates them from cached bytes; playback restarts at frame 0.
     void    releaseGifMovies() const;
+    // Decode bound for the full-size viewer: the largest screen's longest side.
+    static int viewerDecodeDim();
 
     // ── Cache bounds (see docs/PERF_AUDIT_2026_07.md §1.3) ──
     // Rows this many viewport heights above/below the visible area keep their
     // rendered docs and file images; farther ones are released and rebuilt on
     // demand (doc rebuild and disk-cache image decode are both cheap).
     static constexpr int    kKeepViewports         = 4;
-    static constexpr qint64 kFileImageCapBytes     = 32LL * 1024 * 1024;
-    static constexpr qint64 kScaledPreviewCapBytes = 32LL * 1024 * 1024;
+    // 16 MB each. Sources are decoded bounded (ImageCache::maxDecodeDim, ≤2 MB
+    // apiece) and previews are ≤400×300 logical (≤~2 MB at 2×), so 16 MB is
+    // several screenfuls. There are two of these widgets (main list + thread
+    // panel), so every MB here counts twice — the old 32 MB pair was a 128 MB
+    // budget on top of the shared ImageCache (issue #64).
+    static constexpr qint64 kFileImageCapBytes     = 16LL * 1024 * 1024;
+    static constexpr qint64 kScaledPreviewCapBytes = 16LL * 1024 * 1024;
     // Purge _fileImages back to the near-viewport working set once its decoded
     // bytes exceed the cap; evicted urls reload from the session's disk image
     // cache when their rows scroll back in. Call after inserting a pixmap.

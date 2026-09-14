@@ -12,6 +12,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QToolButton>
+#include <QHideEvent>
 #include <QUrl>
 
 static constexpr QSize kBtnIconSz{20, 20};
@@ -115,6 +116,15 @@ void ImageViewerOverlay::open(const File &file, const Message &msg, const QPixma
     raise();
     setFocus();
     update();
+}
+
+void ImageViewerOverlay::hideEvent(QHideEvent *e) {
+    // The full-resolution pixmap is the largest single allocation in the app
+    // (a phone photo is 50–100 MB decoded). Nothing reads it while hidden, and
+    // open() always supplies a fresh one — holding it until the next open just
+    // pinned that memory for the rest of the session (issue #64).
+    _pixmap = QPixmap();
+    QWidget::hideEvent(e);
 }
 
 void ImageViewerOverlay::updatePixmap(const QString &fileId, const QPixmap &pixmap) {

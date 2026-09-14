@@ -5,17 +5,26 @@
 #include "network/shared_nam.h"
 
 #include <QBuffer>
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QGuiApplication>
+#include <QImage>
 #include <QImageReader>
 #include <QMovie>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPainter>
+#include <QPointer>
+#include <QScreen>
 #include <QSvgRenderer>
+#include <QThreadPool>
 #include <QUrl>
+#include <QtMath>
 
-ImageCache::ImageCache(QObject *parent) : QObject(parent), _nam(net::sharedNam()) {}
+ImageCache::ImageCache(QObject *parent) : QObject(parent), _nam(net::sharedNam()) {
+    maxDecodeDim(); // reads QScreen geometry — resolve it here, never on a worker
+}
 
 namespace {
 
@@ -36,43 +45,101 @@ void ImageCache::account(const QString &url) {
         return;
     const qint64 fresh = entryCost(it->pixmap, it->animatedBytes);
     _memBytes += fresh - it->cost;
-    it->cost = fresh;
-
-    _lru.removeOne(url);
-    _lru.prepend(url); // most recently used
+    it->cost     = fresh;
+    it->lastUsed = ++_useTick;
 
     evictIfNeeded(url);
 }
 
 void ImageCache::evictIfNeeded(const QString &protectUrl) {
     while (_memBytes > _memoryCap) {
-        // Walk from the least-recently-used end for the first entry we may drop.
-        int victim = -1;
-        for (int i = _lru.size() - 1; i >= 0; --i) {
-            const QString &u = _lru.at(i);
-            if (u == protectUrl)
+        // Least recently used entry we may drop.
+        auto victim = _cache.end();
+        for (auto it = _cache.begin(); it != _cache.end(); ++it) {
+            if (it.key() == protectUrl)
                 continue;
-            auto it = _cache.find(u);
             // A live QMovie is handed out by pointer and cached by callers
             // (MessageListWidget::_gifMovies) with a frameChanged connection —
             // deleting it here would dangle; it stays pinned until every holder
             // calls releaseMovie(). In-flight sentinels must survive so their
             // finished handler can complete. Both are pinned.
-            if (it == _cache.end() || it->inFlight || it->movie)
+            if (it->inFlight || it->movie)
                 continue;
-            victim = i;
-            break;
+            if (victim == _cache.end() || it->lastUsed < victim->lastUsed)
+                victim = it;
         }
-        if (victim < 0)
+        if (victim == _cache.end())
             break; // everything left is pinned — cap is a soft target
 
-        const QString u  = _lru.takeAt(victim);
-        auto          it = _cache.find(u);
-        if (it != _cache.end()) {
-            _memBytes -= it->cost;
-            _cache.erase(it);
-        }
+        _memBytes -= victim->cost;
+        _cache.erase(victim);
     }
+}
+
+int ImageCache::maxDecodeDim() {
+    static const int dim = [] {
+        qreal dpr = 2.0; // never below Retina quality, even when probed headless
+        if (const auto *app = qobject_cast<QGuiApplication *>(QCoreApplication::instance()))
+            for (const QScreen *sc : app->screens())
+                dpr = std::max(dpr, sc->devicePixelRatio());
+        return qCeil(kMaxDecodeLogical * std::min(dpr, 4.0));
+    }();
+    return dim;
+}
+
+QSize ImageCache::boundedSize(QSize sz, int maxDim) {
+    if (maxDim <= 0)
+        maxDim = maxDecodeDim();
+    if (sz.isEmpty() || (sz.width() <= maxDim && sz.height() <= maxDim))
+        return sz;
+    return sz.scaled(maxDim, maxDim, Qt::KeepAspectRatio);
+}
+
+QImage ImageCache::decodeBoundedImage(const QByteArray &bytes, int maxDim) {
+    if (maxDim <= 0)
+        maxDim = maxDecodeDim();
+    QBuffer buf;
+    buf.setData(bytes);
+    buf.open(QIODevice::ReadOnly);
+    QImageReader reader(&buf);
+    // Header first: only ask for a scaled decode when the source is actually
+    // larger than the bound, so small images (avatars, emoji) decode as before.
+    // JPEG scales inside the decoder (DCT downscale); other formats decode then
+    // shrink, so the transient peak is native size but nothing native is kept.
+    const QSize natural = reader.size();
+    if (!natural.isEmpty()) {
+        const QSize bounded = boundedSize(natural, maxDim);
+        if (bounded != natural)
+            reader.setScaledSize(bounded);
+    }
+    QImage img = reader.read();
+    if (!img.isNull()) {
+        // A plugin that ignores ScaledSize hands back the native image.
+        const QSize bounded = boundedSize(img.size(), maxDim);
+        if (bounded != img.size())
+            img = img.scaled(bounded, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        return img;
+    }
+    // Not a raster QImageReader knows — try SVG (workspace/emoji icons).
+    QSvgRenderer r(bytes);
+    if (r.isValid()) {
+        QSize sz = r.defaultSize();
+        if (sz.isEmpty())
+            sz = QSize(128, 128);
+        const int kMax = 256;
+        if (sz.width() > kMax || sz.height() > kMax)
+            sz.scale(kMax, kMax, Qt::KeepAspectRatio);
+        QImage out(sz, QImage::Format_ARGB32_Premultiplied);
+        out.fill(Qt::transparent);
+        QPainter p(&out);
+        r.render(&p);
+        return out;
+    }
+    return {};
+}
+
+QPixmap ImageCache::decodeBounded(const QByteArray &bytes, int maxDim) {
+    return QPixmap::fromImage(decodeBoundedImage(bytes, maxDim));
 }
 
 bool ImageCache::isAnimatedImage(const QByteArray &bytes) {
@@ -129,29 +196,6 @@ void ImageCache::setDiskCache(
     _diskSave = std::move(save);
 }
 
-// Decode downloaded bytes to a pixmap. Falls back to explicit SVG rendering for
-// formats QImage can't decode itself (notably BIMI brand-logo SVGs).
-static QPixmap pixmapFromData(const QByteArray &bytes) {
-    QPixmap px;
-    if (px.loadFromData(bytes) && !px.isNull())
-        return px;
-    QSvgRenderer r(bytes);
-    if (r.isValid()) {
-        QSize sz = r.defaultSize();
-        if (sz.isEmpty())
-            sz = QSize(128, 128);
-        const int kMax = 256;
-        if (sz.width() > kMax || sz.height() > kMax)
-            sz.scale(kMax, kMax, Qt::KeepAspectRatio);
-        QPixmap out(sz);
-        out.fill(Qt::transparent);
-        QPainter p(&out);
-        r.render(&p);
-        return out;
-    }
-    return {};
-}
-
 // Intrinsic size straight from the image header, without decoding the pixels.
 // Invalid for formats QImageReader can't introspect (notably SVG), where the
 // caller falls back to a one-off decode.
@@ -161,7 +205,9 @@ static QSize intrinsicSize(const QByteArray &bytes) {
     buf.open(QIODevice::ReadOnly);
     QImageReader reader(&buf);
     const QSize  sz = reader.size();
-    return sz.isEmpty() ? QSize() : sz;
+    // Report what the pixmap will actually be: paint scales from the (bounded)
+    // pixmap, so layout must measure the same thing.
+    return sz.isEmpty() ? QSize() : ImageCache::boundedSize(sz);
 }
 
 void ImageCache::noteSize(const QString &url, const QSize &sz) {
@@ -188,36 +234,102 @@ void ImageCache::markFailed(const QString &url, bool permanent) {
 
 void ImageCache::startFetch(const QString &url) {
     auto &entry    = _cache[url];
-    entry.inFlight = true;
+    entry.inFlight = true; // sentinel from here on, whether running or queued
+    if (_activeFetches >= kMaxParallelFetches) {
+        _fetchQueue.enqueue(url);
+        return;
+    }
+    issueFetch(url);
+}
 
+void ImageCache::pumpFetchQueue() {
+    while (_activeFetches < kMaxParallelFetches && !_fetchQueue.isEmpty()) {
+        const QString next = _fetchQueue.dequeue();
+        // Defensive: eviction never touches an in-flight sentinel, so a queued
+        // url should always still be there — skip it if that ever changes.
+        if (const auto it = _cache.constFind(next); it == _cache.constEnd() || !it->inFlight)
+            continue;
+        issueFetch(next);
+    }
+}
+
+void ImageCache::issueFetch(const QString &url) {
+    ++_activeFetches;
     auto *reply = _nam->get(QNetworkRequest(QUrl(url)));
     connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
         reply->deleteLater();
-        auto &e    = _cache[url];
-        e.inFlight = false;
+        --_activeFetches;
+        // Hand the slot on before decoding: the next download overlaps this
+        // decode instead of waiting for it.
+        pumpFetchQueue();
         if (reply->error() == QNetworkReply::NoError) {
-            const auto bytes = reply->readAll();
-            QPixmap    px    = pixmapFromData(bytes);
-            if (!px.isNull()) {
-                e.pixmap = px;
-                noteSize(url, px.size());
-                if (isAnimatedImage(bytes))
-                    e.animatedBytes = bytes;
-                if (_diskSave)
-                    _diskSave(url, bytes);
-            } else {
-                // The bytes are not an image (an HTML error page, say). Nothing
-                // is stored and nothing is disk-saved, so without this sentinel
-                // every later get() missed and re-issued the request — and each
-                // completion emitted loaded(), driving another full relayout.
-                markFailed(url, /*permanent=*/true);
-            }
+            decodeAsync(url, reply->readAll(), /*saveToDisk=*/true);
         } else {
+            auto &e    = _cache[url];
+            e.inFlight = false;
             markFailed(url, /*permanent=*/false);
+            account(url); // no-op cost change — keeps the entry's LRU stamp fresh
+            emit loaded(url);
         }
-        account(url); // no-op cost change if the fetch yielded nothing
-        emit loaded(url);
     });
+}
+
+void ImageCache::decodeAsync(const QString &url, QByteArray bytes, bool saveToDisk) {
+    // The entry keeps its in-flight sentinel until the decode lands, so callers
+    // see "loading" (null pixmap) and eviction leaves it alone.
+    _cache[url].inFlight = true;
+    if (_syncDecode) {
+        finishDecode(url, bytes, decodeBoundedImage(bytes), saveToDisk);
+        return;
+    }
+    // Decode on a pool thread: a progressive JPEG or big PNG takes 50-200 ms,
+    // and until this change it ran inside paint whenever an evicted unfurl
+    // scrolled back into view (issue #64 follow-up: visible scroll hitching).
+    // QImage is thread-safe to build off the GUI thread; the QPixmap is made in
+    // finishDecode() back on it. The result is posted to the application
+    // object (always alive while the loop runs) and checked against a QPointer
+    // there, so a cache destroyed mid-decode is simply skipped — never touched
+    // from the worker.
+    QPointer<ImageCache> self(this);
+    QThreadPool::globalInstance()->start(
+        [self, url, bytes = std::move(bytes), saveToDisk]() mutable {
+            QImage img = decodeBoundedImage(bytes);
+            auto  *app = QCoreApplication::instance();
+            if (!app)
+                return;
+            QMetaObject::invokeMethod(
+                app,
+                [self, url, bytes = std::move(bytes), img = std::move(img), saveToDisk]() mutable {
+                    if (self)
+                        self->finishDecode(url, bytes, std::move(img), saveToDisk);
+                },
+                Qt::QueuedConnection
+            );
+        }
+    );
+}
+
+void ImageCache::finishDecode(
+    const QString &url, const QByteArray &bytes, QImage img, bool saveToDisk
+) {
+    auto &e    = _cache[url];
+    e.inFlight = false;
+    if (!img.isNull()) {
+        e.pixmap = QPixmap::fromImage(std::move(img));
+        noteSize(url, e.pixmap.size());
+        if (isAnimatedImage(bytes))
+            e.animatedBytes = bytes;
+        if (saveToDisk && _diskSave)
+            _diskSave(url, bytes);
+    } else {
+        // The bytes are not an image (an HTML error page, say). Nothing is
+        // stored and nothing is disk-saved, so without this sentinel every
+        // later get() missed and re-issued the request — and each completion
+        // emitted loaded(), driving another full relayout.
+        markFailed(url, /*permanent=*/true);
+    }
+    account(url); // no-op cost change if the decode yielded nothing
+    emit loaded(url);
 }
 
 QSize ImageCache::sizeOf(const QString &url) {
@@ -253,7 +365,7 @@ QSize ImageCache::sizeOf(const QString &url) {
             // Decode once to learn the size — recorded above, so this cannot
             // repeat on later layout passes. The pixmap is deliberately not
             // cached here: sizing must stay free of memory-cap pressure.
-            if (const QPixmap px = pixmapFromData(bytes); !px.isNull()) {
+            if (const QPixmap px = ImageCache::decodeBounded(bytes); !px.isNull()) {
                 noteSize(url, px.size());
                 return px.size();
             }
@@ -272,25 +384,21 @@ QPixmap ImageCache::get(const QString &url) {
 
     auto it = _cache.find(url);
     if (it != _cache.end()) {
-        return it->pixmap; // null while in-flight, real pixmap when done
+        it->lastUsed = ++_useTick; // a hit is a use — keep hot entries resident
+        return it->pixmap;         // null while in-flight, real pixmap when done
     }
     if (isFailed(url))
         return {};
 
-    // Check disk before going to the network.
+    // Check disk before going to the network. The decode is asynchronous (see
+    // decodeAsync); the caller gets null now and loaded() shortly after, exactly
+    // as for a download. In synchronous mode the pixmap is ready on return.
     if (_diskLoad) {
         const auto bytes = _diskLoad(url);
         if (!bytes.isEmpty()) {
-            QPixmap px = pixmapFromData(bytes);
-            if (!px.isNull()) {
-                auto &entry  = _cache[url];
-                entry.pixmap = px;
-                noteSize(url, px.size());
-                if (isAnimatedImage(bytes))
-                    entry.animatedBytes = bytes;
-                account(url);
-                return px;
-            }
+            decodeAsync(url, bytes, /*saveToDisk=*/false);
+            const auto e = _cache.constFind(url);
+            return e != _cache.constEnd() ? e->pixmap : QPixmap();
         }
     }
 

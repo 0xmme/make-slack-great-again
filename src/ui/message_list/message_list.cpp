@@ -42,6 +42,8 @@
 #include <QTextLayout>
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QFontMetrics>
 #include <QDesktopServices>
 #include <QClipboard>
@@ -373,14 +375,9 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                 const auto data = _session->cachedImage(url);
                 if (data.isEmpty())
                     continue;
-                QPixmap px;
-                if (px.loadFromData(data) && !px.isNull()) {
-                    _fileImages[url] = px;
-                    ++_fileImagesGen;
-                    // clear() released this conversation's players — an animated
-                    // file needs its player back or it repaints as a still.
-                    maybeCreateFileGifMovie(url, data);
-                }
+                // Off-thread; the completion also recreates the animated file's
+                // player that clear() released (else it repaints as a still).
+                decodeFileImageAsync(url, data, /*fromCache=*/true);
             }
         }
         enforceFileImageCap();
@@ -3080,23 +3077,38 @@ void MessageListWidget::openPreviewViewer(const File &file, const Message &msg) 
     }
     if (file.urlPrivate == thumbKey || !_session || msg.pending)
         return;
+    // The viewer fits the image to the window and has no zoom, so pixels beyond
+    // the largest attached screen are never shown. A native decode of a phone
+    // photo is 50–100 MB; bounded to the screen it is a few MB.
+    const int screenDim = viewerDecodeDim();
     const auto cached = _session->cachedImage(file.urlPrivate);
     if (!cached.isEmpty()) {
-        QPixmap px;
-        if (px.loadFromData(cached) && !px.isNull()) {
+        if (const QPixmap px = ImageCache::decodeBounded(cached, screenDim); !px.isNull()) {
             _imageViewer->updatePixmap(file.id, px);
             return;
         }
     }
     _session->downloadFile(
-        file.urlPrivate, [this, id = file.id, url = file.urlPrivate](QByteArray data) {
+        file.urlPrivate,
+        [this, id = file.id, url = file.urlPrivate, screenDim](QByteArray data) {
             if (_session)
                 _session->cacheImage(url, data);
-            QPixmap px;
-            if (px.loadFromData(data) && _imageViewer)
+            const QPixmap px = ImageCache::decodeBounded(data, screenDim);
+            if (!px.isNull() && _imageViewer)
                 _imageViewer->updatePixmap(id, px);
         }
     );
+}
+
+// Longest side, in device pixels, of the largest attached screen — the most the
+// fit-to-window viewer can ever display.
+int MessageListWidget::viewerDecodeDim() {
+    int dim = 0;
+    for (const QScreen *sc : QGuiApplication::screens()) {
+        const QSize phys = sc->size() * sc->devicePixelRatio();
+        dim              = std::max({dim, phys.width(), phys.height()});
+    }
+    return dim > 0 ? dim : 4096;
 }
 
 bool MessageListWidget::tryHandleFileChipPress(const QPoint &pos) {

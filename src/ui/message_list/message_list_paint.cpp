@@ -7,6 +7,11 @@
 #include "ui/theme.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
+
+#include <QCoreApplication>
+#include <QPointer>
+#include <QThreadPool>
+#include <QTimer>
 #include "ui/paint_utils.h"
 #include "ui/user_avatar.h"
 #include "util/emoji_font.h"
@@ -1050,7 +1055,14 @@ QPixmap MessageListWidget::scaledPreview(
     const QString &key, const QPixmap &src, QSize logical, qreal dpr
 ) const {
     const QSize phys(qRound(logical.width() * dpr), qRound(logical.height() * dpr));
-    QPixmap     out = _scaledPreviews.value(key);
+    // Sources are decoded bounded to about the widest inline image at this
+    // screen's DPR (ImageCache::maxDecodeDim), so a large image often arrives
+    // already at display size. Painting stretches into the target rect, so a
+    // 1 px rounding difference is invisible — draw it directly instead of
+    // keeping a second, identical copy of the pixels in _scaledPreviews.
+    if (std::abs(src.width() - phys.width()) <= 1 && std::abs(src.height() - phys.height()) <= 1)
+        return src;
+    QPixmap out = _scaledPreviews.value(key);
     if (out.size() != phys) {
         // IgnoreAspectRatio: `logical` is derived from the same image, so the
         // aspect already matches up to rounding.
@@ -1287,6 +1299,71 @@ void MessageListWidget::triggerMissingDownloads() {
     }
 }
 
+void MessageListWidget::decodeFileImageAsync(const QString &url, QByteArray bytes, bool fromCache) {
+    // Until this change every file preview was decoded on the GUI thread — in
+    // the download callback, and for a whole conversation's cached previews
+    // synchronously inside openConversation(). A screenshot-heavy channel made
+    // both visible as scroll hitches (issue #64 follow-up).
+    _fileImages[url] = QPixmap(); // in-flight sentinel: paints as loading, kept by the cap
+    ImageCache::maxDecodeDim();   // resolve the screen-derived bound on the GUI thread
+    // Result is posted to the application object and checked against a QPointer
+    // there: a widget destroyed mid-decode is skipped, never touched off-thread.
+    QPointer<MessageListWidget> self(this);
+    QThreadPool::globalInstance()->start(
+        [self, url, bytes = std::move(bytes), fromCache]() mutable {
+            QImage img = ImageCache::decodeBoundedImage(bytes);
+            auto  *app = QCoreApplication::instance();
+            if (!app)
+                return;
+            QMetaObject::invokeMethod(
+                app,
+                [self, url, bytes = std::move(bytes), img = std::move(img), fromCache]() mutable {
+                    if (self)
+                        self->fileImageDecoded(url, bytes, std::move(img), fromCache);
+                },
+                Qt::QueuedConnection
+            );
+        }
+    );
+}
+
+void MessageListWidget::fileImageDecoded(
+    const QString &url, const QByteArray &bytes, QImage img, bool fromCache
+) {
+    if (img.isNull()) {
+        if (fromCache && _session) {
+            // Junk on disk — fetch a fresh copy (sentinel stays).
+            _session->downloadFile(url, [this, url](QByteArray data) {
+                if (_session)
+                    _session->cacheImage(url, data);
+                decodeFileImageAsync(url, std::move(data));
+            });
+        }
+        return; // undecodable download: sentinel stays, no retry storm
+    }
+    _fileImages[url] = QPixmap::fromImage(std::move(img));
+    ++_fileImagesGen;
+    maybeCreateFileGifMovie(url, bytes);
+    _scaledPreviews.remove(url);
+    enforceFileImageCap();
+    scheduleRelayout();
+}
+
+void MessageListWidget::scheduleRelayout() {
+    // Previews land one after another (downloads are bounded to a few in
+    // flight), and each used to relayout the whole list on arrival. Coalesce
+    // to one rebuildLayout() per event-loop turn; it keeps the reading
+    // position (or the bottom pin) itself.
+    if (_relayoutPending)
+        return;
+    _relayoutPending = true;
+    QTimer::singleShot(0, this, [this] {
+        _relayoutPending = false;
+        rebuildLayout();
+        viewport()->update();
+    });
+}
+
 void MessageListWidget::requestItemImages(MessageItem &item) {
     if (!_session)
         return;
@@ -1329,37 +1406,19 @@ void MessageListWidget::requestItemImages(MessageItem &item) {
                         continue;
                     }
 
+                    // Decodes run on a pool thread (decodeFileImageAsync): a
+                    // sentinel paints as "loading" until the pixels land.
                     const auto cached = _session->cachedImage(url);
                     if (!cached.isEmpty()) {
-                        QPixmap px;
-                        if (px.loadFromData(cached) && !px.isNull()) {
-                            _fileImages[url] = px;
-                            ++_fileImagesGen;
-                            maybeCreateFileGifMovie(url, cached);
-                            enforceFileImageCap();
-                            rebuildLayout();
-                            viewport()->update();
-                            continue;
-                        }
+                        decodeFileImageAsync(url, cached, /*fromCache=*/true);
+                        continue;
                     }
 
                     _fileImages[url] = QPixmap(); // in-flight sentinel
                     _session->downloadFile(url, [this, url](QByteArray data) {
                         if (_session)
                             _session->cacheImage(url, data);
-                        const bool wasAtBottom =
-                            verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
-                        QPixmap px;
-                        px.loadFromData(data);
-                        _fileImages[url] = px;
-                        ++_fileImagesGen;
-                        maybeCreateFileGifMovie(url, data);
-                        _scaledPreviews.remove(url);
-                        enforceFileImageCap();
-                        rebuildLayout();
-                        if (wasAtBottom)
-                            verticalScrollBar()->setValue(verticalScrollBar()->maximum());
-                        viewport()->update();
+                        decodeFileImageAsync(url, std::move(data));
                     });
                 }
             }

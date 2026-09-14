@@ -121,17 +121,36 @@ void HttpQueue::downloadUrl(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
     req.setTransferTimeout(_transferTimeoutMs);
-    auto *reply = _nam->get(req);
-    connect(reply, &QNetworkReply::finished, this, [reply, onData, onError]() {
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            if (onError)
-                onError(reply->errorString());
-        } else {
-            if (onData)
-                onData(reply->readAll());
+    if (_activeDownloads >= kMaxParallelDownloads) {
+        _downloadQueue.enqueue({std::move(req), std::move(onData), std::move(onError)});
+        return;
+    }
+    issueDownload({std::move(req), std::move(onData), std::move(onError)});
+}
+
+void HttpQueue::issueDownload(PendingDownload d) {
+    ++_activeDownloads;
+    auto *reply = _nam->get(d.req);
+    connect(
+        reply,
+        &QNetworkReply::finished,
+        this,
+        [this, reply, onData = std::move(d.onData), onError = std::move(d.onError)]() {
+            reply->deleteLater();
+            --_activeDownloads;
+            // Free the slot first so the next transfer overlaps this callback's
+            // decode instead of waiting behind it.
+            while (_activeDownloads < kMaxParallelDownloads && !_downloadQueue.isEmpty())
+                issueDownload(_downloadQueue.dequeue());
+            if (reply->error() != QNetworkReply::NoError) {
+                if (onError)
+                    onError(reply->errorString());
+            } else {
+                if (onData)
+                    onData(reply->readAll());
+            }
         }
-    });
+    );
 }
 
 void HttpQueue::enqueue(PendingCall c) {

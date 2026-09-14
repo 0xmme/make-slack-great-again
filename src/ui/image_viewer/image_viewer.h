@@ -42,6 +42,7 @@ signals:
 
 protected:
     void paintEvent(QPaintEvent *) override;
+    void hideEvent(QHideEvent *) override;
     void keyPressEvent(QKeyEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
     bool eventFilter(QObject *obj, QEvent *ev) override;

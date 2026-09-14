@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
+#include <QNetworkRequest>
 #include <QObject>
 #include <QQueue>
 #include <QUrlQuery>
@@ -92,8 +93,14 @@ public:
         const QUrl &url, const QByteArray &data, std::function<void()> onDone, OnError onError = {}
     );
 
-    // GET an arbitrary URL with the auth token set. Bypasses the queue.
+    // GET an arbitrary URL with the auth token set. Bypasses the API queue, but
+    // at most kMaxParallelDownloads transfers run at once; the rest wait their
+    // turn. Scrolling an image-heavy channel used to start every thumbnail
+    // download simultaneously — each reply body and its decode scratch is a
+    // multi-MB block, and macOS's allocator keeps freed large blocks resident
+    // at that high-water mark for the session (issue #64).
     void downloadUrl(const QUrl &url, std::function<void(QByteArray)> onData, OnError onError = {});
+    static constexpr int kMaxParallelDownloads = 4;
 
 signals:
     // A call hit HTTP 429 and was requeued for `retryAfterSecs`. The call still
@@ -164,6 +171,15 @@ private:
     QString                _baseUrl;
     QQueue<PendingCall>    _queue;
     bool                   _inflight  = false;
+
+    struct PendingDownload {
+        QNetworkRequest                  req;
+        std::function<void(QByteArray)>  onData;
+        OnError                          onError;
+    };
+    void                   issueDownload(PendingDownload d);
+    QQueue<PendingDownload> _downloadQueue;
+    int                    _activeDownloads = 0;
     bool                   _throttled = false; // global pause: token refresh / transport backoff
     int                    _retryBaseDelayMs  = 1000;
     int                    _transferTimeoutMs = 30000;
