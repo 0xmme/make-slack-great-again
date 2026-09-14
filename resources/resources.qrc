@@ -28,6 +28,7 @@
         <file alias="ui/shapes.svg">../gfx/ui/shapes.svg</file>
         <file alias="ui/flag.svg">../gfx/ui/flag.svg</file>
         <file alias="ui/at-sign.svg">../gfx/ui/at-sign.svg</file>
+        <file alias="ui/gif.svg">../gfx/ui/gif.svg</file>
         <file alias="ui/megaphone.svg">../gfx/ui/megaphone.svg</file>
         <file alias="ui/bold.svg">../gfx/ui/bold.svg</file>
         <file alias="ui/italic.svg">../gfx/ui/italic.svg</file>

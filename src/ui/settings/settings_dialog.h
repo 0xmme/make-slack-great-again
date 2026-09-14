@@ -126,9 +126,13 @@ private:
     Dir                    edgeAt(const QPoint &pos) const;
     static Qt::CursorShape cursorFor(Dir d);
 
-    QFrame         *_panel = nullptr;
-    QListWidget    *_tabs  = nullptr;
-    QStackedWidget *_stack = nullptr;
+    QFrame      *_panel = nullptr;
+    QListWidget *_tabs  = nullptr;
+
+    // GIF picker (System page): per-user GIPHY key override
+    StyledLineEdit *_giphyKey    = nullptr;
+    QLabel         *_giphyStatus = nullptr;
+    QStackedWidget *_stack       = nullptr;
 
     // Notification controls
     QCheckBox    *_notifEnabled      = nullptr;

@@ -6,6 +6,8 @@
 #include "edit_mode_banner.h"
 #include "undo_send_pill.h"
 #include "ui/emoji_picker/emoji_picker_popup.h"
+#include "ui/gif_picker/gif_picker_popup.h"
+#include "network/gif_search.h"
 #include "mention_completer.h"
 #include "ui/mention_popup/mention_popup.h"
 #include "session/session.h"
@@ -531,10 +533,13 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     };
 
     auto *emojiBtn   = makeBbBtn(":/ui/smile.svg", tip(tr("Emoji"), Ui::Shortcut::EmojiPicker));
+    auto *gifBtn     = makeBbBtn(":/ui/gif.svg", tr("Search GIFs"));
+    _gifBtn          = gifBtn;
     auto *mentionBtn = makeBbBtn(":/ui/at-sign.svg", tip(tr("Mention"), QStringLiteral("@")));
 
     bbLayout->addWidget(attachBtn);
     bbLayout->addWidget(emojiBtn);
+    bbLayout->addWidget(gifBtn);
     bbLayout->addWidget(mentionBtn);
     bbLayout->addStretch();
 
@@ -588,6 +593,35 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
         _emojiPicker->setImageCache(_imgCache);
         const QPoint pos = emojiBtn->mapToGlobal(QPoint(0, -_emojiPicker->sizeHint().height() - 4));
         _emojiPicker->open(pos);
+    });
+
+    connect(gifBtn, &QToolButton::clicked, this, [this, gifBtn] {
+        if (!_gifPicker) {
+            _gifPicker = new GifPickerPopup(this);
+            connect(_gifPicker, &GifPickerPopup::gifSelected, this, [this](const QString &url) {
+                // The URL is posted as plain text: Slack unfurls it into an
+                // animated preview, and msga's own message list renders it
+                // inline, so this works the same on every backend.
+                auto        cursor = _edit->textCursor();
+                // Separate the URL from whatever it lands against, judged by the
+                // character immediately left of the insertion point — NOT by the
+                // end of the document. With a cursor parked mid-message the two
+                // disagree, and the URL would be glued onto the preceding word
+                // ("heyhttps://…"), which neither unfurls nor stays clickable.
+                // selectionStart() is the right anchor: a selection is about to
+                // be replaced, so what precedes it is what the URL abuts.
+                const int   at     = cursor.selectionStart();
+                const QChar prev   = at > 0 ? cursor.document()->characterAt(at - 1) : QChar();
+                if (!prev.isNull() && !prev.isSpace())
+                    cursor.insertText(QStringLiteral(" "));
+                cursor.insertText(url + QStringLiteral(" "));
+                _edit->setTextCursor(cursor);
+                _edit->setFocus();
+            });
+        }
+        _gifPicker->setImageCache(_imgCache);
+        const QPoint pos = gifBtn->mapToGlobal(QPoint(0, -_gifPicker->height() - 4));
+        _gifPicker->open(pos);
     });
 
     connect(mentionBtn, &QToolButton::clicked, this, [this] {
@@ -1461,9 +1495,16 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
         if (event->type() == QEvent::HoverEnter) {
             // The send hint is rebuilt per hover: its key follows the
             // Ctrl+Enter option, which can change while the composer lives.
-            const QString text = (w == _sendBtn)
-                                     ? tip(tr("Send message"), Ui::Shortcut::SendMessage)
-                                     : _tooltipBtns[w];
+            QString text = _tooltipBtns[w];
+            if (w == _sendBtn) {
+                // Rebuilt per hover: its key follows the Ctrl+Enter option,
+                // which can change while the composer lives.
+                text = tip(tr("Send message"), Ui::Shortcut::SendMessage);
+            } else if (w == _gifBtn && !net::GifSearch::configured()) {
+                // Same reason: the key can be set (in Settings, or in the
+                // picker itself) at any point after the button was built.
+                text = tr("Search GIFs — needs a GIPHY API key");
+            }
             _tooltip->showAbove(text, QRect(w->mapToGlobal(QPoint(0, 0)), w->size()));
         } else if (event->type() == QEvent::HoverLeave) {
             _tooltip->hide();
