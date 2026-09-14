@@ -983,14 +983,14 @@ void SettingsDialog::buildPanel() {
     gifLinkRow->addStretch();
     sylay->addLayout(gifLinkRow);
 
-    auto *gifBox = new QGroupBox(sysPage);
-    gifBox->setObjectName("credBox");
-    auto *gifLayout = new QVBoxLayout(gifBox);
-    gifLayout->setSpacing(sp.sm);
-    gifLayout->setContentsMargins(sp.lg, sp.lg, sp.lg, sp.lg);
+    // Field, status and Save sit directly on the page: one field does not
+    // need the boxed grouping the multi-field credential sections use.
+    auto *gifFields = new QVBoxLayout;
+    gifFields->setSpacing(sp.sm);
+    gifFields->setContentsMargins(0, 0, 0, 0);
 
-    gifLayout->addWidget(new QLabel(tr("API key"), gifBox));
-    _giphyKey = new StyledLineEdit(gifBox);
+    gifFields->addWidget(new QLabel(tr("API key"), sysPage));
+    _giphyKey = new StyledLineEdit(sysPage);
     _giphyKey->setSize(StyledLineEdit::Size::Small);
     _giphyKey->enablePasswordReveal();
     // A baked-in key is a working default, so say so rather than leaving an
@@ -1001,27 +1001,30 @@ void SettingsDialog::buildPanel() {
             : tr("Using this build's key — paste one here to override it")
     );
     _giphyKey->setText(net::GifSearch::userApiKey());
-    gifLayout->addWidget(_giphyKey);
+    gifFields->addWidget(_giphyKey);
 
-    _giphyStatus = new QLabel(gifBox);
+    _giphyStatus = new QLabel(sysPage);
     _giphyStatus->setObjectName("credStatus");
     _giphyStatus->setWordWrap(true);
-    gifLayout->addWidget(_giphyStatus);
+    _giphyStatus->hide(); // an empty label would still take a line
+    gifFields->addWidget(_giphyStatus);
 
     auto *gifSaveRow = new QHBoxLayout;
-    auto *gifSaveBtn = new StyledButton(tr("Save"), StyledButton::Variant::Primary, gifBox);
+    auto *gifSaveBtn = new StyledButton(tr("Save"), StyledButton::Variant::Primary, sysPage);
     gifSaveBtn->setSize(StyledButton::Size::Small);
     connect(gifSaveBtn, &QPushButton::clicked, this, [this] {
         const QString key = _giphyKey->text().trimmed();
         net::GifSearch::setUserApiKey(key);
         // Takes effect on the next search — the picker reads the key per call.
         _giphyStatus->setText(key.isEmpty() ? tr("Key cleared.") : tr("Key saved."));
+        _giphyStatus->show();
     });
     gifSaveRow->addWidget(gifSaveBtn);
     gifSaveRow->addStretch();
-    gifLayout->addLayout(gifSaveRow);
+    gifFields->addSpacing(sp.md); // set the button off from the field
+    gifFields->addLayout(gifSaveRow);
 
-    sylay->addWidget(gifBox);
+    sylay->addLayout(gifFields);
 
     // ── Memory section ────────────────────────────────────────────────
     auto *memoryHeading = new QLabel(tr("Memory"), sysPage);
