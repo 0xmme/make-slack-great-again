@@ -3,9 +3,9 @@
 // Background LRU sweeper for the on-disk cache (AppData/cache, all workspaces).
 // "Last used" is a blob's file mtime: WorkspaceCache::saveImage stamps it on
 // write and loadImage bumps it on read, so eviction order is least-recently-
-// VIEWED, not least-recently-downloaded. Only image blobs are evicted; the
-// structural JSON files (conversations, users, messages, meta) are small and
-// always kept.
+// VIEWED, not least-recently-downloaded. Only blobs are evicted (the "images"
+// dirs and the "audio" dir the inline player downloads into); the structural
+// JSON files (conversations, users, messages, meta) are small and always kept.
 #pragma once
 
 #include <QObject>

@@ -623,8 +623,12 @@ struct File {
     QString                mimeType;
     QString                prettyType; // human-readable type, e.g. "PDF", "Word Document"
     QString                urlPrivate; // url_private: auth header required for download
-    QString                permalink;  // Slack web UI URL — no auth required, opens in browser
-    QString                thumbUrl;   // thumbnail URL (e.g. thumb_360); auth required
+    // url_private_download: the original bytes as uploaded. For audio uploads
+    // url_private is Slack's AAC/MP4 transcode (see aacUrl), so this is the
+    // only way at the .mp3/.wav itself — and what "Download" must save.
+    QString                urlPrivateDownload;
+    QString                permalink; // Slack web UI URL — no auth required, opens in browser
+    QString                thumbUrl;  // thumbnail URL (e.g. thumb_360); auth required
     int                    imageWidth  = 0;
     int                    imageHeight = 0;
     qint64                 size        = 0;
@@ -632,6 +636,19 @@ struct File {
     // Animated preview ladder (thumb_360_gif/thumb_480_gif): the plain thumb_N
     // renders of a GIF are static first frames, so these take priority.
     std::vector<FileThumb> animThumbs;
+    // Audio metadata. durationMs comes from Slack's `duration_ms` (0 when
+    // unknown). aacUrl is Slack's server-side AAC/MP4 transcode (`aac`), made
+    // for every audio file: voice clips are recorded as WebM/Opus, which no
+    // native player decodes, so the transcode is the portable playback source.
+    qint64                 durationMs = 0;
+    QString                aacUrl;  // auth required
+    QString                subtype; // e.g. "slack_audio" for voice clips
+    // Slack's own speech-to-text for voice clips (`transcription` + `vtt`):
+    // status ("complete" when usable; uploads report "none"), the one-line
+    // preview, and the WebVTT with per-cue timestamps (auth required).
+    QString                transcriptStatus;
+    QString                transcriptPreview;
+    QString                transcriptVttUrl;
 
     // Preview source covering physW physical pixels: the smallest thumbnail wide
     // enough, else the largest available (never the original — it can be huge),
@@ -652,6 +669,13 @@ struct File {
 
     bool isImage() const { return mimeType.startsWith("image/") && imageWidth > 0; }
     bool isPdf() const { return mimeType == "application/pdf"; }
+    // Audio uploads and Slack voice clips get the inline player chip.
+    bool isAudio() const {
+        return mimeType.startsWith("audio/") || subtype == QLatin1String("slack_audio");
+    }
+    bool hasTranscript() const {
+        return transcriptStatus == QLatin1String("complete") && !transcriptPreview.isEmpty();
+    }
     // CSV uploads get a "Preview" action that opens them in the table viewer.
     bool isCsv() const {
         return mimeType == "text/csv" || name.endsWith(QLatin1String(".csv"), Qt::CaseInsensitive);

@@ -416,7 +416,7 @@ void MessageListWidget::paintRow(
             if (!firstChip || hasAboveChips)
                 contentY += kFileChipGap;
             firstChip = false;
-            contentY += kFileChipH;
+            contentY += MsgRender::fileChipHeight(f);
         }
     }
 
@@ -725,15 +725,24 @@ int MessageListWidget::attachDocWidth(const Attachment &att, int columnW) const 
 }
 
 int MessageListWidget::attachFilesH(const Attachment &att) const {
-    return (int)att.files.size() * (kFileChipGap + kFileChipH);
+    int h = 0;
+    for (const auto &f : att.files)
+        h += kFileChipGap + MsgRender::fileChipHeight(f);
+    return h;
 }
 
-QRect MessageListWidget::attachFileChipRect(int fileIdx, const QRect &docRect) const {
+QRect MessageListWidget::attachFileChipRect(
+    const Attachment &att, int fileIdx, const QRect &docRect
+) const {
+    int y = docRect.y() + docRect.height();
+    for (int i = 0; i < fileIdx && i < (int)att.files.size(); ++i)
+        y += kFileChipGap + MsgRender::fileChipHeight(att.files[i]);
+    y += kFileChipGap;
     return {
         docRect.x(),
-        docRect.y() + docRect.height() + (fileIdx + 1) * kFileChipGap + fileIdx * kFileChipH,
+        y,
         std::min(docRect.width(), kFileChipMaxW),
-        kFileChipH
+        MsgRender::fileChipHeight(att.files[fileIdx])
     };
 }
 
@@ -920,8 +929,12 @@ void MessageListWidget::paintAttachments(
         }
 
         // A quoted message's uploads, as the app's canonical file chips.
-        for (int fi = 0; fi < (int)att.files.size(); ++fi)
-            MsgRender::paintFileChip(p, att.files[fi], attachFileChipRect(fi, docRect));
+        for (int fi = 0; fi < (int)att.files.size(); ++fi) {
+            const auto audio = audioChipState(att.files[fi]);
+            MsgRender::paintFileChip(
+                p, att.files[fi], attachFileChipRect(att, fi, docRect), audio ? &*audio : nullptr
+            );
+        }
 
         // Preview image (thumbnail when large enough for this DPR, else full image)
         if (imgH > 0 && _imgCache) {
@@ -1601,13 +1614,16 @@ void MessageListWidget::paintFileChips(
             continue;
         if (!first || hasAbove)
             y += kFileChipGap;
-        first = false;
-        MsgRender::paintFileChip(p, f, QRect(left, y, width, kFileChipH));
-        y += kFileChipH;
+        first            = false;
+        const auto audio = audioChipState(f);
+        const int  h     = MsgRender::fileChipHeight(f);
+        MsgRender::paintFileChip(p, f, QRect(left, y, width, h), audio ? &*audio : nullptr);
+        y += h;
     }
 }
 
-const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
+const File *
+MessageListWidget::fileChipAt(const QPoint &viewportPos, QRect *chipRect, int *msgIdx) const {
     const PaintContext ctx       = makePaintContext();
     const int          scrollY   = ctx.scrollY;
     const int          textLeft  = ctx.textLeft;
@@ -1658,9 +1674,16 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
                     item.attachDocs[ai].docWidth,
                     item.attachDocs[ai].docHeight
                 );
-                for (int fi = 0; fi < (int)att.files.size(); ++fi)
-                    if (attachFileChipRect(fi, docRect).contains(viewportPos))
+                for (int fi = 0; fi < (int)att.files.size(); ++fi) {
+                    const QRect r = attachFileChipRect(att, fi, docRect);
+                    if (r.contains(viewportPos)) {
+                        if (chipRect)
+                            *chipRect = r;
+                        if (msgIdx)
+                            *msgIdx = i;
                         return &att.files[fi];
+                    }
+                }
             }
             chipY += attachTotalH(item, ai);
         }
@@ -1676,11 +1699,18 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
                 continue;
             if (!firstChip || hasAboveChips)
                 chipY += kFileChipGap;
-            firstChip       = false;
-            const int chipW = std::min(textWidth, kFileChipMaxW);
-            if (QRect(textLeft, chipY, chipW, kFileChipH).contains(viewportPos))
+            firstChip         = false;
+            const int   chipW = std::min(textWidth, kFileChipMaxW);
+            const int   h     = MsgRender::fileChipHeight(f);
+            const QRect r(textLeft, chipY, chipW, h);
+            if (r.contains(viewportPos)) {
+                if (chipRect)
+                    *chipRect = r;
+                if (msgIdx)
+                    *msgIdx = i;
                 return &f;
-            chipY += kFileChipH;
+            }
+            chipY += h;
         }
     }
     return nullptr;
@@ -1900,7 +1930,7 @@ int MessageListWidget::replyBarVpTop(int i, const PaintContext &ctx) const {
         if (!firstChip || hasAboveChips)
             y += kFileChipGap;
         firstChip = false;
-        y += kFileChipH;
+        y += MsgRender::fileChipHeight(f);
     }
 
     if (!item.msg.reactions.empty())
@@ -1973,7 +2003,7 @@ int MessageListWidget::replyItemHeight(const MessageItem &item, int width, bool 
         if (!firstChip || hasAboveChips)
             extraH += kFileChipGap;
         firstChip = false;
-        extraH += kFileChipH;
+        extraH += MsgRender::fileChipHeight(f);
     }
     const int reactionH = item.msg.reactions.empty() ? 0 : (kReactH + 2);
     const int headerH   = collapsed ? 0 : (kHdrH + kHdrGap);
@@ -2063,7 +2093,7 @@ void MessageListWidget::paintReplyItem(
             if (!firstChip || hasAboveChips)
                 contentY += kFileChipGap;
             firstChip = false;
-            contentY += kFileChipH;
+            contentY += MsgRender::fileChipHeight(f);
         }
     }
 
@@ -2216,7 +2246,7 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
             if (!firstChip || hasAboveChips)
                 y += kFileChipGap;
             firstChip = false;
-            y += kFileChipH;
+            y += MsgRender::fileChipHeight(f);
         }
 
         const int reactTop = y + 2;
@@ -2380,9 +2410,9 @@ QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
         firstChip = false;
         if (fi == fileIdx) {
             const int chipW = std::min(width, kFileChipMaxW);
-            return QRect(left, y, chipW, kFileChipH);
+            return QRect(left, y, chipW, MsgRender::fileChipHeight(f));
         }
-        y += kFileChipH;
+        y += MsgRender::fileChipHeight(f);
     }
     return {};
 }

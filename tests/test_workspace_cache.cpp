@@ -158,18 +158,24 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
     m.subtype    = QString{"bot_message"};
     m.reactions  = {Reaction{"thumbsup", 2, {UserId{"U1"}, UserId{"U2"}}}};
     m.files      = {File{
-             .id          = "F1",
-             .name        = "img.png",
-             .mimeType    = "image/png",
-             .urlPrivate  = "https://files.slack.com/img.png",
-             .thumbUrl    = "https://thumb.example.com/img.png",
-             .imageWidth  = 640,
-             .imageHeight = 480,
-             .size        = 12345,
-             .thumbs      = {
-            FileThumb{360, 270, "https://thumb.example.com/img_360.png"},
-            FileThumb{480, 360, "https://thumb.example.com/img_480.png"}
-        },
+             .id                 = "F1",
+             .name               = "img.png",
+             .mimeType           = "image/png",
+             .urlPrivate         = "https://files.slack.com/img.png",
+             .urlPrivateDownload = "https://files.slack.com/download/img.png",
+             .thumbUrl           = "https://thumb.example.com/img.png",
+             .imageWidth         = 640,
+             .imageHeight        = 480,
+             .size               = 12345,
+             .thumbs =
+                 {FileThumb{360, 270, "https://thumb.example.com/img_360.png"},
+                  FileThumb{480, 360, "https://thumb.example.com/img_480.png"}},
+             .durationMs        = 5041,
+             .aacUrl            = "https://files.slack.com/files-tmb/T1-F1/img_audio.mp4",
+             .subtype           = "slack_audio",
+             .transcriptStatus  = "complete",
+             .transcriptPreview = "Test, test, battery.",
+             .transcriptVttUrl  = "https://files.slack.com/files-tmb/T1-F1/file.vtt",
     }};
     m.blocks     = {
         Block{

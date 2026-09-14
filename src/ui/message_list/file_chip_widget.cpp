@@ -6,20 +6,20 @@
 #include <QPainter>
 
 FileChipWidget::FileChipWidget(const File &file, QWidget *parent) : QWidget(parent), _file(file) {
-    setFixedHeight(MsgRender::kFileChipH);
+    setFixedHeight(MsgRender::fileChipHeight(_file));
     setMaximumWidth(MsgRender::kFileChipMaxW);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 }
 
 QSize FileChipWidget::sizeHint() const {
-    return QSize(MsgRender::kFileChipMaxW, MsgRender::kFileChipH);
+    return QSize(MsgRender::kFileChipMaxW, MsgRender::fileChipHeight(_file));
 }
 
 QSize FileChipWidget::minimumSizeHint() const {
-    return QSize(120, MsgRender::kFileChipH);
+    return QSize(120, MsgRender::fileChipHeight(_file));
 }
 
 void FileChipWidget::paintEvent(QPaintEvent *) {
     QPainter p(this);
-    MsgRender::paintFileChip(p, _file, QRect(0, 0, width(), MsgRender::kFileChipH));
+    MsgRender::paintFileChip(p, _file, QRect(0, 0, width(), MsgRender::fileChipHeight(_file)));
 }

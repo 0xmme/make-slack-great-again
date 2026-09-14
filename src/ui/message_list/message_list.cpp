@@ -19,12 +19,16 @@
 #include "ui/reminder_dialog/reminder_dialog.h"
 #include "ui/summary_dialog/summarize_job.h"
 #include "ui/summary_dialog/summary_dialog.h"
+#include "ui/transcript_dialog/transcript_dialog.h"
+#include "util/time_format.h"
 #include "llm/llm_service.h"
 #include "text/link_labels.h"
 #include "util/background_tasks.h"
 #include "util/clipboard.h"
 #include "util/mailto_link.h"
 #include "util/slack_links.h"
+#include "media/audio_player.h"
+#include "cache/cache_evictor.h"
 
 #include <QBuffer>
 #include <QImage>
@@ -47,8 +51,13 @@
 #include <QFontMetrics>
 #include <QDesktopServices>
 #include <QClipboard>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QPointer>
+#include <QSaveFile>
+#include <QStandardPaths>
 #include <QMessageBox>
 #include <QUrl>
 #include <QTimer>
@@ -67,6 +76,14 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
 
     _tooltip     = new PopupTooltip(this);
     _emojiPicker = new EmojiPickerPopup(this);
+
+    // Inline audio player: repaint just the chip whose state/position changed.
+    connect(
+        &Media::AudioPlayer::instance(),
+        &Media::AudioPlayer::statusChanged,
+        this,
+        [this](const QString &key) { repaintAudioChip(key); }
+    );
     _emojiPicker->setImageCache(_imgCache);
 
     _profileCard = new UserProfileCard(this);
@@ -1214,7 +1231,7 @@ int MessageListWidget::rowHeight(int index) const {
         if (!firstChip || hasAboveChips)
             extraH += kFileChipGap;
         firstChip = false;
-        extraH += kFileChipH;
+        extraH += MsgRender::fileChipHeight(f);
     }
 
     const int  reactionH   = item.msg.reactions.empty() ? 0 : (kReactH + 2);
@@ -2070,6 +2087,8 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
         return;
     if (tryHandlePreviewPress(event->pos()))
         return;
+    if (tryHandleAudioChipPress(event->pos()))
+        return;
 
     // Start text-selection drag if the click lands inside a message body.
     const TextPos tp = textHitTest(event->pos());
@@ -2859,10 +2878,13 @@ void MessageListWidget::downloadFileToUser(const File &file) {
         Ui::getSaveFileName(this, tr("Save file"), QDir::homePath() + "/" + defaultName);
     if (savePath.isEmpty())
         return;
-    const QString url  = file.urlPrivate;
+    // The original upload: for audio, url_private is Slack's MP4 transcode, and
+    // saving that under the .mp3 name the user sees would be a corrupt file.
+    const QString url =
+        file.urlPrivateDownload.isEmpty() ? file.urlPrivate : file.urlPrivateDownload;
     // Spinner runs from the click until the bytes are on disk (or the download
     // fails) — same background-task indication used by the image-copy path.
-    const int     task = BackgroundTasks::instance().begin(tr("Downloading %1").arg(defaultName));
+    const int task = BackgroundTasks::instance().begin(tr("Downloading %1").arg(defaultName));
     _session->downloadFile(
         url,
         [savePath, task](QByteArray data) {
@@ -3080,8 +3102,8 @@ void MessageListWidget::openPreviewViewer(const File &file, const Message &msg) 
     // The viewer fits the image to the window and has no zoom, so pixels beyond
     // the largest attached screen are never shown. A native decode of a phone
     // photo is 50–100 MB; bounded to the screen it is a few MB.
-    const int screenDim = viewerDecodeDim();
-    const auto cached = _session->cachedImage(file.urlPrivate);
+    const int  screenDim = viewerDecodeDim();
+    const auto cached    = _session->cachedImage(file.urlPrivate);
     if (!cached.isEmpty()) {
         if (const QPixmap px = ImageCache::decodeBounded(cached, screenDim); !px.isNull()) {
             _imageViewer->updatePixmap(file.id, px);
@@ -3089,8 +3111,7 @@ void MessageListWidget::openPreviewViewer(const File &file, const Message &msg) 
         }
     }
     _session->downloadFile(
-        file.urlPrivate,
-        [this, id = file.id, url = file.urlPrivate, screenDim](QByteArray data) {
+        file.urlPrivate, [this, id = file.id, url = file.urlPrivate, screenDim](QByteArray data) {
             if (_session)
                 _session->cacheImage(url, data);
             const QPixmap px = ImageCache::decodeBounded(data, screenDim);
@@ -3115,10 +3136,212 @@ bool MessageListWidget::tryHandleFileChipPress(const QPoint &pos) {
     const File *f = fileChipAt(pos);
     if (!f)
         return false;
+    if (f->isAudio()) { // the chip is the player; playback instead of the browser
+        toggleAudio(*f);
+        return true;
+    }
     const QString url = f->permalink.isEmpty() ? f->urlPrivate : f->permalink;
     if (!url.isEmpty())
         QDesktopServices::openUrl(QUrl(url));
     return true;
+}
+
+bool MessageListWidget::tryHandleAudioChipPress(const QPoint &pos) {
+    QRect       chipRect;
+    int         msgIdx = -1;
+    const File *f      = fileChipAt(pos, &chipRect, &msgIdx);
+    if (!f || !f->isAudio())
+        return false;
+    // Transcript line: only the link acts; the preview text is inert.
+    if (f->hasTranscript()) {
+        const auto tl = MsgRender::audioChipTranscriptLayout(chipRect, *f);
+        if (tl.linkRect.adjusted(-2, -4, 2, 4).contains(pos)) {
+            if (msgIdx >= 0 && msgIdx < (int)_items.size())
+                openTranscript(*f, _items[msgIdx].msg);
+            return true;
+        }
+        if (pos.y() > chipRect.top() + MsgRender::kAudioChipH)
+            return true;
+    }
+    // Seek bar (only meaningful once the player holds this file with a known
+    // length): start a scrub, release seeks. Give it a few px of slack.
+    const auto &st = Media::AudioPlayer::instance().status();
+    if (st.key == f->id && st.durationMs > 0 &&
+        (st.state == Media::AudioPlayer::State::Playing ||
+         st.state == Media::AudioPlayer::State::Paused ||
+         st.state == Media::AudioPlayer::State::Ended)) {
+        const QRect bar = MsgRender::audioChipBarRect(chipRect, st.durationMs);
+        if (bar.adjusted(-2, -8, 2, 8).contains(pos)) {
+            _audioScrubKey = f->id;
+            _audioScrubBar = bar;
+            const qreal frac =
+                std::clamp((qreal)(pos.x() - bar.left()) / std::max(1, bar.width()), 0.0, 1.0);
+            _audioScrubMs = (qint64)std::llround(frac * st.durationMs);
+            repaintAudioChip(_audioScrubKey);
+            return true;
+        }
+    }
+    toggleAudio(*f);
+    return true;
+}
+
+namespace {
+// On-disk home of a downloaded audio file: inside the cache root the evictor
+// sweeps (its "audio" dir is on the eviction list), named by file id + a hash
+// of the URL fetched (the original vs. Slack's AAC transcode differ), with the
+// real extension — the native players sniff by it.
+QString audioCachePath(const File &file, const QString &url) {
+    QString ext = Media::AudioPlayer::extensionOf(url);
+    if (ext.isEmpty())
+        ext = Media::AudioPlayer::extensionOf(file.name);
+    if (ext.isEmpty())
+        ext = QStringLiteral("audio");
+    const QString hash = QString::fromLatin1(
+        QCryptographicHash::hash(url.toUtf8(), QCryptographicHash::Sha1).toHex().left(10)
+    );
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+           QStringLiteral("/cache/audio/%1-%2.%3").arg(file.id, hash, ext);
+}
+} // namespace
+
+void MessageListWidget::toggleAudio(const File &file) {
+    auto &player = Media::AudioPlayer::instance();
+    if (player.isCurrent(file.id)) {
+        switch (player.status().state) {
+        case Media::AudioPlayer::State::Playing:
+        case Media::AudioPlayer::State::Paused:
+        case Media::AudioPlayer::State::Ended:
+            player.togglePause();
+            return;
+        case Media::AudioPlayer::State::Loading:
+            return;
+        default:
+            break; // Error: fall through and try again
+        }
+    }
+    if (file.urlPrivate.startsWith("file://")) { // pending upload — bytes are on disk
+        player.play(file.id, QUrl(file.urlPrivate).toLocalFile(), file.durationMs);
+        return;
+    }
+    if (!_session || file.urlPrivate.isEmpty())
+        return;
+    const QString url  = player.sourceUrlFor(file);
+    const QString path = audioCachePath(file, url);
+    if (QFileInfo fi(path); fi.exists() && fi.size() > 0) {
+        player.play(file.id, path, file.durationMs);
+        return;
+    }
+    player.beginLoading(file.id, file.durationMs);
+    _session->downloadFile(
+        url,
+        [id = file.id, path, dur = file.durationMs](QByteArray data) {
+            auto &pl = Media::AudioPlayer::instance();
+            if (data.isEmpty()) {
+                pl.loadFailed(id, tr("Download failed"));
+                return;
+            }
+            QDir().mkpath(QFileInfo(path).path());
+            QSaveFile f(path);
+            if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit()) {
+                pl.loadFailed(id, tr("Could not save the file"));
+                return;
+            }
+            CacheEvictor::noteBytesWritten(data.size());
+            pl.play(id, path, dur);
+        },
+        [id = file.id](QString err) {
+            qWarning() << "Audio download failed:" << err;
+            Media::AudioPlayer::instance().loadFailed(id, tr("Download failed"));
+        }
+    );
+}
+
+void MessageListWidget::openTranscript(const File &file, const Message &msg) {
+    const QString who  = _session ? _session->userDisplayName(msg.author) : QString();
+    const QString when = TimeFmt::formatTime(msg.date / 1000000);
+    auto         *dlg =
+        new TranscriptDialog(who.isEmpty() ? when : tr("%1 at %2").arg(who, when), window());
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->open();
+    if (file.transcriptVttUrl.isEmpty() || !_session) {
+        dlg->setText(file.transcriptPreview);
+        return;
+    }
+    QPointer<TranscriptDialog> guard(dlg);
+    _session->downloadFile(
+        file.transcriptVttUrl,
+        [guard, preview = file.transcriptPreview](QByteArray data) {
+            if (!guard)
+                return;
+            const auto cues = MsgRender::parseVtt(data);
+            if (cues.empty())
+                guard->setText(preview);
+            else
+                guard->setCues(cues);
+        },
+        [guard, preview = file.transcriptPreview](QString err) {
+            qWarning() << "Transcript download failed:" << err;
+            if (guard)
+                guard->setText(preview);
+        }
+    );
+}
+
+void MessageListWidget::repaintAudioChip(const QString &fileId) {
+    if (fileId.isEmpty())
+        return;
+    const int scrollY = verticalScrollBar()->value();
+    const int vh      = viewport()->height();
+    for (int i = firstVisibleRow(scrollY); i < (int)_items.size(); ++i) {
+        if (_tops[i] - scrollY > vh)
+            break;
+        const auto &files = _items[i].msg.files;
+        for (int fi = 0; fi < (int)files.size(); ++fi) {
+            if (files[fi].id != fileId)
+                continue;
+            const QRect r = fileViewportRect(i, fi);
+            if (!r.isNull())
+                viewport()->update(r.adjusted(-2, -2, 2, 2));
+            return;
+        }
+    }
+    // Not one of this list's own chips (quoted file in an unfurl, or off-screen).
+    viewport()->update();
+}
+
+std::optional<MsgRender::AudioChipState> MessageListWidget::audioChipState(const File &f) const {
+    if (!f.isAudio())
+        return std::nullopt;
+    const auto               &st = Media::AudioPlayer::instance().status();
+    MsgRender::AudioChipState a;
+    a.durationMs = f.durationMs;
+    if (st.key != f.id || st.state == Media::AudioPlayer::State::Idle)
+        return a; // idle card
+    using S = Media::AudioPlayer::State;
+    using P = MsgRender::AudioChipState::Phase;
+    switch (st.state) {
+    case S::Loading:
+        a.phase = P::Loading;
+        break;
+    case S::Playing:
+        a.phase = P::Playing;
+        break;
+    case S::Paused:
+        a.phase = P::Paused;
+        break;
+    case S::Ended:
+        a.phase = P::Ended;
+        break;
+    default:
+        a.phase = P::Error;
+        break;
+    }
+    a.positionMs = st.positionMs;
+    a.durationMs = st.durationMs > 0 ? st.durationMs : f.durationMs;
+    a.error      = st.error;
+    if (_audioScrubKey == f.id)
+        a.scrubMs = _audioScrubMs;
+    return a;
 }
 
 void MessageListWidget::doMouseLeave() {
@@ -3266,6 +3489,17 @@ void MessageListWidget::keyPressEvent(QKeyEvent *event) {
 void MessageListWidget::doMouseRelease(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton)
         return;
+    if (!_audioScrubKey.isEmpty()) {
+        // Seek where the drag ended (a plain click on the bar lands here too).
+        auto &player = Media::AudioPlayer::instance();
+        if (player.isCurrent(_audioScrubKey) && _audioScrubMs >= 0)
+            player.seek(_audioScrubMs);
+        const QString key = _audioScrubKey;
+        _audioScrubKey.clear();
+        _audioScrubMs = -1;
+        repaintAudioChip(key);
+        return;
+    }
     if (_sbDragging) {
         _sbDragging = false;
         viewport()->setCursor(Qt::ArrowCursor);
@@ -3283,6 +3517,17 @@ void MessageListWidget::doMouseRelease(QMouseEvent *event) {
 }
 
 void MessageListWidget::doMouseMove(QMouseEvent *event) {
+    if (!_audioScrubKey.isEmpty()) {
+        const auto &st = Media::AudioPlayer::instance().status();
+        if (st.key == _audioScrubKey && st.durationMs > 0 && _audioScrubBar.width() > 0) {
+            const qreal frac = std::clamp(
+                (qreal)(event->pos().x() - _audioScrubBar.left()) / _audioScrubBar.width(), 0.0, 1.0
+            );
+            _audioScrubMs = (qint64)std::llround(frac * st.durationMs);
+            repaintAudioChip(_audioScrubKey);
+        }
+        return;
+    }
     if (_sbDragging) {
         const int vh         = viewport()->height();
         const int thumbH     = std::max(20, vh * vh / _totalH);

@@ -27,6 +27,7 @@
 
 #include "text/mrkdwn_parser.h"
 #include "ui/message_list/message_list.h"
+#include "media/audio_player.h"
 #include "util/slack_links.h"
 #include "session/session.h"
 #include "backend/backend.h"
@@ -651,4 +652,53 @@ TEST_CASE(
     list.setSession(nullptr);
 
     CHECK(f.session->cachedMessages(kConv.id).size() == 1);
+}
+
+// ── Inline audio player ───────────────────────────────────────────────────────
+
+TEST_CASE(
+    "clicking an audio chip starts fetching it into the player, not the browser",
+    "[message_list][audio]"
+) {
+    Fixture f;
+    Message m = makeMessage("1000.000001", "listen to this");
+    File    audio;
+    audio.id         = "F_AUDIO";
+    audio.name       = "sample-5s.mp3";
+    audio.mimeType   = "audio/mpeg";
+    audio.prettyType = "MP3";
+    audio.size       = 80000;
+    audio.durationMs = 5000;
+    audio.urlPrivate = "https://files.slack.com/files-pri/T1-F_AUDIO/sample-5s.mp3";
+    m.files.push_back(audio);
+    f.stub->_historyPage = {m};
+
+    auto &player = Media::AudioPlayer::instance();
+    player.stop();
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.resize(500, 240);
+    list.openConversation(kConv.id);
+
+    // Sweep presses across the viewport until the player picks the file up. The
+    // stub backend's downloadFile never answers, so it stays in Loading — which
+    // is exactly the state a click on a not-yet-cached file must produce.
+    bool hit = false;
+    QObject::connect(&player, &Media::AudioPlayer::statusChanged, &list, [&](const QString &k) {
+        if (k == "F_AUDIO")
+            hit = true;
+    });
+    pressUntil(list, hit);
+
+    REQUIRE(hit);
+    CHECK(player.status().key == "F_AUDIO");
+    CHECK(player.status().state == Media::AudioPlayer::State::Loading);
+    CHECK(player.status().durationMs == 5000); // Slack's duration shown while fetching
+
+    // The chip's paint state mirrors the player.
+    const auto st = list.audioChipState(audio);
+    REQUIRE(st.has_value());
+    CHECK(st->phase == MsgRender::AudioChipState::Phase::Loading);
+    CHECK(st->durationMs == 5000);
+    player.stop();
 }

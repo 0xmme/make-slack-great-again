@@ -1698,3 +1698,39 @@ TEST_CASE(
     CHECK(page.threads[2].latestReplies[0].ts == "300.000002");
     CHECK(page.threads[2].latestReplies[1].ts == "300.000003");
 }
+
+TEST_CASE(
+    "toFile: audio metadata (duration, AAC transcode, voice-clip subtype)", "[files][audio]"
+) {
+    auto f = JsonMappers::toFile(obj(R"({
+        "id": "F1", "name": "audio_message.webm", "mimetype": "audio/webm",
+        "filetype": "webm", "pretty_type": "WebM", "subtype": "slack_audio",
+        "duration_ms": 8321, "size": 1234,
+        "url_private": "https://files.slack.com/files-pri/T1-F1/audio_message.webm",
+        "aac": "https://files.slack.com/files-tmb/T1-F1/audio_message_audio.mp4",
+        "transcription": {"status": "complete", "locale": "en-US",
+                          "preview": {"content": "Test, test, battery.", "has_more": false}},
+        "vtt": "https://files.slack.com/files-tmb/T1-F1-abc/file.vtt?_xcb=5adcc"
+    })"));
+    CHECK(f.isAudio());
+    CHECK(f.hasTranscript());
+    CHECK(f.transcriptStatus == "complete");
+    CHECK(f.transcriptPreview == "Test, test, battery.");
+    CHECK(f.transcriptVttUrl == "https://files.slack.com/files-tmb/T1-F1-abc/file.vtt?_xcb=5adcc");
+    CHECK(f.durationMs == 8321);
+    CHECK(f.subtype == "slack_audio");
+    CHECK(f.aacUrl == "https://files.slack.com/files-tmb/T1-F1/audio_message_audio.mp4");
+    CHECK_FALSE(f.hasPreview()); // renders as a chip, not an image
+
+    auto mp3 = JsonMappers::toFile(obj(R"({
+        "id": "F2", "name": "song.mp3", "mimetype": "audio/mpeg", "pretty_type": "MP3",
+        "transcription": {"status": "none"}
+    })"));
+    CHECK(mp3.isAudio());
+    CHECK_FALSE(mp3.hasTranscript()); // uploads aren't transcribed by Slack
+    CHECK(mp3.durationMs == 0);
+    CHECK(mp3.aacUrl.isEmpty());
+
+    auto pdf = JsonMappers::toFile(obj(R"({"id": "F3", "mimetype": "application/pdf"})"));
+    CHECK_FALSE(pdf.isAudio());
+}

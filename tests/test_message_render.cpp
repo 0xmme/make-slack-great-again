@@ -13,6 +13,8 @@
 
 #include <QApplication>
 #include <QDateTime>
+#include <QImage>
+#include <QPainter>
 #include <QTextDocument>
 
 #include "ui/message_list/message_render.h"
@@ -982,4 +984,143 @@ TEST_CASE(
     att.blocks.push_back(blk);
     msg.attachments.push_back(att);
     CHECK(MsgRender::notificationPreview(msg, nullptr).isEmpty());
+}
+
+// ── Audio chip ────────────────────────────────────────────────────────────────
+
+TEST_CASE(
+    "formatDuration: m:ss, h:mm:ss, floor for positions and round for lengths", "[render][audio]"
+) {
+    CHECK(MsgRender::formatDuration(0) == "0:00");
+    CHECK(MsgRender::formatDuration(4980) == "0:04");
+    CHECK(MsgRender::formatDuration(4980, true) == "0:05");
+    CHECK(MsgRender::formatDuration(65000) == "1:05");
+    CHECK(MsgRender::formatDuration(3723000) == "1:02:03");
+    CHECK(MsgRender::formatDuration(-5) == "0:00");
+}
+
+TEST_CASE("audio card geometry: round button top-left, slider row underneath", "[render][audio]") {
+    File f;
+    f.mimeType = "audio/mpeg";
+    CHECK(MsgRender::fileChipHeight(f) == MsgRender::kAudioChipH);
+    f.mimeType = "application/pdf";
+    CHECK(MsgRender::fileChipHeight(f) == MsgRender::kFileChipH);
+
+    const QRect chip(10, 20, 380, MsgRender::kAudioChipH);
+    const QRect btn = MsgRender::audioChipButtonRect(chip);
+    const QRect bar = MsgRender::audioChipBarRect(chip, 5000);
+    CHECK(chip.contains(btn));
+    CHECK(chip.contains(bar));
+    CHECK(btn.width() == btn.height());     // a circle
+    CHECK(bar.top() > btn.bottom());        // slider row is below the title block
+    CHECK(bar.right() < chip.right() - 40); // room for the time label
+    CHECK(bar.height() == 4);
+    CHECK_FALSE(bar.intersects(btn));
+
+    // A longer duration needs a wider label, so the bar gets shorter — never wider.
+    const QRect barLong = MsgRender::audioChipBarRect(chip, 3723000);
+    CHECK(barLong.width() < bar.width());
+    CHECK(barLong.left() == bar.left());
+
+    // Callers may pass an over-wide rect; geometry clamps like the painter does.
+    const QRect wide(10, 20, 1000, MsgRender::kAudioChipH);
+    CHECK(MsgRender::audioChipBarRect(wide, 5000).right() < 10 + MsgRender::kFileChipMaxW);
+}
+
+TEST_CASE(
+    "audio chip paints in every phase (and idle) without touching outside the rect",
+    "[render][audio]"
+) {
+    File f;
+    f.id         = "F1";
+    f.name       = "sample-5s.mp3";
+    f.mimeType   = "audio/mpeg";
+    f.prettyType = "MP3";
+    f.size       = 80000;
+    f.durationMs = 5000;
+
+    using Phase = MsgRender::AudioChipState::Phase;
+    std::vector<std::optional<MsgRender::AudioChipState>> states;
+    states.push_back(std::nullopt);
+    for (Phase ph :
+         {Phase::Idle, Phase::Loading, Phase::Playing, Phase::Paused, Phase::Ended, Phase::Error}) {
+        MsgRender::AudioChipState st;
+        st.phase      = ph;
+        st.positionMs = 2500;
+        st.durationMs = 5000;
+        st.error      = "Nope";
+        states.push_back(st);
+    }
+    MsgRender::AudioChipState scrub;
+    scrub.phase      = Phase::Playing;
+    scrub.durationMs = 5000;
+    scrub.scrubMs    = 4000;
+    states.push_back(scrub);
+
+    const QRect chip(8, 8, 380, MsgRender::fileChipHeight(f));
+    for (const auto &st : states) {
+        QImage img(400, 120, QImage::Format_ARGB32_Premultiplied);
+        img.fill(Qt::transparent);
+        {
+            QPainter p(&img);
+            MsgRender::paintFileChip(p, f, chip, st ? &*st : nullptr);
+        }
+        // Something was drawn inside the chip …
+        bool inside = false;
+        for (int y = chip.top(); y <= chip.bottom() && !inside; ++y)
+            for (int x = chip.left(); x <= chip.right() && !inside; ++x)
+                inside = qAlpha(img.pixel(x, y)) != 0;
+        CHECK(inside);
+        // … and nothing below it (the row height budget is exactly fileChipHeight).
+        bool below = false;
+        for (int x = 0; x < img.width() && !below; ++x)
+            below = qAlpha(img.pixel(x, chip.bottom() + 2)) != 0;
+        CHECK_FALSE(below);
+    }
+}
+
+TEST_CASE(
+    "parseVtt: Slack's WebVTT → timestamped cues, dashes and tags stripped", "[render][audio][vtt]"
+) {
+    const QByteArray vtt  = "\xEF\xBB\xBFWEBVTT \n\n"
+                            "00:00:00.349 --> 00:00:02.390\n"
+                            "- Test, test, test, battery, test, test, test.\n\n"
+                            "1\n01:02:03.500 --> 01:02:05.000\n"
+                            "<v Robin>second line\n"
+                            "continues here\n\n";
+    const auto       cues = MsgRender::parseVtt(vtt);
+    REQUIRE(cues.size() == 2);
+    CHECK(cues[0].startMs == 349);
+    CHECK(cues[0].text == "Test, test, test, battery, test, test, test.");
+    CHECK(cues[1].startMs == 3723500);
+    CHECK(cues[1].text == "second line continues here");
+    CHECK(MsgRender::parseVtt("garbage").empty());
+}
+
+TEST_CASE(
+    "audio card with a transcript grows by one line; the link sits after the preview",
+    "[render][audio]"
+) {
+    File f;
+    f.mimeType = "audio/mp4";
+    f.subtype  = "slack_audio";
+    CHECK(MsgRender::fileChipHeight(f) == MsgRender::kAudioChipH);
+    CHECK(MsgRender::audioChipTranscriptLayout(QRect(0, 0, 380, 200), f).linkRect.isNull());
+
+    f.transcriptStatus  = "complete";
+    f.transcriptPreview = "Test, test, test, battery, test, test, test.";
+    CHECK(MsgRender::fileChipHeight(f) == MsgRender::kAudioChipH + MsgRender::kTranscriptH);
+
+    const QRect chip(10, 20, 380, MsgRender::fileChipHeight(f));
+    const auto  tl = MsgRender::audioChipTranscriptLayout(chip, f);
+    CHECK(tl.textRect.top() > chip.top() + MsgRender::kAudioChipH); // below the card
+    CHECK(tl.textRect.bottom() <= chip.bottom());
+    CHECK(tl.linkRect.left() > tl.textRect.right());
+    CHECK(tl.linkRect.right() <= chip.right());
+
+    // A very long preview gets elided so the link still fits inside the chip.
+    f.transcriptPreview = QString(400, 'x');
+    const auto tl2      = MsgRender::audioChipTranscriptLayout(chip, f);
+    CHECK(tl2.linkRect.right() <= chip.right());
+    CHECK(tl2.textRect.width() < 380);
 }

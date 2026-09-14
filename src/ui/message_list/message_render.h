@@ -13,6 +13,7 @@
 #include <QSet>
 #include <QUrl>
 #include <QVector>
+#include <vector>
 
 class QPainter;
 class QRect;
@@ -205,13 +206,61 @@ QColor  fileTypeColor(const File &f);
 QString fileIconLabel(const File &f);
 QString formatFileSize(qint64 bytes);
 
-// Paint a single non-image file chip into rect using the canonical message-list style.
-// rect should be kFileChipH (52px) tall; width is clamped to kFileChipMaxW (380px).
-void paintFileChip(QPainter &p, const File &f, const QRect &rect);
+// Inline-player state of an audio card (File::isAudio()). nullptr = idle and
+// unhovered. Render stays independent of the media layer; the message list
+// maps Media::AudioPlayer's status onto this.
+struct AudioChipState {
+    enum class Phase { Idle, Loading, Playing, Paused, Ended, Error };
+    Phase   phase      = Phase::Idle;
+    qint64  positionMs = 0;
+    qint64  durationMs = 0;  // 0 = unknown
+    qint64  scrubMs    = -1; // ≥0 while the user drags the slider: shown instead of positionMs
+    QString error;           // Phase::Error
+};
+
+// Paint a single non-image file chip into rect using the canonical message-list
+// style. rect should be fileChipHeight(f) tall; width is clamped to kFileChipMaxW.
+void paintFileChip(
+    QPainter &p, const File &f, const QRect &rect, const AudioChipState *audio = nullptr
+);
+
+// Audio card geometry, in the coordinates of the rect given to paintFileChip:
+// the round play/pause button and the slider track — sized from durationMs so its right edge
+// doesn't jitter as the time label ticks.
+QRect audioChipButtonRect(const QRect &chipRect);
+QRect audioChipBarRect(const QRect &chipRect, qint64 durationMs);
+// The transcript line under the card (File::hasTranscript()): quote bar, the
+// preview text elided to what fits, then the "View transcript" link. Rects are
+// null when the file has no transcript.
+struct AudioTranscriptLayout {
+    QRect textRect;
+    QRect linkRect;
+};
+AudioTranscriptLayout audioChipTranscriptLayout(const QRect &chipRect, const File &f);
+
+// One WebVTT cue: start time and its text (speaker dashes/tags stripped).
+struct VttCue {
+    qint64  startMs = 0;
+    QString text;
+    bool    operator==(const VttCue &) const = default;
+};
+std::vector<VttCue> parseVtt(const QByteArray &vtt);
+// "0:05", "12:34", "1:02:03". Position labels floor, duration labels round —
+// a 4.98 s clip is "0:05" long but is at "0:04" while it plays.
+QString             formatDuration(qint64 ms, bool round = false);
 
 // Canonical chip dimensions — exposed so callers can size widgets correctly.
+// Audio files get the taller player card; every layout walk over a message's
+// chips must use fileChipHeight(f), never kFileChipH directly.
 inline constexpr int kFileChipH    = 52;
+inline constexpr int kAudioChipH   = 88;
+inline constexpr int kTranscriptH  = 26; // transcript line under the audio card
 inline constexpr int kFileChipMaxW = 380;
+inline int           fileChipHeight(const File &f) {
+    if (!f.isAudio())
+        return kFileChipH;
+    return kAudioChipH + (f.hasTranscript() ? kTranscriptH : 0);
+}
 
 // User mentions are rendered as anchors with this internal scheme so they are
 // hit-testable like links: href = kUserAnchorPrefix + userId.

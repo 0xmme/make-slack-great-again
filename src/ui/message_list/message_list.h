@@ -5,6 +5,7 @@
 #include "backend/domain.h"
 #include "rpl/lifetime.h"
 #include "ui/loading_indicator/loading_indicator.h"
+#include "ui/message_list/message_render.h"
 #include "ui/virtual_list/virtual_list_widget.h"
 
 #include <QDeadlineTimer>
@@ -22,6 +23,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <vector>
 
 class QMovie;
@@ -149,6 +151,10 @@ public:
     // widget can't notice on its own. Playback resumes on the next paint pass.
     void pauseGifPlayback();
 
+    // Paint state for an audio chip (File::isAudio()), or nullopt when
+    // Media::AudioPlayer holds another file — the chip then paints idle.
+    std::optional<MsgRender::AudioChipState> audioChipState(const File &f) const;
+
 signals:
     // Fired once when the first page of content for the current conversation is
     // ready to display — immediately if loaded from cache, otherwise when the
@@ -209,6 +215,9 @@ private:
     bool tryHandleFileActionBarPress(const QPoint &pos);
     bool tryHandlePreviewPress(const QPoint &pos);
     bool tryHandleFileChipPress(const QPoint &pos);
+    // Audio chips: press on the seek bar starts a scrub (release seeks), any
+    // other press toggles playback.
+    bool tryHandleAudioChipPress(const QPoint &pos);
     bool tryHandleTablePillPress(const QPoint &pos);
 
     // A data table under the cursor (message doc or an attachment doc).
@@ -478,14 +487,23 @@ private:
     int    attachFilesH(const Attachment &att) const;
     // Chip #fileIdx of a quoted message, laid out under `docRect` (the document's
     // rect in the same coordinate space the caller wants the chip in).
-    QRect  attachFileChipRect(int fileIdx, const QRect &docRect) const;
+    QRect  attachFileChipRect(const Attachment &att, int fileIdx, const QRect &docRect) const;
     // Height of a card's painted header (avatar beside the name/place lines).
     int    unfurlHeaderH() const;
     // Paint that header into `box`, reusing the message-row avatar/badge/fonts.
     void   paintUnfurlHeader(QPainter &p, const Attachment &att, const QRect &box) const;
 
     // Returns pointer to the non-image File chip under viewportPos, or nullptr.
-    const File *fileChipAt(const QPoint &viewportPos) const;
+    // chipRect / msgIdx (optional) receive the chip's viewport rect and its row.
+    const File *
+    fileChipAt(const QPoint &viewportPos, QRect *chipRect = nullptr, int *msgIdx = nullptr) const;
+    // Inline audio player. Playback state lives in Media::AudioPlayer (app-wide,
+    // survives conversation switches); the list maps it onto the chip paint,
+    // forwards clicks, and fetches the bytes into the on-disk cache first.
+    void        toggleAudio(const File &file);
+    // "View transcript" under a voice clip: Slack's own transcript in a dialog.
+    void        openTranscript(const File &file, const Message &msg);
+    void        repaintAudioChip(const QString &fileId);
     // Returns the hovered file whose inline preview (image or PDF first page)
     // is under viewportPos, or nullptr.
     const File *previewFileAt(const QPoint &viewportPos) const;
@@ -533,28 +551,28 @@ private:
     // ── Animated images (GIF / animated WebP) ──
     // Shared player for a public-URL image, or nullptr while loading / static.
     // First sighting wires frameChanged → viewport repaint (gated on visibility).
-    QMovie *gifMovieFor(const QString &url) const;
-    void    watchGifMovie(const QString &url, QMovie *movie) const;
+    QMovie    *gifMovieFor(const QString &url) const;
+    void       watchGifMovie(const QString &url, QMovie *movie) const;
     // Create a widget-owned player for an auth-downloaded file when its bytes
     // decode to an animation (public-URL ones are owned by ImageCache).
-    void    maybeCreateFileGifMovie(const QString &url, const QByteArray &bytes) const;
+    void       maybeCreateFileGifMovie(const QString &url, const QByteArray &bytes) const;
     // Swap the current movie frame into the item's doc image resources and mark
     // the url visible; called per visible row right before the docs are drawn.
     // vpRect is the row's viewport rect — the dirty region a frame change of
     // any of the item's animated emoji must repaint.
-    void    pullGifFrames(const MessageItem &item, const QRect &vpRect) const;
+    void       pullGifFrames(const MessageItem &item, const QRect &vpRect) const;
     // Record an animated url as painted this pass: adds it to _visibleGifs and
     // grows its per-frame dirty rect (_gifRects) by vpRect.
-    void    markGifVisible(const QString &url, const QRect &vpRect) const;
+    void       markGifVisible(const QString &url, const QRect &vpRect) const;
     // Start players painted this pass, pause the rest — called after each paint.
-    void    syncGifPlayback() const;
+    void       syncGifPlayback() const;
     // Release one url's player: a widget-owned movie is deleted together with
     // its _fileImages pixmap (so a reload recreates both from the disk image
     // cache); a cache-owned one is handed back via ImageCache::releaseMovie.
-    void    dropGifMovie(const QString &url) const;
+    void       dropGifMovie(const QString &url) const;
     // Release every player — conversation switch (clear) and widget teardown.
     // Reopening recreates them from cached bytes; playback restarts at frame 0.
-    void    releaseGifMovies() const;
+    void       releaseGifMovies() const;
     // Decode bound for the full-size viewer: the largest screen's longest side.
     static int viewerDecodeDim();
 
@@ -634,7 +652,7 @@ private:
     static constexpr int kGalleryGap      = 8;   // gap between gallery tiles (h & v)
     static constexpr int kGalleryMaxW     = 520; // max gallery width (wider than single-image cap)
     static constexpr int kGalleryRadius   = 8;   // rounded-corner radius of gallery tiles
-    static constexpr int kFileChipH       = 52;  // height of each non-image file chip
+    // Chip heights come from MsgRender::fileChipHeight(f) (52px, taller audio card).
     static constexpr int kFileChipGap   = 6; // gap before each chip (between chips, or above first)
     static constexpr int kFileChipIconW = 48;  // width of the colored type-icon area
     static constexpr int kFileChipMaxW  = 380; // max chip width (won't span full viewport)
@@ -768,6 +786,11 @@ private:
     std::pair<int, int> _hoveredAttach  = {-1, -1};
     // {msgIdx, fileIdx} of the file chip/image the cursor is over, else {-1,-1}
     std::pair<int, int> _hoveredFile    = {-1, -1};
+    // Seek-bar drag on an audio chip: file id, the bar's viewport rect at press
+    // time, and the position under the cursor (shown until release seeks there).
+    QString             _audioScrubKey;
+    QRect               _audioScrubBar;
+    qint64              _audioScrubMs   = -1;
     int                 _hoveredFileBtn = -1;  // 0=download, 1=share, 2=more; -1=none
     QString             _hoveredLinkUrl;       // URL of the link currently under the mouse cursor
     int                 _hoveredLinkRow  = -1; // row index owning that link (-1 if none)

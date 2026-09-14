@@ -416,6 +416,15 @@ File toFile(const QJsonObject &o) {
         .imageHeight = o.value("original_h").toInt(o.value("thumb_360_h").toInt()),
         .size        = (qint64)o.value("size").toDouble(),
     };
+    f.urlPrivateDownload = o.value("url_private_download").toString();
+    f.durationMs         = (qint64)o.value("duration_ms").toDouble();
+    f.aacUrl             = o.value("aac").toString();
+    f.subtype            = o.value("subtype").toString();
+    if (const QJsonObject tr = o.value("transcription").toObject(); !tr.isEmpty()) {
+        f.transcriptStatus  = tr.value("status").toString();
+        f.transcriptPreview = tr.value("preview").toObject().value("content").toString();
+    }
+    f.transcriptVttUrl                 = o.value("vtt").toString();
     // Full thumbnail ladder — the UI picks the variant matching the physical
     // (DPR-scaled) preview size, so previews stay crisp on any screen density.
     static constexpr int kThumbSides[] = {64, 80, 160, 360, 480, 720, 800, 960, 1024};

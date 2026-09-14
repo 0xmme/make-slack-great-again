@@ -20,6 +20,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QRect>
+#include <QRegularExpression>
 #include <QSet>
 #include <QTextBoundaryFinder>
 #include <QTextBrowser>
@@ -1642,21 +1643,79 @@ QString formatFileSize(qint64 bytes) {
     return QString("%1 MB").arg(mb, 0, 'f', mb < 10 ? 1 : 0);
 }
 
-void paintFileChip(QPainter &p, const File &f, const QRect &rect) {
-    static constexpr int kIconW  = 48;
-    static constexpr int kPadX   = 12;
-    static constexpr int kRadius = 4;
+namespace {
 
-    const int   chipW = std::min(rect.width(), kFileChipMaxW);
-    const QRect chipRect(rect.x(), rect.y(), chipW, kFileChipH);
+constexpr int kChipIconW  = 48;
+constexpr int kChipPadX   = 12;
+constexpr int kChipRadius = 4;
+
+// Audio card: round play button + title block on top, slider row underneath.
+constexpr int kAudioPad    = 12;
+constexpr int kAudioBtn    = 36; // play/pause circle
+constexpr int kAudioKnob   = 12;
+constexpr int kAudioBarH   = 4;
+constexpr int kAudioRadius = 8;
+
+QRect clampChip(const QRect &rect, const File &f) {
+    return QRect(rect.x(), rect.y(), std::min(rect.width(), kFileChipMaxW), fileChipHeight(f));
+}
+QRect clampChip(const QRect &rect, int h) {
+    return QRect(rect.x(), rect.y(), std::min(rect.width(), kFileChipMaxW), h);
+}
+
+QFont chipNameFont() {
+    QFont f = QApplication::font();
+    f.setBold(true);
+    return f;
+}
+QFont chipSubFont() {
+    QFont f = QApplication::font();
+    f.setPointSizeF(f.pointSizeF() * 0.82);
+    return f;
+}
+
+// Text column layout of the plain (non-audio) chip.
+struct ChipText {
+    QRect chip; // clamped chip rect
+    int   textX, textW;
+    QFont nameFont, subFont;
+    int   nameTop, subTop, subH;
+};
+
+ChipText chipText(const QRect &rect) {
+    ChipText t;
+    t.chip     = clampChip(rect, kFileChipH);
+    t.textX    = t.chip.x() + kChipIconW + kChipPadX;
+    t.textW    = t.chip.width() - kChipIconW - kChipPadX - 8;
+    t.nameFont = chipNameFont();
+    t.subFont  = chipSubFont();
+    const QFontMetrics nameFm(t.nameFont), subFm(t.subFont);
+    const int          totalTextH = nameFm.height() + 3 + subFm.height();
+    t.nameTop                     = t.chip.y() + (kFileChipH - totalTextH) / 2;
+    t.subTop                      = t.nameTop + nameFm.height() + 3;
+    t.subH                        = subFm.height();
+    return t;
+}
+
+// Width reserved for the slider row's time label: the clip's length, or the
+// widest "m:ss" when it is unknown, so the track never resizes mid-play.
+int audioTimeLabelW(const QFontMetrics &fm, qint64 durationMs) {
+    const QString sample =
+        durationMs > 0 ? formatDuration(durationMs, true) : QStringLiteral("0:00");
+    return std::max(fm.horizontalAdvance(sample), fm.horizontalAdvance(QStringLiteral("0:00")));
+}
+
+void paintPlainChip(QPainter &p, const File &f, const QRect &rect) {
+    const ChipText t        = chipText(rect);
+    const QRect   &chipRect = t.chip;
 
     // Clipped fill: background + colored icon column
     QPainterPath clipPath;
-    clipPath.addRoundedRect(QRectF(chipRect), kRadius, kRadius);
+    clipPath.addRoundedRect(QRectF(chipRect), kChipRadius, kChipRadius);
     p.save();
     p.setClipPath(clipPath);
     p.fillRect(chipRect, Th::c().message.fileChipBg);
-    p.fillRect(QRect(chipRect.x(), chipRect.y(), kIconW, kFileChipH), fileTypeColor(f));
+    p.fillRect(QRect(chipRect.x(), chipRect.y(), kChipIconW, kFileChipH), fileTypeColor(f));
     p.restore();
 
     // Border
@@ -1664,7 +1723,7 @@ void paintFileChip(QPainter &p, const File &f, const QRect &rect) {
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Th::c().message.fileChipBorder);
     p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(QRectF(chipRect), kRadius, kRadius);
+    p.drawRoundedRect(QRectF(chipRect), kChipRadius, kChipRadius);
     p.restore();
 
     // Extension label centered in icon column
@@ -1676,49 +1735,271 @@ void paintFileChip(QPainter &p, const File &f, const QRect &rect) {
         p.setFont(iconFont);
         p.setPen(Qt::white);
         p.drawText(
-            QRect(chipRect.x(), chipRect.y(), kIconW, kFileChipH), Qt::AlignCenter, fileIconLabel(f)
+            QRect(chipRect.x(), chipRect.y(), kChipIconW, kFileChipH),
+            Qt::AlignCenter,
+            fileIconLabel(f)
         );
         p.restore();
     }
 
     // Filename + subtitle (type · size) vertically centred in text column
-    const int textX = chipRect.x() + kIconW + kPadX;
-    const int textW = chipW - kIconW - kPadX - 8;
-
-    QFont nameFont = QApplication::font();
-    nameFont.setBold(true);
-    const QFontMetrics nameFm(nameFont);
-
-    QFont subFont = QApplication::font();
-    subFont.setPointSizeF(subFont.pointSizeF() * 0.82);
-    const QFontMetrics subFm(subFont);
-
-    const int totalTextH = nameFm.height() + 3 + subFm.height();
-    const int textTop    = chipRect.y() + (kFileChipH - totalTextH) / 2;
-
+    const QFontMetrics nameFm(t.nameFont);
     p.save();
-    p.setFont(nameFont);
+    p.setFont(t.nameFont);
     p.setPen(Th::c().text.primary);
     p.drawText(
-        QRect(textX, textTop, textW, nameFm.height()),
+        QRect(t.textX, t.nameTop, t.textW, nameFm.height()),
         Qt::AlignLeft | Qt::AlignVCenter,
-        nameFm.elidedText(f.name, Qt::ElideRight, textW)
+        nameFm.elidedText(f.name, Qt::ElideRight, t.textW)
     );
-
     QString       sub = f.prettyType;
     const QString sz  = formatFileSize(f.size);
     if (!sz.isEmpty())
         sub += (sub.isEmpty() ? "" : " · ") + sz;
     if (!sub.isEmpty()) {
-        p.setFont(subFont);
+        p.setFont(t.subFont);
         p.setPen(Th::c().text.secondary);
         p.drawText(
-            QRect(textX, textTop + nameFm.height() + 3, textW, subFm.height()),
-            Qt::AlignLeft | Qt::AlignVCenter,
-            sub
+            QRect(t.textX, t.subTop, t.textW, t.subH), Qt::AlignLeft | Qt::AlignVCenter, sub
         );
     }
     p.restore();
+}
+
+void paintAudioCard(QPainter &p, const File &f, const QRect &rect, const AudioChipState *audio) {
+    using Phase = AudioChipState::Phase;
+    static const AudioChipState kIdle;
+    if (!audio)
+        audio = &kIdle;
+    const QRect chip = clampChip(rect, kAudioChipH);
+    const QRect btn  = audioChipButtonRect(chip);
+    const QRect bar =
+        audioChipBarRect(chip, audio->durationMs > 0 ? audio->durationMs : f.durationMs);
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+
+    // Card
+    p.setPen(Th::c().message.fileChipBorder);
+    p.setBrush(Th::c().message.fileChipBg);
+    p.drawRoundedRect(QRectF(chip).adjusted(0.5, 0.5, -0.5, -0.5), kAudioRadius, kAudioRadius);
+
+    // Icons — re-baked on DPR/theme change (never a bare static — see .rules).
+    static const QSize kGlyphSz(16, 16);
+    static qreal       kDpr = 0;
+    static QColor      kAccent;
+    static QPixmap     kPlay, kPause;
+    const QColor       accent = Th::c().accent.def;
+    if (const qreal d = p.device()->devicePixelRatioF();
+        !qFuzzyCompare(d, kDpr) || accent != kAccent) {
+        kDpr    = d;
+        kAccent = accent;
+        kPlay   = svgPixmapPhys(":/ui/play.svg", kGlyphSz, accent, d);
+        kPause  = svgPixmapPhys(":/ui/pause.svg", kGlyphSz, accent, d);
+    }
+
+    // Round play/pause button
+    const bool playing = audio->phase == Phase::Playing;
+    p.setPen(Qt::NoPen);
+    p.setBrush(Th::c().accent.subtleBg);
+    p.drawEllipse(QRectF(btn));
+    {
+        const QPixmap &glyph = playing ? kPause : kPlay;
+        const int      gx = btn.left() + (btn.width() - kGlyphSz.width()) / 2 + (playing ? 0 : 1);
+        const int      gy = btn.top() + (btn.height() - kGlyphSz.height()) / 2;
+        p.drawPixmap(gx, gy, glyph);
+    }
+
+    // Title block: name, then "0:05 (79 KB)" / Loading… / error
+    const QFont        nameFont = chipNameFont(), subFont = chipSubFont();
+    const QFontMetrics nameFm(nameFont), subFm(subFont);
+    const int          textX = btn.right() + 1 + kAudioPad;
+    const int          textW = chip.right() - textX - kAudioPad + 1;
+    p.setFont(nameFont);
+    p.setPen(Th::c().text.primary);
+    p.drawText(
+        QRect(textX, btn.top() - 1, textW, nameFm.height()),
+        Qt::AlignLeft | Qt::AlignVCenter,
+        nameFm.elidedText(f.name, Qt::ElideRight, textW)
+    );
+    QString sub;
+    QColor  subColor = Th::c().text.secondary;
+    if (audio->phase == Phase::Error) {
+        sub      = audio->error;
+        subColor = Th::c().danger.text;
+    } else if (audio->phase == Phase::Loading) {
+        sub = QCoreApplication::translate("MsgRender", "Loading…");
+    } else {
+        const qint64  dur = audio->durationMs > 0 ? audio->durationMs : f.durationMs;
+        const QString sz  = formatFileSize(f.size);
+        if (dur > 0)
+            sub = formatDuration(dur, true) +
+                  (sz.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(sz));
+        else
+            sub = sz.isEmpty() ? f.prettyType : sz;
+    }
+    p.setFont(subFont);
+    p.setPen(subColor);
+    p.drawText(
+        QRect(textX, btn.top() - 1 + nameFm.height() + 2, textW, subFm.height()),
+        Qt::AlignLeft | Qt::AlignVCenter,
+        subFm.elidedText(sub, Qt::ElideRight, textW)
+    );
+
+    // Slider: track, played part, knob
+    const qint64 dur  = audio->durationMs > 0 ? audio->durationMs : f.durationMs;
+    const bool   live = audio->phase == Phase::Playing || audio->phase == Phase::Paused ||
+                      audio->phase == Phase::Ended || audio->scrubMs >= 0;
+    qint64 pos = audio->scrubMs >= 0 ? audio->scrubMs : audio->positionMs;
+    if (audio->phase == Phase::Ended && audio->scrubMs < 0)
+        pos = dur;
+    if (!live)
+        pos = 0;
+    const qreal frac = dur > 0 ? std::clamp((qreal)pos / (qreal)dur, 0.0, 1.0) : 0.0;
+    p.setPen(Qt::NoPen);
+    p.setBrush(Th::c().message.fileChipBorder);
+    p.drawRoundedRect(QRectF(bar), kAudioBarH / 2.0, kAudioBarH / 2.0);
+    const qreal knobX = bar.left() + bar.width() * frac;
+    if (frac > 0) {
+        QRectF fill(bar);
+        fill.setRight(knobX);
+        p.setBrush(Th::c().accent.def);
+        p.drawRoundedRect(fill, kAudioBarH / 2.0, kAudioBarH / 2.0);
+    }
+    p.setBrush(live ? Th::c().accent.def : Th::c().text.secondary);
+    p.drawEllipse(QPointF(knobX, bar.center().y() + 0.5), kAudioKnob / 2.0, kAudioKnob / 2.0);
+
+    // Time: elapsed while live, the clip's length otherwise
+    QString label;
+    if (audio->phase == Phase::Ended && audio->scrubMs < 0)
+        label = dur > 0 ? formatDuration(dur, true) : QString();
+    else if (live)
+        label = formatDuration(pos);
+    else if (dur > 0)
+        label = formatDuration(dur, true);
+    p.setFont(subFont);
+    p.setPen(Th::c().text.secondary);
+    p.drawText(
+        QRect(
+            bar.right() + 1,
+            bar.center().y() - kAudioBtn / 2,
+            chip.right() + 1 - kAudioPad - bar.right() - 1,
+            kAudioBtn
+        ),
+        Qt::AlignRight | Qt::AlignVCenter,
+        label
+    );
+
+    // Transcript line under the card
+    if (f.hasTranscript()) {
+        const AudioTranscriptLayout tl = audioChipTranscriptLayout(rect, f);
+        const QFontMetrics          fm(QApplication::font());
+        p.setPen(Qt::NoPen);
+        p.setBrush(Th::c().divider.def);
+        p.drawRoundedRect(QRectF(chip.x(), tl.textRect.y(), 3, tl.textRect.height()), 1.5, 1.5);
+        p.setFont(QApplication::font());
+        p.setPen(Th::c().text.secondary);
+        p.drawText(
+            tl.textRect,
+            Qt::AlignLeft | Qt::AlignVCenter,
+            fm.elidedText(f.transcriptPreview.simplified(), Qt::ElideRight, tl.textRect.width())
+        );
+        p.setPen(Th::c().text.link);
+        p.drawText(
+            tl.linkRect,
+            Qt::AlignLeft | Qt::AlignVCenter,
+            QCoreApplication::translate("MsgRender", "View transcript")
+        );
+    }
+    p.restore();
+}
+
+} // namespace
+
+QString formatDuration(qint64 ms, bool round) {
+    const qint64  s   = std::max<qint64>(0, round ? (ms + 500) / 1000 : ms / 1000);
+    const qint64  h   = s / 3600;
+    const qint64  m   = (s / 60) % 60;
+    const qint64  sec = s % 60;
+    const QString ms2 = QStringLiteral("%1:%2")
+                            .arg(m, h > 0 ? 2 : 1, 10, QLatin1Char('0'))
+                            .arg(sec, 2, 10, QLatin1Char('0'));
+    return h > 0 ? QStringLiteral("%1:%2").arg(h).arg(ms2) : ms2;
+}
+
+QRect audioChipButtonRect(const QRect &chipRect) {
+    const QRect c = clampChip(chipRect, kAudioChipH);
+    return QRect(c.x() + kAudioPad, c.y() + kAudioPad, kAudioBtn, kAudioBtn);
+}
+
+QRect audioChipBarRect(const QRect &chipRect, qint64 durationMs) {
+    const QRect        c = clampChip(chipRect, kAudioChipH);
+    const QFontMetrics subFm(chipSubFont());
+    const int          labelW = audioTimeLabelW(subFm, durationMs);
+    const int          x      = c.x() + kAudioPad + kAudioKnob / 2;
+    const int          right  = c.right() + 1 - kAudioPad - labelW - 12;
+    // Slider row is centred in the band under the title block.
+    const int          rowMid = c.bottom() + 1 - kAudioPad - kAudioBtn / 2 + 4;
+    return QRect(x, rowMid - kAudioBarH / 2, std::max(20, right - x), kAudioBarH);
+}
+
+AudioTranscriptLayout audioChipTranscriptLayout(const QRect &chipRect, const File &f) {
+    if (!f.hasTranscript())
+        return {};
+    const QRect        c = clampChip(chipRect, kAudioChipH);
+    const QFontMetrics fm(QApplication::font());
+    const QString      link  = QCoreApplication::translate("MsgRender", "View transcript");
+    const int          linkW = fm.horizontalAdvance(link);
+    const int          top   = c.bottom() + 1 + (kTranscriptH - fm.height()) / 2;
+    const int          textX = c.x() + 3 + kAudioPad;
+    const int          avail = c.right() + 1 - textX - linkW - 6;
+    const int textW = std::min(avail, fm.horizontalAdvance(f.transcriptPreview.simplified()));
+    AudioTranscriptLayout tl;
+    tl.textRect = QRect(textX, top, std::max(0, textW), fm.height());
+    tl.linkRect = QRect(tl.textRect.right() + 1 + 6, top, linkW, fm.height());
+    return tl;
+}
+
+std::vector<VttCue> parseVtt(const QByteArray &vtt) {
+    // WEBVTT header, blank line, then cues: optional id line, "hh:mm:ss.mmm -->
+    // hh:mm:ss.mmm", payload lines until a blank line.
+    static const QRegularExpression kTiming(R"(^(?:(\d+):)?(\d{1,2}):(\d{2})\.(\d{3})\s*-->)");
+    static const QRegularExpression kTag("<[^>]*>"); // <v Speaker>, <c>, <i>…
+    static const QRegularExpression kEol("\\r?\\n");
+    std::vector<VttCue>             cues;
+    QString                         text = QString::fromUtf8(vtt);
+    if (text.startsWith(QChar(0xFEFF)))
+        text.remove(0, 1);
+    const QStringList lines = text.split(kEol);
+    for (int i = 0; i < lines.size(); ++i) {
+        const auto m = kTiming.match(lines[i]);
+        if (!m.hasMatch())
+            continue;
+        VttCue cue;
+        cue.startMs = ((m.captured(1).toLongLong() * 60 + m.captured(2).toLongLong()) * 60 +
+                       m.captured(3).toLongLong()) *
+                          1000 +
+                      m.captured(4).toLongLong();
+        QStringList payload;
+        for (++i; i < lines.size() && !lines[i].trimmed().isEmpty(); ++i) {
+            QString l = lines[i].trimmed();
+            l.remove(kTag);
+            if (l.startsWith(QLatin1String("- ")))
+                l.remove(0, 2);
+            payload << l;
+        }
+        cue.text = payload.join(' ').simplified();
+        if (!cue.text.isEmpty())
+            cues.push_back(cue);
+    }
+    return cues;
+}
+
+void paintFileChip(QPainter &p, const File &f, const QRect &rect, const AudioChipState *audio) {
+    if (f.isAudio())
+        paintAudioCard(p, f, rect, audio);
+    else
+        paintPlainChip(p, f, rect);
 }
 
 void configurePreviewBrowser(QTextBrowser *browser) {

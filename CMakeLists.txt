@@ -205,6 +205,11 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/util/sound_player.cpp
     src/util/time_format.cpp
 
+    # Media (inline audio playback; the platform engine TU is added below)
+    src/media/audio_player.cpp
+    # Listed so AUTOMOC processes the Q_OBJECT (impl TUs are platform-suffixed).
+    src/media/audio_engine.h
+
     # Cache
     src/cache/workspace_cache.cpp
     src/cache/cache_evictor.cpp
@@ -262,6 +267,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/delete_message_dialog/delete_message_dialog.cpp
     src/ui/reminder_dialog/reminder_dialog.cpp
     src/ui/summary_dialog/summary_dialog.cpp
+    src/ui/transcript_dialog/transcript_dialog.cpp
     src/ui/summary_dialog/summarize_job.cpp
     src/ui/conv_selector/conv_selector_widget.cpp
     src/ui/forward_dialog/forward_dialog.cpp
@@ -522,6 +528,30 @@ elseif(WIN32)
     target_link_libraries(msga PRIVATE winmm)
 else()
     target_sources(msga PRIVATE src/util/sound_player_linux.cpp)
+endif()
+
+# Inline audio playback engine (src/media/audio_engine_*): the same
+# no-Qt-Multimedia constraint as above. macOS plays through AVAudioPlayer,
+# Windows through MFPlay (Media Foundation); Linux decodes in-process with the
+# vendored miniaudio (third_party/miniaudio, public domain — MP3/WAV/FLAC/
+# Vorbis, `ffmpeg` on PATH for anything else) and pipes raw PCM into the
+# desktop's sound-server CLI (pw-cat / paplay / aplay).
+if(APPLE)
+    target_sources(msga PRIVATE src/media/audio_engine_mac.mm)
+    set_source_files_properties(src/media/audio_engine_mac.mm
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    target_link_libraries(msga PRIVATE "-framework AVFoundation")
+elseif(WIN32)
+    target_sources(msga PRIVATE src/media/audio_engine_win.cpp)
+    target_link_libraries(msga PRIVATE mfplay ole32)
+else()
+    enable_language(C)
+    add_library(msga_miniaudio STATIC third_party/miniaudio/miniaudio_impl.c)
+    target_include_directories(msga_miniaudio SYSTEM PUBLIC third_party/miniaudio)
+    target_compile_options(msga_miniaudio PRIVATE -w)
+    target_link_libraries(msga_miniaudio PUBLIC m)
+    target_sources(msga PRIVATE src/media/audio_engine_linux.cpp)
+    target_link_libraries(msga PRIVATE msga_miniaudio)
 endif()
 
 # Secret storage (src/util/secret_store*): credentials (tokens, API keys, the

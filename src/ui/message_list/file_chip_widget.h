@@ -6,7 +6,8 @@
 #include <QWidget>
 
 // Paints a single non-image file chip using the canonical message-list style.
-// Fixed height (52px); respects parent width up to 380px.
+// Fixed height (MsgRender::fileChipHeight — 52px, 88px for the audio card);
+// respects parent width up to 380px.
 class FileChipWidget : public QWidget {
     Q_OBJECT
 public:

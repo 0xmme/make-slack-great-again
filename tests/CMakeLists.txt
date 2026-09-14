@@ -780,10 +780,38 @@ add_msga_widget_test(test_conv_list_widget
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 
+# Inline audio player: MessageListWidget talks to Media::AudioPlayer, whose
+# platform engine TU is picked the same way the top-level CMakeLists does.
+# Only test targets that compile message_list.cpp need these.
+if(APPLE)
+    set(_audio_engine ${CMAKE_SOURCE_DIR}/src/media/audio_engine_mac.mm)
+elseif(WIN32)
+    set(_audio_engine ${CMAKE_SOURCE_DIR}/src/media/audio_engine_win.cpp)
+else()
+    set(_audio_engine ${CMAKE_SOURCE_DIR}/src/media/audio_engine_linux.cpp)
+endif()
+set(MSGA_AUDIO_SRCS
+    ${CMAKE_SOURCE_DIR}/src/media/audio_player.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/audio_engine.h
+    ${_audio_engine}
+)
+function(msga_link_audio target)
+    if(APPLE)
+        set_source_files_properties(${CMAKE_SOURCE_DIR}/src/media/audio_engine_mac.mm
+            PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+        target_link_libraries(${target} PRIVATE "-framework AVFoundation")
+    elseif(WIN32)
+        target_link_libraries(${target} PRIVATE mfplay ole32)
+    else()
+        target_link_libraries(${target} PRIVATE msga_miniaudio)
+    endif()
+endfunction()
+
 # ThreadPanel owns a MessageListWidget and a ComposerWidget, so the link set is
 # the union of what test_message_list and test_composer already need.
 add_msga_widget_test(test_thread_panel
     test_thread_panel.cpp
+    ${MSGA_AUDIO_SRCS}
     ${CMAKE_SOURCE_DIR}/src/ui/shortcuts.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
@@ -801,6 +829,7 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/reminder_dialog/reminder_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/transcript_dialog/transcript_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summarize_job.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
@@ -841,9 +870,11 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/ui/thread_panel/thread_export_job.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
+msga_link_audio(test_thread_panel)
 
 add_msga_widget_test(test_message_list
     test_message_list.cpp
+    ${MSGA_AUDIO_SRCS}
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list_paint.cpp
@@ -860,6 +891,7 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/reminder_dialog/reminder_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/transcript_dialog/transcript_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summarize_job.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
@@ -889,6 +921,7 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
+msga_link_audio(test_message_list)
 
 
 # Sound player: shared logic + the platform-native backend for this OS.
@@ -932,3 +965,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR 
     endif()
 endif()
 
+
+# Inline audio player: AudioPlayer state machine (scripted engine) + the real
+# platform engine's decode path (Linux: miniaudio on a generated WAV, never
+# played — no sound server needed under ctest).
+add_msga_qt_test(test_audio_player
+    test_audio_player.cpp
+    ${MSGA_AUDIO_SRCS}
+)
+set_target_properties(test_audio_player PROPERTIES AUTOMOC ON)
+target_link_libraries(test_audio_player PRIVATE Qt6::Gui)
+msga_link_audio(test_audio_player)

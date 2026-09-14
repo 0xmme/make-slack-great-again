@@ -83,6 +83,20 @@ static QJsonObject toJson(const File &f) {
     o["iw"] = f.imageWidth;
     o["ih"] = f.imageHeight;
     o["sz"] = static_cast<double>(f.size);
+    if (!f.urlPrivateDownload.isEmpty())
+        o["ud"] = f.urlPrivateDownload;
+    if (f.durationMs > 0)
+        o["dm"] = static_cast<double>(f.durationMs);
+    if (!f.aacUrl.isEmpty())
+        o["aac"] = f.aacUrl;
+    if (!f.subtype.isEmpty())
+        o["st"] = f.subtype;
+    if (!f.transcriptStatus.isEmpty())
+        o["tst"] = f.transcriptStatus;
+    if (!f.transcriptPreview.isEmpty())
+        o["tpv"] = f.transcriptPreview;
+    if (!f.transcriptVttUrl.isEmpty())
+        o["tvt"] = f.transcriptVttUrl;
     if (!f.thumbs.empty()) {
         QJsonArray arr;
         for (const auto &t : f.thumbs)
@@ -99,16 +113,23 @@ static QJsonObject toJson(const File &f) {
 }
 static File fileFromJson(const QJsonObject &o) {
     File f;
-    f.id          = o["id"].toString();
-    f.name        = o["na"].toString();
-    f.mimeType    = o["mi"].toString();
-    f.prettyType  = o["pt"].toString();
-    f.urlPrivate  = o["up"].toString();
-    f.permalink   = o["pl"].toString();
-    f.thumbUrl    = o["th"].toString();
-    f.imageWidth  = o["iw"].toInt();
-    f.imageHeight = o["ih"].toInt();
-    f.size        = static_cast<qint64>(o["sz"].toDouble());
+    f.id                 = o["id"].toString();
+    f.name               = o["na"].toString();
+    f.mimeType           = o["mi"].toString();
+    f.prettyType         = o["pt"].toString();
+    f.urlPrivate         = o["up"].toString();
+    f.permalink          = o["pl"].toString();
+    f.thumbUrl           = o["th"].toString();
+    f.imageWidth         = o["iw"].toInt();
+    f.imageHeight        = o["ih"].toInt();
+    f.size               = static_cast<qint64>(o["sz"].toDouble());
+    f.urlPrivateDownload = o["ud"].toString();
+    f.durationMs         = static_cast<qint64>(o["dm"].toDouble());
+    f.aacUrl             = o["aac"].toString();
+    f.subtype            = o["st"].toString();
+    f.transcriptStatus   = o["tst"].toString();
+    f.transcriptPreview  = o["tpv"].toString();
+    f.transcriptVttUrl   = o["tvt"].toString();
     for (const auto &v : o["tb"].toArray()) {
         const auto t = v.toObject();
         f.thumbs.push_back(FileThumb{t["w"].toInt(), t["h"].toInt(), t["u"].toString()});

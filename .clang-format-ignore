@@ -1,0 +1,8 @@
+# Vendored third-party sources stay byte-identical to upstream.
+#
+# miniaudio.h must be ignored rather than merely left alone: clang-format's
+# preprocessor-branch exploration blows up combinatorially on it (nested
+# #if/#elif/#else inside function bodies and asm operand lists), reaching
+# ~49 GB RSS and getting OOM-killed -- which takes the whole machine down,
+# not just the format run.
+third_party/**
