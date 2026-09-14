@@ -122,8 +122,9 @@ public:
     void open(const QPoint &globalPos);
 
 signals:
-    // Emitted when the user picks a GIF; url is the full-size one to post.
-    void gifSelected(const QString &url);
+    // Emitted when the user picks a GIF: the full-size url to post, and the
+    // GIF's title (may be empty) for the composer to label it with.
+    void gifSelected(const QString &url, const QString &title);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

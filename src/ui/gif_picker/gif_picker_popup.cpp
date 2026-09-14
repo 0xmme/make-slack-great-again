@@ -433,7 +433,7 @@ GifPickerPopup::GifPickerPopup(QWidget *parent)
 
     connect(_grid, &GifGrid::gifActivated, this, [this](const net::GifResult &gif) {
         hide();
-        emit gifSelected(gif.postUrl);
+        emit gifSelected(gif.postUrl, gif.description);
     });
 
     connect(

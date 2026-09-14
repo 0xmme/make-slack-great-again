@@ -584,6 +584,20 @@ static QString renderRange(
             }
             break;
         case EntityType::Link: {
+            if (LinkLabels::isGiphyMediaUrl(e.data)) {
+                // A GIPHY media URL is an opaque hash, and Slack unfurls the
+                // animation underneath the message anyway, so the link is drawn
+                // as a "GIF" badge — a pill like a mention — with the link's own
+                // title after it when it has one.
+                const bool titled = !LinkLabels::isUrlLabel(rawInner, e.data);
+                html += "<a href='" + e.data.toHtmlEscaped() +
+                        "' style='color:" + Th::qss(Th::c().message.mentionText) +
+                        ";background:" + Th::qss(Th::c().message.mentionBg) +
+                        ";border-radius:3px;padding:0 4px;text-decoration:none'><b>" +
+                        QCoreApplication::translate("MsgRender", "GIF") + "</b>" +
+                        (titled ? QStringLiteral(" · ") + inner : QString()) + "</a>";
+                break;
+            }
             // Slack's composer stores pasted-URL labels aggressively truncated
             // ("host/…/…"); rebuild a longer one from the full URL. Capped by
             // characters, not layout width — the HTML is built once per doc and

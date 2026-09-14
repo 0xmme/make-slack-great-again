@@ -63,3 +63,28 @@ TEST_CASE("plainTextWithFullUrls is a no-op without shortened links", "[link_lab
     t.entities = {{EntityType::Bold, 0, 4, {}}};
     CHECK(LinkLabels::plainTextWithFullUrls(t) == "just words");
 }
+
+// ── GIPHY media links ─────────────────────────────────────────────────────────
+
+TEST_CASE("GIPHY media urls are detected across its hosts", "[link_labels][gif]") {
+    CHECK(LinkLabels::isGiphyMediaUrl("https://media.giphy.com/media/abc123/giphy.gif"));
+    CHECK(LinkLabels::isGiphyMediaUrl("https://media0.giphy.com/media/v1.Y2lk/200w.gif"));
+    CHECK(LinkLabels::isGiphyMediaUrl("https://media4.giphy.com/media/abc/giphy-downsized.gif"));
+    CHECK(LinkLabels::isGiphyMediaUrl("https://i.giphy.com/abc123.gif"));
+    CHECK(LinkLabels::isGiphyMediaUrl("https://i.giphy.com/media/abc/giphy.webp"));
+    // The site itself, or an unrelated host that merely mentions giphy.
+    CHECK_FALSE(LinkLabels::isGiphyMediaUrl("https://giphy.com/gifs/cat-abc123"));
+    CHECK_FALSE(LinkLabels::isGiphyMediaUrl("https://giphy.com/"));
+    CHECK_FALSE(LinkLabels::isGiphyMediaUrl("https://notgiphy.com/media/abc/giphy.gif"));
+    CHECK_FALSE(LinkLabels::isGiphyMediaUrl("https://example.com/media/giphy.com/x.gif"));
+    CHECK_FALSE(LinkLabels::isGiphyMediaUrl("not a url"));
+}
+
+TEST_CASE("a label that only restates the url carries no title", "[link_labels][gif]") {
+    const QString url = "https://media.giphy.com/media/abc123/giphy.gif";
+    CHECK(LinkLabels::isUrlLabel("", url));
+    CHECK(LinkLabels::isUrlLabel(url, url));
+    CHECK(LinkLabels::isUrlLabel("media.giphy.com/media/abc123/giphy.gif", url));
+    CHECK(LinkLabels::isUrlLabel(QString::fromUtf8("media.giphy.com/media/…/…"), url));
+    CHECK_FALSE(LinkLabels::isUrlLabel("Dancing cat", url));
+}

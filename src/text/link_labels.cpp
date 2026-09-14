@@ -7,6 +7,18 @@
 
 namespace LinkLabels {
 
+bool isUrlLabel(const QString &label, const QString &url) {
+    const QString l = label.trimmed();
+    if (l.isEmpty() || l == url)
+        return true;
+    static const QRegularExpression kScheme(QStringLiteral("^[a-zA-Z][a-zA-Z0-9+.-]*://"));
+    QString                         bare = url;
+    bare.remove(kScheme);
+    if (l == bare || l == bare.chopped(bare.endsWith('/') ? 1 : 0))
+        return true;
+    return isShortenedUrlLabel(l, url);
+}
+
 namespace {
 
 constexpr QChar kEllipsis(0x2026); // '…'
