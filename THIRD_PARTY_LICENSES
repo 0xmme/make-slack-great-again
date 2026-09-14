@@ -9,3 +9,12 @@ This project uses the following third-party libraries:
 
 - Microsoft GSL (https://github.com/microsoft/GSL), licensed under the
   MIT License.
+
+- miniaudio (https://github.com/mackron/miniaudio) by David Reid, available
+  as a choice of Public Domain (Unlicense) or the MIT No Attribution
+  License. Vendored in third_party/miniaudio, together with the dr_wav,
+  dr_flac and dr_mp3 decoders it embeds (same author, same terms).
+
+- stb_vorbis (http://nothings.org/stb_vorbis/) by Sean Barrett, available as
+  a choice of the MIT License or Public Domain (Unlicense). Vendored in
+  third_party/miniaudio/stb_vorbis.c.
