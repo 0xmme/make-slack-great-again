@@ -102,20 +102,20 @@ void ConvListWidget::rebuildIconPixmaps() {
         return svgPixmapPhys(path, sz, c, dpr);
     };
 
-    _iconPx.chevDown   = px(":/ui/chevron-down.svg", big, th.text.onDarkDim);
-    _iconPx.chevRight  = px(":/ui/chevron-right.svg", big, th.text.onDarkDim);
-    _iconPx.hash       = px(":/ui/hash.svg", big, th.text.onDarkDim);
-    _iconPx.msg        = px(":/ui/messages-square.svg", big, th.text.onDarkDim);
-    _iconPx.bot        = px(":/ui/bot.svg", big, th.text.onDarkDim);
-    _iconPx.star       = px(":/ui/star.svg", big, th.text.onDarkDim);
-    _iconPx.plusDim    = px(":/ui/plus.svg", big, th.text.onDarkDim);
-    _iconPx.plusBright = px(":/ui/plus.svg", big, th.text.onDark);
+    _iconPx.chevDown   = px(":/ui/chevron-down.svg", big, th.nav.itemTextDim);
+    _iconPx.chevRight  = px(":/ui/chevron-right.svg", big, th.nav.itemTextDim);
+    _iconPx.hash       = px(":/ui/hash.svg", big, th.nav.itemTextDim);
+    _iconPx.msg        = px(":/ui/messages-square.svg", big, th.nav.itemTextDim);
+    _iconPx.bot        = px(":/ui/bot.svg", big, th.nav.itemTextDim);
+    _iconPx.star       = px(":/ui/star.svg", big, th.nav.itemTextDim);
+    _iconPx.plusDim    = px(":/ui/plus.svg", big, th.nav.itemTextDim);
+    _iconPx.plusBright = px(":/ui/plus.svg", big, th.nav.itemText);
 
-    _iconPx.lockDim        = px(":/ui/lock.svg", sm, th.text.onDarkDim);
-    _iconPx.lockBright     = px(":/ui/lock.svg", sm, th.text.onDark);
+    _iconPx.lockDim        = px(":/ui/lock.svg", sm, th.nav.itemTextDim);
+    _iconPx.lockBright     = px(":/ui/lock.svg", sm, th.nav.itemText);
     _iconPx.lockSelected   = px(":/ui/lock.svg", sm, th.nav.itemSelectedText);
-    _iconPx.hashSmDim      = px(":/ui/hash.svg", sm, th.text.onDarkDim);
-    _iconPx.hashSmBright   = px(":/ui/hash.svg", sm, th.text.onDark);
+    _iconPx.hashSmDim      = px(":/ui/hash.svg", sm, th.nav.itemTextDim);
+    _iconPx.hashSmBright   = px(":/ui/hash.svg", sm, th.nav.itemText);
     _iconPx.hashSmSelected = px(":/ui/hash.svg", sm, th.nav.itemSelectedText);
 
     _iconPx.huddle = px(":/ui/headphones.svg", QSize(13, 13), th.accent.text);
@@ -123,13 +123,13 @@ void ConvListWidget::rebuildIconPixmaps() {
     // Optically matched to the section icons rather than boxed the same — see
     // kThreadsIcon.
     const QSize thr         = QSize(kThreadsIcon, kThreadsIcon);
-    _iconPx.threadsDim      = px(":/ui/split.svg", thr, th.text.onDarkDim);
-    _iconPx.threadsBright   = px(":/ui/split.svg", thr, th.text.onDark);
+    _iconPx.threadsDim      = px(":/ui/split.svg", thr, th.nav.itemTextDim);
+    _iconPx.threadsBright   = px(":/ui/split.svg", thr, th.nav.itemText);
     _iconPx.threadsSelected = px(":/ui/split.svg", thr, th.nav.itemSelectedText);
 
     // Same optical size as the Threads entry it sits under.
-    _iconPx.savedDim      = px(":/ui/bookmark.svg", thr, th.text.onDarkDim);
-    _iconPx.savedBright   = px(":/ui/bookmark.svg", thr, th.text.onDark);
+    _iconPx.savedDim      = px(":/ui/bookmark.svg", thr, th.nav.itemTextDim);
+    _iconPx.savedBright   = px(":/ui/bookmark.svg", thr, th.nav.itemText);
     _iconPx.savedSelected = px(":/ui/bookmark.svg", thr, th.nav.itemSelectedText);
 }
 
@@ -1163,7 +1163,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
 
     // Normally show the section icon; on hover replace it with the chevron that
     // previews what clicking will do (collapsed → down chevron, expanded → right chevron).
-    const QColor color = Th::c().text.onDarkDim;
+    const QColor color = Th::c().nav.itemTextDim;
 
     const QPixmap *icon;
     if (hovered)
@@ -1243,8 +1243,8 @@ void ConvListWidget::paintNavEntryRow(
     // (the label is DemiBold already, so weight can't carry the emphasis).
     p.setPen(
         isSelected            ? Th::c().nav.itemSelectedText
-        : (hovered || unread) ? Th::c().text.onDark
-                              : Th::c().text.onDarkDim
+        : (hovered || unread) ? Th::c().nav.itemText
+                              : Th::c().nav.itemTextDim
     );
     const QFontMetrics fm(font);
     p.drawText(kPadH + kGroupIndent, y + (_rowH - fm.height()) / 2 + fm.ascent(), label);
@@ -1274,7 +1274,7 @@ void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
     if (hovered)
         p.fillRect(QRect(0, y, viewport()->width(), _rowH), Th::c().nav.itemHover);
 
-    const QColor color = hovered ? Th::c().text.onDark : Th::c().text.onDarkDim;
+    const QColor color = hovered ? Th::c().nav.itemText : Th::c().nav.itemTextDim;
 
     const QPixmap &plusPx = hovered ? _iconPx.plusBright : _iconPx.plusDim;
     p.drawPixmap(kPadH + kGroupIndent, y + (_rowH - kIconSize) / 2, plusPx);
@@ -1294,7 +1294,7 @@ void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int count) co
     if (hovered)
         p.fillRect(QRect(0, y, viewport()->width(), _rowH), Th::c().nav.itemHover);
 
-    const QColor color = hovered ? Th::c().text.onDark : Th::c().text.onDarkDim;
+    const QColor color = hovered ? Th::c().nav.itemText : Th::c().nav.itemTextDim;
 
     QFont font = QApplication::font();
     font.setWeight(QFont::Normal);
@@ -1388,8 +1388,8 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     p.setFont(font);
 
     const QColor textColor = isSelected ? Th::c().nav.itemSelectedText
-                             : isUnread ? Th::c().text.onDark
-                                        : Th::c().text.onDarkDim;
+                             : isUnread ? Th::c().nav.itemText
+                                        : Th::c().nav.itemTextDim;
     p.setPen(textColor);
 
     const QFontMetrics fm(font);
@@ -1561,7 +1561,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             df.setWeight(QFont::Normal);
             df.setPointSizeF(df.pointSizeF() * 0.88);
             p.setFont(df);
-            p.setPen(isSelected ? textColor : Th::c().text.onDarkDim);
+            p.setPen(isSelected ? textColor : Th::c().nav.itemTextDim);
             p.drawText(curX, textY, tr("you"));
         }
     } else {

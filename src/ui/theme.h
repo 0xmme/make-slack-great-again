@@ -247,23 +247,63 @@ struct Theme {
     int workspaceHslLightness;  // 42
 };
 
-// ── Theme registry ────────────────────────────────────────────────────────────
+// ── Construction: content mode × chrome ─────────────────────────────────────
+// Every theme is `light base → (dark content) → chrome`. Slack colours only
+// the chrome; whether the content area is light or dark is a separate mode.
 
-// A selectable color theme. `id` is the persisted QSettings value
-// ("appearance/theme"); the display name is translated at the UI site.
-struct ThemeInfo {
-    QString      id;
-    const Theme *theme;
+// The five accent tokens as one unit.
+struct AccentSet {
+    QColor def, hover, pressed, dark, subtleBg;
 };
 
-// All built-in themes, in display order. First entry is the default (purple).
+// A sidebar palette. The required fields are what the built-in presets set;
+// every optional (default-constructed, invalid) colour is derived from the
+// rail and content mode by applyChrome — an imported Slack theme pins the ones
+// it names, and derivation never overwrites a pinned value.
+struct ChromeSpec {
+    QColor    rail;            // nav.bg, titleBar.bg; list surface/hover/gradients derive from it
+    QColor    pill;            // nav.itemSelected
+    QColor    pillInk;         // nav.itemSelectedText
+    QColor    workspaceBubble; // nav.workspaceBubble
+    QColor    itemTextDim;     // nav.itemTextDim (optional: derived from the rail)
+    AccentSet accent;          // over light content
+    AccentSet accentDark; // over dark content (optional: `accent` lifted to a readable lightness)
+    QColor    iconAccentDark; // icon.accent over dark content (optional: lifted from accent.def)
+    // Pins for imported themes (optional).
+    QColor    itemHover;       // nav.itemHover
+    QColor    itemText;        // nav.itemText
+    QColor    presenceOnline;  // presence.online
+    QColor    badgeMention;    // badge.mention
+    QColor    titleBarControl; // titleBar.controlDefault
+};
+
+// Build a complete theme: the light base, the dark content set when
+// `darkContent`, then `chrome` laid over it (with a light rail flipping every
+// ink drawn on the chrome to dark).
+Theme buildTheme(const ChromeSpec &chrome, bool darkContent);
+
+// ── Theme registry ────────────────────────────────────────────────────────────
+
+// A selectable chrome preset, rendered over both content modes. `id` is the
+// persisted QSettings value ("appearance/theme" / "appearance/themeDark"); the
+// display name is translated at the UI site.
+struct ThemeInfo {
+    QString      id;
+    const Theme *light;
+    const Theme *dark;
+
+    const Theme *variant(bool darkContent) const { return darkContent ? dark : light; }
+};
+
+// All built-in presets, in display order. First entry is the default (purple).
 const std::vector<ThemeInfo> &availableThemes();
 
-// nullptr for unknown ids (callers fall back to defaultTheme()).
-const Theme *themeById(const QString &id);
+// The preset's variant for one content mode; nullptr for unknown ids (callers
+// fall back to defaultTheme() / defaultDarkTheme()).
+const Theme *themeById(const QString &id, bool dark);
 
 // Whether the theme darkens the CONTENT area (dark mode), as opposed to only
-// tinting the chrome. Decides which colour-mode slot a theme may fill.
+// tinting the chrome.
 bool isDarkTheme(const Theme &t);
 
 // ── Access ────────────────────────────────────────────────────────────────────

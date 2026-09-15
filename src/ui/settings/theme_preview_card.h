@@ -18,7 +18,8 @@ public:
         QString themeId, QString displayName, const Th::Theme &preview, QWidget *parent = nullptr
     );
 
-    const QString &themeId() const { return _themeId; }
+    const QString   &themeId() const { return _themeId; }
+    const Th::Theme &preview() const { return _preview; }
 
     QSize sizeHint() const override;
 
@@ -38,8 +39,10 @@ private:
     QString          _name;
     const Th::Theme &_preview;
 
-    static constexpr int kCardW    = 148;
-    static constexpr int kMockH    = 92;
+    // Sized so all four presets fit one row of the Settings panel (kPanelW)
+    // without a horizontal scrollbar.
+    static constexpr int kCardW    = 112;
+    static constexpr int kMockH    = 76;
     static constexpr int kLabelPad = 12; // vertical breathing room around the caption
     static constexpr int kRadius   = 8;
 };

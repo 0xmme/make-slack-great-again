@@ -45,12 +45,10 @@ void applyFontScale(Th::Theme &t, double k) {
     f.xxxl       = s(f.xxxl);
 }
 
-// A slot may only hold a registry theme of its own darkness; anything else
-// (stale id from another version, hand-edited config) falls back to the
-// slot's default so the two slots can never both render the same mode.
+// A slot holds a registry preset id; anything else (stale id from another
+// version, hand-edited config) falls back to the slot's default.
 QString validSlotId(const QString &id, bool dark) {
-    const Th::Theme *t = Th::themeById(id);
-    if (t && Th::isDarkTheme(*t) == dark)
+    if (Th::themeById(id, dark))
         return id;
     return QLatin1String(dark ? kDefaultDark : kDefaultLight);
 }
@@ -106,11 +104,11 @@ ThemeManager::ThemeManager(QObject *parent) : QObject(parent) {
         _lightId = validSlotId(settings.value(QLatin1String(kLightKey)).toString(), false);
         _darkId  = validSlotId(settings.value(QLatin1String(kDarkKey)).toString(), true);
     } else {
-        // First launch with colour modes. Before them there was one theme key;
-        // a charcoal pick was the only way to get dark content, so it was a
-        // dark-mode choice — keep it dark instead of flipping that user to the
-        // System default (light content on a light desktop). Everyone else
-        // keeps their light pick and gets the System default.
+        // First launch with colour modes. Before them there was one theme key
+        // and charcoal was the only theme with dark content, so a charcoal pick
+        // was a dark-mode choice — keep it dark instead of flipping that user
+        // to the System default (light content on a light desktop). Everyone
+        // else keeps their light pick and gets the System default.
         const QString legacy = settings.value(QLatin1String(kLightKey)).toString();
         if (legacy == QLatin1String(kDefaultDark)) {
             _mode    = ColorMode::Dark;
@@ -126,9 +124,9 @@ ThemeManager::ThemeManager(QObject *parent) : QObject(parent) {
         }
     }
 
-    const bool dark = effectiveDark();
-    _themeId        = dark ? _darkId : _lightId;
-    _theme          = resolvedTheme();
+    _themeDark = effectiveDark();
+    _themeId   = _themeDark ? _darkId : _lightId;
+    _theme     = resolvedTheme();
     applyFontScale(_theme, fontFactorFor(_fontSizeId));
     // The singleton is created from widget code, so main() has already set the
     // app font (detectSystemFont) — capture it as the scaling base. Guarded:
@@ -164,7 +162,7 @@ bool ThemeManager::effectiveDark() const {
 
 const Th::Theme &ThemeManager::resolvedTheme() const {
     const bool       dark = effectiveDark();
-    const Th::Theme *t    = Th::themeById(dark ? _darkId : _lightId);
+    const Th::Theme *t    = Th::themeById(dark ? _darkId : _lightId, dark);
     if (t)
         return *t;
     return dark ? Th::defaultDarkTheme() : Th::defaultTheme();
@@ -173,11 +171,14 @@ const Th::Theme &ThemeManager::resolvedTheme() const {
 void ThemeManager::reapply() {
     const bool     dark = effectiveDark();
     const QString &id   = dark ? _darkId : _lightId;
-    if (id == _themeId) {
+    // Same preset AND same content mode: nothing new to render (both slots may
+    // hold the same preset, in which case a mode flip still changes the content).
+    if (id == _themeId && dark == _themeDark) {
         emit modeChanged(); // same theme on screen, but the mode/OS state moved
         return;
     }
-    _themeId = id;
+    _themeId   = id;
+    _themeDark = dark;
     setTheme(resolvedTheme());
     emit modeChanged();
 }
@@ -219,15 +220,12 @@ void ThemeManager::setTheme(const Th::Theme &theme) {
 }
 
 void ThemeManager::setThemeById(const QString &id) {
-    const Th::Theme *theme = Th::themeById(id);
-    if (!theme)
-        return;
-    setThemeIdFor(Th::isDarkTheme(*theme), id);
+    setThemeIdFor(effectiveDark(), id);
 }
 
 void ThemeManager::setThemeIdFor(bool dark, const QString &id) {
     if (validSlotId(id, dark) != id)
-        return; // unknown, or a theme of the other darkness
+        return; // unknown preset
     QString &slot = dark ? _darkId : _lightId;
     if (slot == id)
         return;

@@ -165,7 +165,7 @@ private:
     QCheckBox                *_showAgentsApps   = nullptr;
     QCheckBox                *_unreadsOnly      = nullptr;
     QCheckBox                *_ctrlEnterSends   = nullptr;
-    QList<ThemePreviewCard *> _themeCards; // one per registry theme, light row then dark row
+    QList<ThemePreviewCard *> _themeCards; // every preset twice: light row then dark row
     // Language the app actually started with — the restart note shows whenever
     // the combo selection differs from this, even across settings re-opens.
     QString                   _startupLanguage;

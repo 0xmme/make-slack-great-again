@@ -30,10 +30,8 @@ public:
     // Replace the active theme and notify all subscribers.
     void setTheme(const Th::Theme &theme);
 
-    // Assign a registry theme to the slot matching its content darkness (a
-    // dark theme goes into the dark slot, a light one into the light slot),
-    // persist, and re-resolve — so the screen changes only when that slot is
-    // the one the effective mode shows. Unknown ids are ignored.
+    // Assign a preset to the slot currently on screen (the effective mode's),
+    // persist and re-resolve. Unknown ids are ignored.
     void setThemeById(const QString &id);
 
     // ── Colour mode + per-mode theme slots ────────────────────────────────
@@ -47,12 +45,12 @@ public:
     // resolves to; for headless verification and desktops without a settings
     // portal) can be picked up without a restart.
     void           refreshSystemScheme();
-    // The theme id each mode renders with (QSettings "appearance/theme" for
+    // The preset id each mode renders with (QSettings "appearance/theme" for
     // light — the pre-mode key, so old installs keep their pick — and
-    // "appearance/themeDark" for dark).
+    // "appearance/themeDark" for dark). Every preset renders over both modes;
+    // the slot picks the chrome, the mode picks the content.
     const QString &themeIdFor(bool dark) const { return dark ? _darkId : _lightId; }
-    // Set one slot explicitly. Ignored when `id` is unknown or its theme's
-    // darkness doesn't match the slot (a light theme can't fill the dark slot).
+    // Set one slot explicitly. Ignored when `id` is not a registry preset.
     void           setThemeIdFor(bool dark, const QString &id);
 
     static QString   modeId(ColorMode mode);        // "light" | "dark" | "system"
@@ -95,7 +93,8 @@ private:
 
     Th::Theme _theme;
     QString   _themeId;
-    ColorMode _mode = ColorMode::System;
+    bool      _themeDark = false; // content mode of the theme on screen
+    ColorMode _mode      = ColorMode::System;
     QString   _lightId;
     QString   _darkId;
     QString   _fontSizeId;

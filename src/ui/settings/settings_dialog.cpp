@@ -51,7 +51,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 
-static constexpr int kPanelW    = 720; // fits three theme cards per row without a scrollbar
+static constexpr int kPanelW    = 720; // fits the four theme cards per row without a scrollbar
 static constexpr int kPanelH    = 540;
 static constexpr int kPanelMinW = 480;
 static constexpr int kPanelMinH = 360;
@@ -235,9 +235,11 @@ void SettingsDialog::buildPanel() {
     });
 
     // ── Color theme: one card row per mode ────────────────────────────
-    // Each mode keeps its own pick; the row edits that mode's slot, so
-    // choosing a dark theme while the app shows light changes nothing on
-    // screen until the mode flips (by hand or with the OS).
+    // Every preset renders over both content modes, so both rows list all of
+    // them, each card previewing its row's mode. Each mode keeps its own pick;
+    // the row edits that mode's slot, so choosing in the dark row while the app
+    // shows light changes nothing on screen until the mode flips (by hand or
+    // with the OS).
     auto *themeHeading = new QLabel(tr("Color theme"), appearPage);
     themeHeading->setObjectName("sectionHeading");
     alay->addWidget(themeHeading);
@@ -272,15 +274,14 @@ void SettingsDialog::buildPanel() {
         // Fixed gives exactly the room needed.
         themeBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         auto *themeLayout = new QHBoxLayout(themeBox);
-        themeLayout->setSpacing(sp.lg);
+        themeLayout->setSpacing(sp.md);
         themeLayout->setContentsMargins(0, 0, 0, 0);
 
         auto *themeGroup = new QButtonGroup(themeBox);
         themeGroup->setExclusive(true);
         for (const auto &info : Th::availableThemes()) {
-            if (Th::isDarkTheme(*info.theme) != dark)
-                continue;
-            auto *card = new ThemePreviewCard(info.id, themeName(info.id), *info.theme, themeBox);
+            auto *card =
+                new ThemePreviewCard(info.id, themeName(info.id), *info.variant(dark), themeBox);
             themeGroup->addButton(card);
             themeLayout->addWidget(card);
             _themeCards.append(card);
@@ -2114,8 +2115,7 @@ void SettingsDialog::loadAppearance() {
     }
     refreshModeHint();
     for (auto *card : _themeCards) {
-        const Th::Theme *t    = Th::themeById(card->themeId());
-        const bool       dark = t && Th::isDarkTheme(*t);
+        const bool dark = Th::isDarkTheme(card->preview()); // which row the card sits in
         card->setChecked(card->themeId() == mgr.themeIdFor(dark));
     }
 }

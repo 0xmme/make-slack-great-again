@@ -48,8 +48,8 @@ void ThemePreviewCard::paintEvent(QPaintEvent *) {
     p.save();
     p.setClipPath(clip);
 
-    const int    railW = 18; // workspace rail
-    const int    navW  = 46; // conv list column
+    const int    railW = 14; // workspace rail
+    const int    navW  = 36; // conv list column
     const QRectF railRect(mock.left(), mock.top(), railW, mock.height());
     const QRectF navRect(mock.left() + railW, mock.top(), navW, mock.height());
 
@@ -74,28 +74,30 @@ void ThemePreviewCard::paintEvent(QPaintEvent *) {
 
     // Workspace bubble on the rail.
     p.setBrush(th.nav.workspaceBubble);
-    p.drawRoundedRect(QRectF(mock.left() + 4, mock.top() + 8, 10, 10), 3, 3);
+    p.drawRoundedRect(QRectF(mock.left() + 3, mock.top() + 7, 8, 8), 2.5, 2.5);
 
     // Conv list: selected row pill + dim rows + mention badge.
-    const qreal navX = mock.left() + railW + 5;
+    const qreal navX = mock.left() + railW + 4;
     p.setBrush(th.nav.itemSelected);
-    p.drawRoundedRect(QRectF(navX, mock.top() + 10, 34, 8), 3, 3);
+    p.drawRoundedRect(QRectF(navX, mock.top() + 8, 27, 7), 2.5, 2.5);
     p.setBrush(th.nav.itemTextDim);
-    p.drawRoundedRect(QRectF(navX, mock.top() + 24, 28, 5), 2, 2);
-    p.drawRoundedRect(QRectF(navX, mock.top() + 35, 31, 5), 2, 2);
-    p.drawRoundedRect(QRectF(navX, mock.top() + 46, 24, 5), 2, 2);
+    p.drawRoundedRect(QRectF(navX, mock.top() + 20, 21, 4), 2, 2);
+    p.drawRoundedRect(QRectF(navX, mock.top() + 29, 24, 4), 2, 2);
+    p.drawRoundedRect(QRectF(navX, mock.top() + 38, 18, 4), 2, 2);
     p.setBrush(th.badge.mention);
-    p.drawEllipse(QRectF(navX + 31, mock.top() + 45.5, 6, 6));
+    p.drawEllipse(QRectF(navX + 23, mock.top() + 37.5, 5, 5));
 
-    // Message area: author + two text lines, then an accent button blob.
-    const qreal msgX = mock.left() + railW + navW + 8;
+    // Message area: author + two text lines, then an accent button blob. Widths
+    // follow the area so the mock stays proportionate at any card width.
+    const qreal msgX = mock.left() + railW + navW + 6;
+    const qreal msgW = mock.right() - msgX - 5;
     p.setBrush(th.text.primary);
-    p.drawRoundedRect(QRectF(msgX, mock.top() + 12, 30, 6), 2, 2);
+    p.drawRoundedRect(QRectF(msgX, mock.top() + 10, msgW * 0.55, 5), 2, 2);
     p.setBrush(th.text.secondary);
-    p.drawRoundedRect(QRectF(msgX, mock.top() + 24, 52, 5), 2, 2);
-    p.drawRoundedRect(QRectF(msgX, mock.top() + 34, 44, 5), 2, 2);
+    p.drawRoundedRect(QRectF(msgX, mock.top() + 20, msgW, 4), 2, 2);
+    p.drawRoundedRect(QRectF(msgX, mock.top() + 28, msgW * 0.8, 4), 2, 2);
     p.setBrush(th.accent.def);
-    p.drawRoundedRect(QRectF(msgX, mock.top() + 50, 26, 10), 3, 3);
+    p.drawRoundedRect(QRectF(msgX, mock.top() + 41, msgW * 0.5, 9), 2.5, 2.5);
 
     p.restore();
 

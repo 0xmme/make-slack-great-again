@@ -216,9 +216,9 @@ protected:
     // Icon pixmaps colorized with nav-side theme tokens. Rebuilt on
     // themeChanged — a static-local cache would keep the old theme's tint.
     struct IconPixmaps {
-        QPixmap chevDown, chevRight, hash, msg, bot, plusDim; // section headers, onDarkDim
+        QPixmap chevDown, chevRight, hash, msg, bot, plusDim; // section headers, nav.itemTextDim
         QPixmap star;                                         // Starred section header
-        QPixmap plusBright;                                   // add-channels hover, onDark
+        QPixmap plusBright;                                   // add-channels hover, nav.itemText
         QPixmap lockDim, lockBright, lockSelected;            // private channel prefix
         QPixmap hashSmDim, hashSmBright, hashSmSelected;      // public channel prefix
         QPixmap huddle;                                       // live-huddle pill icon, onAccent

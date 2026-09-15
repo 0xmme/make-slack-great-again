@@ -50,44 +50,236 @@ QColor overlayWhite(const QColor &base, double a) {
 constexpr double kGradTopFactor    = 1.12;
 constexpr double kGradBottomFactor = 0.90;
 
+// Composite `ink` at alpha `a` (0..1) over `base` — the generic form of
+// overlayWhite, for dark ink over a light rail.
+QColor overlay(const QColor &base, const QColor &ink, double a) {
+    return QColor(
+        std::clamp(static_cast<int>(base.red() * (1 - a) + ink.red() * a), 0, 255),
+        std::clamp(static_cast<int>(base.green() * (1 - a) + ink.green() * a), 0, 255),
+        std::clamp(static_cast<int>(base.blue() * (1 - a) + ink.blue() * a), 0, 255),
+        base.alpha()
+    );
+}
+
+// Same hue and saturation, lightness pinned to `l` (0..1).
+QColor withLightness(const QColor &c, double l) {
+    const double h = std::max<double>(0.0, c.hslHueF()); // -1 (achromatic) → any hue, s is 0
+    return QColor::fromHslF(h, c.hslSaturationF(), std::clamp(l, 0.0, 1.0), c.alphaF());
+}
+
+// The near-black ink used on light rails (a light chrome over either content
+// mode); same tone as the light-content primary text.
+const QColor kDarkInk("#1D1C1D");
+
+// Brand accents are tuned for white content and mostly too dark to read as a
+// filled control on the dark surfaces (aubergine #4A154B sits a hair above the
+// #2A2A2A raised surface). Lift the whole set to a floor lightness, keeping
+// hue and saturation, and derive the hover/pressed steps around it.
+constexpr double kDarkAccentFloor = 0.36;
+
+AccentSet liftForDark(const AccentSet &a) {
+    const double l = std::max<double>(a.def.lightnessF(), kDarkAccentFloor);
+    AccentSet    d;
+    d.def      = withLightness(a.def, l);
+    d.hover    = withLightness(a.def, l + 0.07);
+    d.pressed  = withLightness(a.def, l - 0.06);
+    d.dark     = withLightness(a.def, l - 0.10);
+    d.subtleBg = withLightness(a.def, 0.21);
+    return d;
+}
+
+// ── Content mode ─────────────────────────────────────────────────────────────
+// The content-side half of a dark theme: surfaces, text, message, composer,
+// banners, dividers, icons, menus, tooltip. Chrome (nav/accent/titleBar) is
+// untouched — applyChrome() runs after this and owns it.
+//
+// Palette is pure neutral graphite (R=G=B on every grey, no blue cast),
+// modelled on the sBlack dark Slack theme: #222222 content and bright
+// near-white primary text; alpha overlays *lighten* instead of darken.
+void applyDarkContent(Theme &t) {
+    t.surface.content         = QColor("#222222");
+    t.surface.raised          = QColor("#2A2A2A");
+    t.surface.sunken          = QColor("#1A1A1A");
+    t.surface.highlight       = QColor("#2E2E2E");
+    t.surface.highlightStrong = QColor("#383838");
+
+    t.text.primary      = QColor("#E6E6E6");
+    t.text.documentBody = QColor("#D6D6D6");
+    t.text.secondary    = QColor("#A8A8A8");
+    t.text.tertiary     = QColor("#7B7B7B");
+    t.text.onDarkDim    = QColor("#C9C9C9"); // dark chips (tooltips, viewer) go neutral
+    t.text.link         = QColor("#53B4E5");
+    t.text.danger       = QColor("#E57373");
+    t.text.warning      = QColor("#D9A741");
+
+    t.message.hover                  = QColor(255, 255, 255, 12); // lighten, don't darken
+    t.message.mentionBg              = QColor(29, 155, 209, 46);
+    t.message.mentionSelfBg          = QColor(250, 200, 60, 42);
+    t.message.mentionText            = QColor("#53B4E5");
+    t.message.codeBlockBg            = QColor("#262626");
+    t.message.codeBlockBorder        = QColor("#3E3E3E");
+    t.message.codeText               = QColor("#BDBDBD");
+    t.message.quoteBorder            = QColor("#4D4D4D");
+    t.message.attachmentBg           = QColor("#202020");
+    t.message.attachmentBorder       = QColor("#3A3A3A");
+    t.message.attachmentDismiss      = QColor("#9C9C9C");
+    t.message.pinnedBg               = QColor(0xFF, 0xEB, 0x3B, 28);
+    t.message.reminderBg             = QColor(0x1D, 0x9B, 0xD1, 24);
+    t.message.reminderText           = QColor("#53B4E5");
+    t.message.fileChipBg             = QColor("#202020");
+    t.message.fileChipBorder         = QColor("#3A3A3A");
+    t.message.fileNameDim            = QColor("#A6A6A6");
+    t.message.imagePlaceholderBg     = QColor("#262626");
+    t.message.imagePlaceholderBorder = QColor("#3E3E3E");
+    t.message.replyBarHover          = QColor("#282828");
+    t.message.replyBarHoverBorder    = QColor("#3E3E3E");
+    t.message.replyLink              = QColor("#53B4E5");
+    t.message.appBadgeBg             = QColor(255, 255, 255, 30);
+    t.message.appBadgeText           = QColor("#A8A8A8");
+    t.message.extBadgeBg             = QColor(230, 201, 138, 30);
+    t.message.extBadgeText           = QColor("#D9B45C");
+
+    t.composer.bg                    = QColor("#222222");
+    t.composer.border                = QColor("#3A3A3A");
+    t.composer.borderFocus           = QColor("#6E6E6E");
+    t.composer.toolbarBg             = QColor("#1B1B1B");
+    t.composer.toolbarBorder         = QColor("#383838");
+    t.composer.toolbarIcon           = QColor("#9C9C9C");
+    t.composer.toolbarIconActive     = QColor("#E6E6E6");
+    t.composer.attachmentChipBg      = QColor("#282828");
+    t.composer.attachmentChipBorder  = QColor("#3E3E3E");
+    t.composer.attachmentOverlayBg   = QColor(34, 34, 34, 210);
+    t.composer.attachmentOverlayText = QColor("#E6E6E6");
+    t.composer.dropArrow             = QColor("#4D4D4D");
+
+    t.editBanner.bg     = QColor("#332B18");
+    t.editBanner.border = QColor("#C99A2C");
+    t.editBanner.accent = QColor("#4A3E1E");
+    t.editBanner.text   = QColor("#E3C36B");
+
+    t.updateBanner.bg     = QColor("#33301C");
+    t.updateBanner.accent = QColor("#453E20");
+    t.updateBanner.text   = QColor("#E6E6E6");
+
+    t.danger.hover = QColor("#F02E6A"); // lighten on press-hover, not darken
+    t.danger.icon  = QColor("#E57373");
+    t.danger.text  = QColor("#E57373");
+
+    t.divider.def    = QColor("#333333");
+    t.divider.strong = QColor("#4D4D4D");
+    t.divider.subtle = QColor("#2A2A2A");
+
+    t.icon.def     = QColor("#9C9C9C");
+    t.icon.strong  = QColor("#C9C9C9");
+    t.icon.danger  = QColor("#E57373");
+    t.icon.warning = QColor("#D9A741");
+    t.icon.starred = QColor("#E0B341");
+    t.icon.dim     = QColor("#4D4D4D");
+
+    t.contextMenu.bg          = QColor("#262626");
+    t.contextMenu.border      = QColor("#4D4D4D");
+    t.contextMenu.itemHover   = QColor("#333333");
+    t.contextMenu.itemText    = QColor("#E6E6E6");
+    t.contextMenu.itemTextDim = QColor("#9C9C9C");
+    t.contextMenu.dangerText  = QColor("#F06A85");
+
+    // Tooltips stay a dark chip, but darker than the dark surfaces they float
+    // over so they still read as a separate layer.
+    t.tooltip.bg = QColor("#0A0A0A");
+}
+
+// ── Chrome ───────────────────────────────────────────────────────────────────
 // Slack lightens the conversation list relative to the workspace rail by laying a
 // translucent white plate over the same backdrop. We bake that in: the chats-bar
 // surface (nav.primary) and its hover are derived from the rail tone (nav.bg) plus
-// a white overlay, so the list reads *lighter* than the rail on every theme. The
-// rail-dark tone the theme declared as nav.primary becomes the ink for text/icons
-// on the near-white selected pill (nav.itemSelectedText). Then both columns get
-// the shared vertical gradient.
+// a white overlay, so the list reads *lighter* than the rail on every theme.
+// Then both columns get the shared vertical gradient.
 //
-// Dark themes need a much thinner plate: even 12% white over a near-black rail
+// Dark content needs a much thinner plate: even 12% white over a near-black rail
 // lands around #404346 — *lighter* than the dark content surface, flipping the
 // sidebar/content depth. With dark content the whole sidebar must stay darker
 // than the content area, so the plate only nudges the list above the rail.
-void finalizeNav(Theme &t) {
-    const bool   darkContent = t.surface.content.lightnessF() < 0.5;
+//
+// A light rail (Slack's "Hoth", Catppuccin Latte) flips every ink drawn over
+// the chrome to dark: item text, scroll thumbs, EXT/APP badge tint, title-bar
+// controls. Anything the spec pins explicitly is honoured as-is — an imported
+// Slack theme names its hover/text colours and must not have them derived away.
+void applyChrome(Theme &t, const ChromeSpec &c) {
+    const bool   darkContent = isDarkTheme(t);
+    const bool   lightRail   = c.rail.lightnessF() > 0.5;
     const double plate       = darkContent ? 0.03 : 0.12;
     const double hoverPlate  = darkContent ? 0.10 : 0.24;
 
-    t.nav.itemSelectedText = t.nav.primary;                 // old dark chats tone → pill ink
-    t.nav.primary          = overlayWhite(t.nav.bg, plate); // chats surface = rail + plate
-    t.nav.itemHover = overlayWhite(t.nav.bg, hoverPlate);   // hover sits lighter than the surface
+    t.nav.bg               = c.rail;
+    t.nav.primary          = overlayWhite(c.rail, plate); // chats surface = rail + plate
+    t.nav.workspaceBubble  = c.workspaceBubble;
+    t.nav.itemSelected     = c.pill;
+    t.nav.itemSelectedText = c.pillInk;
+    t.nav.itemHover        = c.itemHover.isValid()
+                                 ? c.itemHover
+                                 : overlayWhite(c.rail, hoverPlate); // lighter than the surface
+    t.nav.itemText = c.itemText.isValid() ? c.itemText : lightRail ? kDarkInk : QColor("#FFFFFF");
+    t.nav.itemTextDim = c.itemTextDim.isValid() ? c.itemTextDim
+                        : lightRail             ? overlay(c.rail, kDarkInk, 0.65)
+                                                : overlayWhite(c.rail, 0.78);
+    if (lightRail) {
+        t.nav.scrollThumb      = QColor(0, 0, 0, 100);
+        t.nav.scrollThumbHover = QColor(0, 0, 0, 160);
+        t.nav.extBadgeBg       = QColor(198, 146, 10, 38);
+        t.nav.extBadgeText     = QColor("#8A6508");
+    } else {
+        t.nav.scrollThumb      = QColor(255, 255, 255, 100);
+        t.nav.scrollThumbHover = QColor(255, 255, 255, 160);
+        t.nav.extBadgeBg       = QColor(230, 201, 138, 38);
+        t.nav.extBadgeText     = QColor("#E6C98A");
+    }
 
     t.nav.bgGradTop         = scaleRgb(t.nav.bg, kGradTopFactor);
     t.nav.bgGradBottom      = scaleRgb(t.nav.bg, kGradBottomFactor);
     t.nav.primaryGradTop    = scaleRgb(t.nav.primary, kGradTopFactor);
     t.nav.primaryGradBottom = scaleRgb(t.nav.primary, kGradBottomFactor);
+
+    const AccentSet accent = !darkContent                 ? c.accent
+                             : c.accentDark.def.isValid() ? c.accentDark
+                                                          : liftForDark(c.accent);
+    t.accent.def           = accent.def;
+    t.accent.hover         = accent.hover;
+    t.accent.pressed       = accent.pressed;
+    t.accent.dark          = accent.dark;
+    t.accent.subtleBg      = accent.subtleBg;
+    // The accent tint on icons must stay visible over dark surfaces.
+    t.icon.accent =
+        !darkContent ? accent.def
+        : c.iconAccentDark.isValid()
+            ? c.iconAccentDark
+            : withLightness(c.accent.def, std::max<double>(c.accent.def.lightnessF(), 0.58));
+
+    t.titleBar.bg             = c.rail;
+    t.titleBar.controlDefault = c.titleBarControl.isValid() ? c.titleBarControl : t.nav.itemTextDim;
+    t.titleBar.controlHover   = t.nav.itemText;
+
+    if (c.presenceOnline.isValid())
+        t.presence.online = c.presenceOnline;
+    if (c.badgeMention.isValid())
+        t.badge.mention = c.badgeMention;
 }
 
 } // namespace
 
-// ── Default theme: aubergine (Slack's classic purple sidebar) ────────────────
+// ── Base theme: light content under aubergine chrome ─────────────────────────
+// Every theme is built from this literal: buildTheme() copies it, optionally
+// darkens the content side, then lays the preset's chrome over it — so a token
+// not touched by either step inherits a deliberate value (badges, presence
+// dots, loader and the type scales are shared by construction).
 
 const Theme kAubergineBase = {
     .nav =
         {
             .bg      = QColor("#3F0E40"),
-            .primary = QColor("#350D36"), // → itemSelectedText; chats surface derived from bg
+            .primary = QColor("#350D36"), // overwritten: derived from the rail by applyChrome
             .workspaceBubble  = QColor("#4A154B"),
             .itemSelected     = QColor("#E1DBE1"), // near-white selection pill
+            .itemSelectedText = QColor("#350D36"), // pill ink (overwritten by applyChrome)
             .itemText         = QColor("#FFFFFF"),
             .itemTextDim      = QColor("#CFC3CF"),
             .scrollThumb      = QColor(255, 255, 255, 100),
@@ -285,224 +477,148 @@ const Theme kAubergineBase = {
     .workspaceHslLightness  = 42,
 };
 
-static Theme makeAubergine() {
+Theme buildTheme(const ChromeSpec &chrome, bool darkContent) {
     Theme t = kAubergineBase;
-    finalizeNav(t);
+    if (darkContent)
+        applyDarkContent(t);
+    applyChrome(t, chrome);
     return t;
 }
 
-const Theme kAubergine = makeAubergine();
+// ── Chrome presets ───────────────────────────────────────────────────────────
+// A preset is a sidebar palette that works over either content mode, like
+// Slack's own themes. The four hand-tuned specs below are all that differs
+// between the built-in themes; content light/dark is decided by the colour mode.
 
-// ── Charcoal theme: full dark mode ────────────────────────────────────────────
-// Unlike blue/green (chrome-only retints), charcoal also retints every
-// content-side token: dark surfaces, light text, alpha overlays that *lighten*
-// instead of darken. Still copy-and-patch from the aubergine base so any token
-// not repeated here inherits a deliberate value (badges, presence dots, loader
-// and the type scales are shared by construction).
-//
-// Palette is pure neutral graphite (R=G=B on every grey, no blue cast),
-// modelled on the sBlack dark Slack theme: near-black chrome (#131313),
-// #222222 content, a mid-grey #545454 selection pill carrying light ink, and
-// bright near-white primary text.
+namespace {
 
-static Theme makeCharcoal() {
-    Theme t = kAubergineBase;
+// Aubergine: Slack's classic purple sidebar.
+const ChromeSpec kAubergineChrome = {
+    .rail            = QColor("#3F0E40"),
+    .pill            = QColor("#E1DBE1"), // near-white selection pill
+    .pillInk         = QColor("#350D36"),
+    .workspaceBubble = QColor("#4A154B"),
+    .itemTextDim     = QColor("#CFC3CF"),
+    .accent          = {
+                 .def      = QColor("#4A154B"),
+                 .hover    = QColor("#611F69"),
+                 .pressed  = QColor("#350D36"),
+                 .dark     = QColor("#350D36"),
+                 .subtleBg = QColor("#F4E5F5"),
+    },
+};
 
-    // Chrome — a neutral near-black rail. The chats-list plate lands just above
-    // this but still *below* the content surface (see finalizeNav's dark-content
-    // path): sidebar darker than content, rail darkest, like Slack's dark mode.
-    t.nav.bg              = QColor("#131313");
-    t.nav.primary         = QColor("#DEDEDE"); // → itemSelectedText: light ink on the grey pill
-    t.nav.workspaceBubble = QColor("#333333");
-    t.nav.itemSelected    = QColor("#545454"); // mid-grey selection pill (sBlack-style)
-    t.nav.itemTextDim     = QColor("#C9C9C9");
+// Graphite: a neutral near-black rail (sBlack-style), mid-grey selection pill
+// carrying light ink. Over dark content this is the classic full dark mode; the
+// chats-list plate lands just above the rail but still *below* the content
+// surface (see applyChrome's dark-content path): sidebar darker than content,
+// rail darkest, like Slack's dark mode. The accent stays graphite-neutral but
+// sits mid-grey so a filled CTA is clearly visible on either content mode.
+const ChromeSpec kGraphiteChrome = {
+    .rail            = QColor("#131313"),
+    .pill            = QColor("#545454"),
+    .pillInk         = QColor("#DEDEDE"),
+    .workspaceBubble = QColor("#333333"),
+    .itemTextDim     = QColor("#C9C9C9"),
+    .accent =
+        {
+            .def      = QColor("#5A5A5A"),
+            .hover    = QColor("#6A6A6A"),
+            .pressed  = QColor("#4A4A4A"),
+            .dark     = QColor("#3E3E3E"),
+            .subtleBg = QColor("#EDEDED"),
+        },
+    .accentDark =
+        {
+            .def      = QColor("#5A5A5A"),
+            .hover    = QColor("#6A6A6A"),
+            .pressed  = QColor("#4A4A4A"),
+            .dark     = QColor("#3E3E3E"),
+            .subtleBg = QColor("#333333"),
+        },
+    .iconAccentDark = QColor("#A8A8A8"), // a grey accent tint must stay visible on dark
+};
 
-    t.surface.content         = QColor("#222222");
-    t.surface.raised          = QColor("#2A2A2A");
-    t.surface.sunken          = QColor("#1A1A1A");
-    t.surface.highlight       = QColor("#2E2E2E");
-    t.surface.highlightStrong = QColor("#383838");
+// Ocean: blue chrome.
+const ChromeSpec kOceanChrome = {
+    .rail            = QColor("#0E2A40"),
+    .pill            = QColor("#DBE0E5"),
+    .pillInk         = QColor("#0B2335"),
+    .workspaceBubble = QColor("#15405E"),
+    .itemTextDim     = QColor("#C3CCD4"),
+    .accent          = {
+                 .def      = QColor("#1264A3"),
+                 .hover    = QColor("#1B7CC4"),
+                 .pressed  = QColor("#0B4F82"),
+                 .dark     = QColor("#0B4F82"),
+                 .subtleBg = QColor("#E5F0F8"),
+    },
+};
 
-    t.text.primary      = QColor("#E6E6E6");
-    t.text.documentBody = QColor("#D6D6D6");
-    t.text.secondary    = QColor("#A8A8A8");
-    t.text.tertiary     = QColor("#7B7B7B");
-    t.text.onDarkDim    = QColor("#C9C9C9");
-    t.text.link         = QColor("#53B4E5");
-    t.text.danger       = QColor("#E57373");
-    t.text.warning      = QColor("#D9A741");
+// Forest: green chrome, Slack brand green accent.
+const ChromeSpec kForestChrome = {
+    .rail            = QColor("#0E3D2E"),
+    .pill            = QColor("#DBE5E0"),
+    .pillInk         = QColor("#0A3124"),
+    .workspaceBubble = QColor("#15543E"),
+    .itemTextDim     = QColor("#C3D4CC"),
+    .accent          = {
+                 .def      = QColor("#007A5A"),
+                 .hover    = QColor("#148567"),
+                 .pressed  = QColor("#055C42"),
+                 .dark     = QColor("#055C42"),
+                 .subtleBg = QColor("#E5F4EE"),
+    },
+};
 
-    // Accent stays charcoal-neutral but sits mid-grey so a filled CTA is
-    // clearly visible against both the dark content and raised surfaces.
-    t.accent.def      = QColor("#5A5A5A");
-    t.accent.hover    = QColor("#6A6A6A");
-    t.accent.pressed  = QColor("#4A4A4A");
-    t.accent.dark     = QColor("#3E3E3E");
-    t.accent.subtleBg = QColor("#333333");
+struct Preset {
+    QString id;
+    Theme   light;
+    Theme   dark;
+};
 
-    t.message.hover                  = QColor(255, 255, 255, 12); // lighten, don't darken
-    t.message.mentionBg              = QColor(29, 155, 209, 46);
-    t.message.mentionSelfBg          = QColor(250, 200, 60, 42);
-    t.message.mentionText            = QColor("#53B4E5");
-    t.message.codeBlockBg            = QColor("#262626");
-    t.message.codeBlockBorder        = QColor("#3E3E3E");
-    t.message.codeText               = QColor("#BDBDBD");
-    t.message.quoteBorder            = QColor("#4D4D4D");
-    t.message.attachmentBg           = QColor("#202020");
-    t.message.attachmentBorder       = QColor("#3A3A3A");
-    t.message.attachmentDismiss      = QColor("#9C9C9C");
-    t.message.pinnedBg               = QColor(0xFF, 0xEB, 0x3B, 28);
-    t.message.reminderBg             = QColor(0x1D, 0x9B, 0xD1, 24);
-    t.message.reminderText           = QColor("#53B4E5");
-    t.message.fileChipBg             = QColor("#202020");
-    t.message.fileChipBorder         = QColor("#3A3A3A");
-    t.message.fileNameDim            = QColor("#A6A6A6");
-    t.message.imagePlaceholderBg     = QColor("#262626");
-    t.message.imagePlaceholderBorder = QColor("#3E3E3E");
-    t.message.replyBarHover          = QColor("#282828");
-    t.message.replyBarHoverBorder    = QColor("#3E3E3E");
-    t.message.replyLink              = QColor("#53B4E5");
-    t.message.appBadgeBg             = QColor(255, 255, 255, 30);
-    t.message.appBadgeText           = QColor("#A8A8A8");
-    t.message.extBadgeBg             = QColor(230, 201, 138, 30);
-    t.message.extBadgeText           = QColor("#D9B45C");
-
-    t.composer.bg                    = QColor("#222222");
-    t.composer.border                = QColor("#3A3A3A");
-    t.composer.borderFocus           = QColor("#6E6E6E");
-    t.composer.toolbarBg             = QColor("#1B1B1B");
-    t.composer.toolbarBorder         = QColor("#383838");
-    t.composer.toolbarIcon           = QColor("#9C9C9C");
-    t.composer.toolbarIconActive     = QColor("#E6E6E6");
-    t.composer.attachmentChipBg      = QColor("#282828");
-    t.composer.attachmentChipBorder  = QColor("#3E3E3E");
-    t.composer.attachmentOverlayBg   = QColor(34, 34, 34, 210);
-    t.composer.attachmentOverlayText = QColor("#E6E6E6");
-    t.composer.dropArrow             = QColor("#4D4D4D");
-
-    t.editBanner.bg     = QColor("#332B18");
-    t.editBanner.border = QColor("#C99A2C");
-    t.editBanner.accent = QColor("#4A3E1E");
-    t.editBanner.text   = QColor("#E3C36B");
-
-    t.updateBanner.bg     = QColor("#33301C");
-    t.updateBanner.accent = QColor("#453E20");
-    t.updateBanner.text   = QColor("#E6E6E6");
-
-    t.danger.hover = QColor("#F02E6A"); // lighten on press-hover, not darken
-    t.danger.icon  = QColor("#E57373");
-    t.danger.text  = QColor("#E57373");
-
-    t.divider.def    = QColor("#333333");
-    t.divider.strong = QColor("#4D4D4D");
-    t.divider.subtle = QColor("#2A2A2A");
-
-    t.icon.def     = QColor("#9C9C9C");
-    t.icon.strong  = QColor("#C9C9C9");
-    t.icon.accent  = QColor("#A8A8A8"); // accent tint must stay visible on dark
-    t.icon.danger  = QColor("#E57373");
-    t.icon.warning = QColor("#D9A741");
-    t.icon.starred = QColor("#E0B341");
-    t.icon.dim     = QColor("#4D4D4D");
-
-    t.contextMenu.bg          = QColor("#262626");
-    t.contextMenu.border      = QColor("#4D4D4D");
-    t.contextMenu.itemHover   = QColor("#333333");
-    t.contextMenu.itemText    = QColor("#E6E6E6");
-    t.contextMenu.itemTextDim = QColor("#9C9C9C");
-    t.contextMenu.dangerText  = QColor("#F06A85");
-
-    t.titleBar.bg             = t.nav.bg;
-    t.titleBar.controlDefault = QColor("#C9C9C9"); // drop the aubergine tint
-
-    // Tooltips stay a dark chip, but darker than the dark surfaces they float
-    // over so they still read as a separate layer.
-    t.tooltip.bg = QColor("#0A0A0A");
-
-    finalizeNav(t);
-    return t;
+// Built on first use (function-local static) so ThemeManager — itself created
+// lazily from widget code — never races a global's construction.
+const std::vector<Preset> &presets() {
+    static const std::vector<Preset> kPresets = [] {
+        std::vector<Preset> v;
+        const auto          add = [&v](const char *id, const ChromeSpec &c) {
+            v.push_back({QLatin1String(id), buildTheme(c, false), buildTheme(c, true)});
+        };
+        add("purple", kAubergineChrome);
+        add("charcoal", kGraphiteChrome);
+        add("blue", kOceanChrome);
+        add("green", kForestChrome);
+        return v;
+    }();
+    return kPresets;
 }
 
-const Theme kCharcoal = makeCharcoal();
-
-// ── Blue theme: same content surfaces, ocean-blue chrome ─────────────────────
-// Copy-and-patch rather than a second 200-line literal: the delta below IS the
-// definition of what "blue" changes, and content-side tokens can never drift.
-
-static Theme makeOceanBlue() {
-    Theme t = kAubergineBase;
-
-    t.nav.bg              = QColor("#0E2A40");
-    t.nav.primary         = QColor("#0B2335"); // → itemSelectedText; chats surface derived from bg
-    t.nav.workspaceBubble = QColor("#15405E");
-    t.nav.itemSelected    = QColor("#DBE0E5"); // near-white selection pill
-    t.nav.itemTextDim     = QColor("#C3CCD4");
-
-    t.accent.def      = QColor("#1264A3");
-    t.accent.hover    = QColor("#1B7CC4");
-    t.accent.pressed  = QColor("#0B4F82");
-    t.accent.dark     = QColor("#0B4F82");
-    t.accent.subtleBg = QColor("#E5F0F8");
-
-    t.icon.accent = t.accent.def;
-    t.titleBar.bg = t.nav.bg;
-
-    finalizeNav(t);
-    return t;
-}
-
-const Theme kOceanBlue = makeOceanBlue();
-
-// ── Green theme: same content surfaces, forest-green chrome ───────────────────
-// Same copy-and-patch approach as blue; only the chrome tokens differ.
-
-static Theme makeForestGreen() {
-    Theme t = kAubergineBase;
-
-    t.nav.bg              = QColor("#0E3D2E");
-    t.nav.primary         = QColor("#0A3124"); // → itemSelectedText; chats surface derived from bg
-    t.nav.workspaceBubble = QColor("#15543E");
-    t.nav.itemSelected    = QColor("#DBE5E0"); // near-white selection pill
-    t.nav.itemTextDim     = QColor("#C3D4CC");
-
-    t.accent.def      = QColor("#007A5A"); // Slack brand green
-    t.accent.hover    = QColor("#148567");
-    t.accent.pressed  = QColor("#055C42");
-    t.accent.dark     = QColor("#055C42");
-    t.accent.subtleBg = QColor("#E5F4EE");
-
-    t.icon.accent = t.accent.def;
-    t.titleBar.bg = t.nav.bg;
-
-    finalizeNav(t);
-    return t;
-}
-
-const Theme kForestGreen = makeForestGreen();
+} // namespace
 
 const std::vector<ThemeInfo> &availableThemes() {
-    static const std::vector<ThemeInfo> kThemes = {
-        {QStringLiteral("purple"), &kAubergine},
-        {QStringLiteral("charcoal"), &kCharcoal},
-        {QStringLiteral("blue"), &kOceanBlue},
-        {QStringLiteral("green"), &kForestGreen},
-    };
+    static const std::vector<ThemeInfo> kThemes = [] {
+        std::vector<ThemeInfo> v;
+        for (const auto &p : presets())
+            v.push_back({p.id, &p.light, &p.dark});
+        return v;
+    }();
     return kThemes;
 }
 
-const Theme *themeById(const QString &id) {
+const Theme *themeById(const QString &id, bool dark) {
     for (const auto &info : availableThemes())
         if (info.id == id)
-            return info.theme;
+            return info.variant(dark);
     return nullptr;
 }
 
 const Theme &defaultTheme() {
-    return kAubergine;
+    return *themeById(QStringLiteral("purple"), false);
 }
 
 const Theme &defaultDarkTheme() {
-    return kCharcoal;
+    return *themeById(QStringLiteral("charcoal"), true);
 }
 
 bool isDarkTheme(const Theme &t) {
