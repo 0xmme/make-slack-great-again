@@ -7,23 +7,56 @@
 #include <QObject>
 
 namespace Th {
-const Theme &defaultTheme();
-}
+const Theme &defaultTheme();     // light-mode default (purple)
+const Theme &defaultDarkTheme(); // dark-mode default (charcoal)
+} // namespace Th
 
 class ThemeManager : public QObject {
     Q_OBJECT
 public:
+    // Which content mode the app renders in. `System` follows the OS colour
+    // scheme (QStyleHints::colorScheme; an Unknown answer — e.g. a bare Linux
+    // WM without the settings portal — counts as light). Persisted as
+    // QSettings "appearance/mode"; the default is System, like the official
+    // Slack desktop app.
+    enum class ColorMode { Light, Dark, System };
+
     static ThemeManager &instance();
 
     const Th::Theme &theme() const { return _theme; }
+    // Id of the theme currently on screen (the active mode's slot).
     const QString   &themeId() const { return _themeId; }
 
     // Replace the active theme and notify all subscribers.
     void setTheme(const Th::Theme &theme);
 
-    // Switch to a registry theme by id ("purple"/"blue"), persist the choice
-    // (QSettings "appearance/theme") and notify. Unknown ids are ignored.
+    // Assign a registry theme to the slot matching its content darkness (a
+    // dark theme goes into the dark slot, a light one into the light slot),
+    // persist, and re-resolve — so the screen changes only when that slot is
+    // the one the effective mode shows. Unknown ids are ignored.
     void setThemeById(const QString &id);
+
+    // ── Colour mode + per-mode theme slots ────────────────────────────────
+    ColorMode      mode() const { return _mode; }
+    void           setMode(ColorMode mode);
+    // The mode actually rendered: System resolved against the OS scheme.
+    bool           effectiveDark() const;
+    // Re-resolve System mode against the OS scheme. Wired internally to
+    // QStyleHints::colorSchemeChanged; public so a change to the
+    // MSGA_SYSTEM_COLOR_SCHEME override ("light" | "dark" — forces what System
+    // resolves to; for headless verification and desktops without a settings
+    // portal) can be picked up without a restart.
+    void           refreshSystemScheme();
+    // The theme id each mode renders with (QSettings "appearance/theme" for
+    // light — the pre-mode key, so old installs keep their pick — and
+    // "appearance/themeDark" for dark).
+    const QString &themeIdFor(bool dark) const { return dark ? _darkId : _lightId; }
+    // Set one slot explicitly. Ignored when `id` is unknown or its theme's
+    // darkness doesn't match the slot (a light theme can't fill the dark slot).
+    void           setThemeIdFor(bool dark, const QString &id);
+
+    static QString   modeId(ColorMode mode);        // "light" | "dark" | "system"
+    static ColorMode modeFromId(const QString &id); // unknown → System
 
     // UI font size variant ("small" | "medium" | "large"): a multiplier applied
     // over the active theme's px font scale, so every widget that sizes text
@@ -39,6 +72,11 @@ public:
 
 signals:
     void themeChanged();
+    // The colour mode setting or the OS scheme it follows changed. Always
+    // accompanied by themeChanged when the rendered theme differs; emitted on
+    // its own when it doesn't (so mode-aware UI, like the "currently dark"
+    // hint, still refreshes).
+    void modeChanged();
 
 private:
     explicit ThemeManager(QObject *parent = nullptr);
@@ -49,8 +87,17 @@ private:
     // font-size setting would only reach px-token'd chrome labels.
     void applyAppFontScale();
 
+    // The registry theme the effective mode's slot names (falling back to that
+    // mode's default when the slot holds a stale id).
+    const Th::Theme &resolvedTheme() const;
+    // Re-apply the slot the effective mode selects; notifies when it changed.
+    void             reapply();
+
     Th::Theme _theme;
     QString   _themeId;
+    ColorMode _mode = ColorMode::System;
+    QString   _lightId;
+    QString   _darkId;
     QString   _fontSizeId;
     QFont     _baseAppFont; // app font as set by main() — scaling never compounds
 };

@@ -9,6 +9,7 @@
 
 #include <QApplication>
 #include <QFileDialog>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QSettings>
 #include <QSignalSpy>
@@ -22,6 +23,12 @@ int main(int argc, char **argv) {
     // storage so tests never touch the real config.
     static QTemporaryDir settingsDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
+    // The ctest entry test_theme_migration runs this binary with a pre-mode
+    // config (a single "appearance/theme" key) so the ThemeManager constructor's
+    // one-time migration can be exercised; it runs once per process.
+    const QByteArray seed = qgetenv("MSGA_TEST_SEED_THEME");
+    if (!seed.isEmpty())
+        QSettings("msga", "msga").setValue("appearance/theme", QString::fromUtf8(seed));
     return Catch::Session().run(argc, argv);
 }
 
@@ -130,6 +137,144 @@ TEST_CASE("ThemeManager switches, persists and ignores unknown ids", "[theme]") 
     CHECK(
         QSettings("msga", "msga").value("appearance/theme").toString() == QStringLiteral("purple")
     );
+}
+
+TEST_CASE("registry classifies content darkness", "[theme]") {
+    CHECK_FALSE(Th::isDarkTheme(*Th::themeById("purple")));
+    CHECK_FALSE(Th::isDarkTheme(*Th::themeById("blue")));
+    CHECK_FALSE(Th::isDarkTheme(*Th::themeById("green")));
+    CHECK(Th::isDarkTheme(*Th::themeById("charcoal")));
+    CHECK(Th::isDarkTheme(Th::defaultDarkTheme()));
+    CHECK_FALSE(Th::isDarkTheme(Th::defaultTheme()));
+}
+
+TEST_CASE("colour mode: default is System, slots are per mode, persisted", "[theme][mode]") {
+    auto &mgr = ThemeManager::instance();
+    // Reset to a known state (earlier cases may have moved the light slot).
+    mgr.setMode(ThemeManager::ColorMode::System);
+    mgr.setThemeIdFor(false, "purple");
+    mgr.setThemeIdFor(true, "charcoal");
+
+    // Default mode is System — the same as the official Slack desktop app.
+    CHECK(ThemeManager::modeFromId("") == ThemeManager::ColorMode::System);
+    CHECK(ThemeManager::modeFromId("bogus") == ThemeManager::ColorMode::System);
+    CHECK(ThemeManager::modeId(ThemeManager::ColorMode::System) == "system");
+    CHECK(ThemeManager::modeFromId("light") == ThemeManager::ColorMode::Light);
+    CHECK(ThemeManager::modeFromId("dark") == ThemeManager::ColorMode::Dark);
+
+    // The offscreen platform reports no scheme → System resolves to light.
+    CHECK(mgr.mode() == ThemeManager::ColorMode::System);
+    CHECK_FALSE(mgr.effectiveDark());
+    CHECK(mgr.themeId() == "purple");
+
+    QSignalSpy themeSpy(&mgr, &ThemeManager::themeChanged);
+    QSignalSpy modeSpy(&mgr, &ThemeManager::modeChanged);
+
+    // Fixed dark: renders the dark slot.
+    mgr.setMode(ThemeManager::ColorMode::Dark);
+    CHECK(mgr.effectiveDark());
+    CHECK(mgr.themeId() == "charcoal");
+    CHECK(Th::isDarkTheme(mgr.theme()));
+    CHECK(themeSpy.count() == 1);
+    CHECK(modeSpy.count() == 1);
+    CHECK(QSettings("msga", "msga").value("appearance/mode").toString() == "dark");
+
+    // Editing the light slot while dark is shown changes nothing on screen…
+    mgr.setThemeIdFor(false, "blue");
+    CHECK(mgr.themeId() == "charcoal");
+    CHECK(themeSpy.count() == 1);
+    CHECK(mgr.themeIdFor(false) == "blue");
+    CHECK(QSettings("msga", "msga").value("appearance/theme").toString() == "blue");
+    CHECK(mgr.themeIdFor(true) == "charcoal"); // untouched default: not written until changed
+
+    // …until the mode flips to it.
+    mgr.setMode(ThemeManager::ColorMode::Light);
+    CHECK(mgr.themeId() == "blue");
+    CHECK(themeSpy.count() == 2);
+
+    // A theme may only fill the slot of its own darkness.
+    mgr.setThemeIdFor(true, "blue"); // light theme into the dark slot → ignored
+    CHECK(mgr.themeIdFor(true) == "charcoal");
+    mgr.setThemeIdFor(false, "charcoal"); // dark theme into the light slot → ignored
+    CHECK(mgr.themeIdFor(false) == "blue");
+    mgr.setThemeIdFor(true, "nope");
+    CHECK(mgr.themeIdFor(true) == "charcoal");
+
+    // setThemeById routes by the theme's darkness — the old single-slot API
+    // keeps working for callers that don't know about modes.
+    mgr.setThemeById("charcoal"); // dark slot (already charcoal → no-op)
+    CHECK(themeSpy.count() == 2);
+    mgr.setThemeById("green"); // light slot, which is on screen
+    CHECK(mgr.themeId() == "green");
+    CHECK(themeSpy.count() == 3);
+
+    // Same mode again is a no-op.
+    mgr.setMode(ThemeManager::ColorMode::Light);
+    CHECK(themeSpy.count() == 3);
+
+    // Back to System (→ light here): nothing new on screen, but the mode
+    // observers still hear about it.
+    const int modeBefore = modeSpy.count();
+    mgr.setMode(ThemeManager::ColorMode::System);
+    CHECK(mgr.themeId() == "green");
+    CHECK(themeSpy.count() == 3);
+    CHECK(modeSpy.count() == modeBefore + 1);
+
+    mgr.setThemeIdFor(false, "purple");
+}
+
+TEST_CASE("colour mode: System follows the OS scheme live", "[theme][mode]") {
+    auto &mgr = ThemeManager::instance();
+    mgr.setMode(ThemeManager::ColorMode::System);
+    mgr.setThemeIdFor(false, "purple");
+    mgr.setThemeIdFor(true, "charcoal");
+    REQUIRE(mgr.themeId() == "purple");
+
+    QSignalSpy themeSpy(&mgr, &ThemeManager::themeChanged);
+
+    // The offscreen platform theme reports no scheme (and ignores
+    // QStyleHints::setColorScheme), so drive the resolver through the override
+    // the way a portal-less desktop would; refreshSystemScheme() is what the
+    // colorSchemeChanged signal is wired to.
+    qputenv("MSGA_SYSTEM_COLOR_SCHEME", "dark");
+    mgr.refreshSystemScheme();
+    CHECK(mgr.effectiveDark());
+    CHECK(mgr.themeId() == "charcoal");
+    CHECK(themeSpy.count() == 1);
+
+    // A fixed mode ignores the OS…
+    mgr.setMode(ThemeManager::ColorMode::Light);
+    CHECK(mgr.themeId() == "purple");
+    qputenv("MSGA_SYSTEM_COLOR_SCHEME", "light");
+    mgr.refreshSystemScheme();
+    qputenv("MSGA_SYSTEM_COLOR_SCHEME", "dark");
+    mgr.refreshSystemScheme();
+    CHECK(mgr.themeId() == "purple");
+
+    // …and System picks it back up on re-entry.
+    mgr.setMode(ThemeManager::ColorMode::System);
+    CHECK(mgr.themeId() == "charcoal");
+
+    qunsetenv("MSGA_SYSTEM_COLOR_SCHEME");
+    mgr.refreshSystemScheme();
+    CHECK(mgr.themeId() == "purple");
+}
+
+TEST_CASE("legacy charcoal pick migrates to a fixed dark mode", "[theme][migration]") {
+    // Only meaningful when main() seeded the pre-mode config (see there).
+    if (qgetenv("MSGA_TEST_SEED_THEME") != "charcoal")
+        SKIP("run via test_theme_migration");
+    auto &mgr = ThemeManager::instance();
+    // Charcoal was the only dark-content theme, so the pick meant "dark mode":
+    // keep it dark rather than flipping the user to System on upgrade.
+    CHECK(mgr.mode() == ThemeManager::ColorMode::Dark);
+    CHECK(mgr.themeId() == "charcoal");
+    CHECK(mgr.themeIdFor(true) == "charcoal");
+    CHECK(mgr.themeIdFor(false) == "purple");
+    QSettings s("msga", "msga");
+    CHECK(s.value("appearance/mode").toString() == "dark");
+    CHECK(s.value("appearance/theme").toString() == "purple");
+    CHECK(s.value("appearance/themeDark").toString() == "charcoal");
 }
 
 TEST_CASE("stock file dialog readable whatever the OS palette", "[theme]") {

@@ -31,6 +31,7 @@
 #include <QListWidget>
 #include <QStackedWidget>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -50,7 +51,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 
-static constexpr int kPanelW    = 700;
+static constexpr int kPanelW    = 720; // fits three theme cards per row without a scrollbar
 static constexpr int kPanelH    = 540;
 static constexpr int kPanelMinW = 480;
 static constexpr int kPanelMinH = 360;
@@ -190,61 +191,138 @@ void SettingsDialog::buildPanel() {
     alay->setContentsMargins(sp.xxl, sp.xl, sp.xxl, sp.xl);
     alay->setSpacing(sp.xl);
 
-    // ── Color theme ───────────────────────────────────────────────────
+    // ── Color mode ────────────────────────────────────────────────────
+    auto *modeHeading = new QLabel(tr("Color mode"), appearPage);
+    modeHeading->setObjectName("sectionHeading");
+    alay->addWidget(modeHeading);
+
+    auto *colorModeBox = new QGroupBox(appearPage);
+    colorModeBox->setObjectName("colorModeBox");
+    auto *modeLayout = new QVBoxLayout(colorModeBox);
+    modeLayout->setSpacing(sp.md);
+    modeLayout->setContentsMargins(0, 0, 0, 0);
+
+    _modeLight           = new QRadioButton(tr("Light"), colorModeBox);
+    _modeDark            = new QRadioButton(tr("Dark"), colorModeBox);
+    _modeSystem          = new QRadioButton(tr("System"), colorModeBox);
+    auto *colorModeGroup = new QButtonGroup(colorModeBox);
+    colorModeGroup->addButton(_modeLight);
+    colorModeGroup->addButton(_modeDark);
+    colorModeGroup->addButton(_modeSystem);
+    modeLayout->addWidget(_modeLight);
+    modeLayout->addWidget(_modeDark);
+    modeLayout->addWidget(_modeSystem);
+
+    // Which way "System" resolved right now — refreshed when the OS flips.
+    _modeHint = new QLabel(colorModeBox);
+    _modeHint->setObjectName("modeHint");
+    _modeHint->setWordWrap(true);
+    modeLayout->addWidget(_modeHint);
+    alay->addWidget(colorModeBox);
+
+    // Apply + persist instantly, like the theme cards — the dialog restyling
+    // doubles as the preview.
+    const auto applyMode = [](ThemeManager::ColorMode m) {
+        return [m] { ThemeManager::instance().setMode(m); };
+    };
+    connect(_modeLight, &QAbstractButton::clicked, this, applyMode(ThemeManager::ColorMode::Light));
+    connect(_modeDark, &QAbstractButton::clicked, this, applyMode(ThemeManager::ColorMode::Dark));
+    connect(
+        _modeSystem, &QAbstractButton::clicked, this, applyMode(ThemeManager::ColorMode::System)
+    );
+    connect(&ThemeManager::instance(), &ThemeManager::modeChanged, this, [this] {
+        refreshModeHint();
+    });
+
+    // ── Color theme: one card row per mode ────────────────────────────
+    // Each mode keeps its own pick; the row edits that mode's slot, so
+    // choosing a dark theme while the app shows light changes nothing on
+    // screen until the mode flips (by hand or with the OS).
     auto *themeHeading = new QLabel(tr("Color theme"), appearPage);
     themeHeading->setObjectName("sectionHeading");
     alay->addWidget(themeHeading);
 
-    auto *themeBox = new QGroupBox(appearPage);
-    themeBox->setObjectName("themeBox");
-    // Pin to the row's natural height. The cards are fixed-size; with the default
-    // (Preferred) policy the page layout shrinks this box below them when vertical
-    // space is tight — which happens on Windows, where the taller system font
-    // inflates every other row — clipping the cards' captions. sizeHint() already
-    // accounts for the platform's font, so Fixed gives exactly the room needed.
-    themeBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    auto *themeLayout = new QHBoxLayout(themeBox);
-    themeLayout->setSpacing(sp.lg);
-    themeLayout->setContentsMargins(0, 0, 0, 0);
+    const auto themeName = [this](const QString &id) {
+        return id == QLatin1String("purple")     ? tr("Purple")
+               : id == QLatin1String("charcoal") ? tr("Charcoal")
+               : id == QLatin1String("blue")     ? tr("Blue")
+               : id == QLatin1String("green")    ? tr("Green")
+                                                 : id;
+    };
+    // Tighter than the page's section spacing: a caption sits right on its
+    // row, and the two rows read as one section.
+    auto *rowsLayout = new QVBoxLayout;
+    rowsLayout->setContentsMargins(0, 0, 0, 0);
+    rowsLayout->setSpacing(sp.sm);
+    alay->addLayout(rowsLayout);
+    const auto addThemeRow = [&](const QString &caption, bool dark) {
+        if (rowsLayout->count() > 0)
+            rowsLayout->addSpacing(sp.md);
+        auto *rowLabel = new QLabel(caption, appearPage);
+        rowLabel->setObjectName("themeRowLabel");
+        rowsLayout->addWidget(rowLabel);
 
-    auto *themeGroup = new QButtonGroup(themeBox);
-    themeGroup->setExclusive(true);
-    for (const auto &info : Th::availableThemes()) {
-        const QString name = info.id == QLatin1String("purple")     ? tr("Purple")
-                             : info.id == QLatin1String("charcoal") ? tr("Charcoal")
-                             : info.id == QLatin1String("blue")     ? tr("Blue")
-                             : info.id == QLatin1String("green")    ? tr("Green")
-                                                                    : info.id;
-        auto         *card = new ThemePreviewCard(info.id, name, *info.theme, themeBox);
-        themeGroup->addButton(card);
-        themeLayout->addWidget(card);
-        _themeCards.append(card);
-        // Apply + persist instantly — cheap and trivially reversible, and the
-        // dialog restyling doubles as a live preview.
-        connect(card, &QAbstractButton::clicked, this, [card] {
-            ThemeManager::instance().setThemeById(card->themeId());
-        });
-    }
-    themeLayout->addStretch();
+        auto *themeBox = new QGroupBox(appearPage);
+        themeBox->setObjectName("themeBox");
+        // Pin to the row's natural height. The cards are fixed-size; with the
+        // default (Preferred) policy the page layout shrinks this box below them
+        // when vertical space is tight — which happens on Windows, where the
+        // taller system font inflates every other row — clipping the cards'
+        // captions. sizeHint() already accounts for the platform's font, so
+        // Fixed gives exactly the room needed.
+        themeBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        auto *themeLayout = new QHBoxLayout(themeBox);
+        themeLayout->setSpacing(sp.lg);
+        themeLayout->setContentsMargins(0, 0, 0, 0);
 
-    // The card row is wider than the panel's content column now that there are
-    // four themes — scroll it horizontally instead of letting the layout squeeze
-    // the fixed-size cards. Named "settingsScroll" so applyTheme() restyles it
-    // along with the page wraps.
-    auto *themeScroll = new QScrollArea(appearPage);
-    themeScroll->setObjectName("settingsScroll");
-    themeScroll->setWidgetResizable(true);
-    themeScroll->setFrameShape(QFrame::NoFrame);
-    themeScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    themeScroll->viewport()->setAutoFillBackground(false);
-    themeScroll->setStyleSheet(settingsScrollQss());
-    themeScroll->setWidget(themeBox);
-    themeBox->setAutoFillBackground(false); // see scrollWrap()
-    // Vertical scrolling is off and the cards must never be squeezed, so pin the
-    // area's height to the row plus room for the horizontal scrollbar (sizeHint
-    // already accounts for the platform font in the captions).
-    themeScroll->setFixedHeight(themeBox->sizeHint().height() + sp.lg);
-    alay->addWidget(themeScroll);
+        auto *themeGroup = new QButtonGroup(themeBox);
+        themeGroup->setExclusive(true);
+        for (const auto &info : Th::availableThemes()) {
+            if (Th::isDarkTheme(*info.theme) != dark)
+                continue;
+            auto *card = new ThemePreviewCard(info.id, themeName(info.id), *info.theme, themeBox);
+            themeGroup->addButton(card);
+            themeLayout->addWidget(card);
+            _themeCards.append(card);
+            // Apply + persist instantly — cheap and trivially reversible.
+            connect(card, &QAbstractButton::clicked, this, [card, dark] {
+                ThemeManager::instance().setThemeIdFor(dark, card->themeId());
+            });
+        }
+        themeLayout->addStretch();
+
+        // The card row can be wider than the panel's content column — scroll it
+        // horizontally instead of letting the layout squeeze the fixed-size
+        // cards. Named "settingsScroll" so applyTheme() restyles it along with
+        // the page wraps.
+        auto *themeScroll = new QScrollArea(appearPage);
+        themeScroll->setObjectName("settingsScroll");
+        themeScroll->setWidgetResizable(true);
+        themeScroll->setFrameShape(QFrame::NoFrame);
+        themeScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        themeScroll->viewport()->setAutoFillBackground(false);
+        themeScroll->setStyleSheet(settingsScrollQss());
+        themeScroll->setWidget(themeBox);
+        themeBox->setAutoFillBackground(false); // see scrollWrap()
+        // Vertical scrolling is off and the cards must never be squeezed, so pin
+        // the area's height to the row (sizeHint already accounts for the
+        // platform font in the captions) — plus room for the horizontal
+        // scrollbar only while the row actually overflows, so the default width
+        // shows no dead band under the cards.
+        const int rowH = themeBox->sizeHint().height();
+        themeScroll->setFixedHeight(rowH);
+        connect(
+            themeScroll->horizontalScrollBar(),
+            &QAbstractSlider::rangeChanged,
+            themeScroll,
+            [themeScroll, rowH, gap = sp.lg](int, int max) {
+                themeScroll->setFixedHeight(max > 0 ? rowH + gap : rowH);
+            }
+        );
+        rowsLayout->addWidget(themeScroll);
+    };
+    addThemeRow(tr("Light theme"), false);
+    addThemeRow(tr("Dark theme"), true);
 
     // ── Font size ─────────────────────────────────────────────────────
     auto *fontHeading = new QLabel(tr("Font size"), appearPage);
@@ -1760,9 +1838,11 @@ void SettingsDialog::applyTheme() {
           QString("langBox"),
           QString("timeBox"),
           QString("themeBox"),
+          QString("colorModeBox"),
           QString("threadBox"),
           QString("fontBox")}) {
-        if (auto *w = _panel->findChild<QGroupBox *>(boxName))
+        // findChildren, not findChild: the theme rows share one name.
+        for (auto *w : _panel->findChildren<QGroupBox *>(boxName))
             w->setStyleSheet("QGroupBox { border: none; }");
     }
     if (auto *w = _panel->findChild<QLabel *>("langLabel")) {
@@ -1793,6 +1873,17 @@ void SettingsDialog::applyTheme() {
     _fontSmall->setStyleSheet(radioQss);
     _fontMedium->setStyleSheet(radioQss);
     _fontLarge->setStyleSheet(radioQss);
+    _modeLight->setStyleSheet(radioQss);
+    _modeDark->setStyleSheet(radioQss);
+    _modeSystem->setStyleSheet(radioQss);
+    _modeHint->setStyleSheet(
+        QString("font-size: %1px; color: %2;").arg(th.fonts.caption).arg(Th::qss(th.text.secondary))
+    );
+    for (auto *w : _panel->findChildren<QLabel *>("themeRowLabel")) {
+        w->setStyleSheet(
+            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        );
+    }
     _ctrlEnterSends->setStyleSheet(checkQss);
     _showAgentsApps->setStyleSheet(checkQss);
     _unreadsOnly->setStyleSheet(checkQss);
@@ -2009,8 +2100,37 @@ void SettingsDialog::loadAppearance() {
     );
     _ctrlEnterSends->setChecked(Ui::Shortcuts::ctrlEnterSends());
 
-    for (auto *card : _themeCards)
-        card->setChecked(card->themeId() == ThemeManager::instance().themeId());
+    auto &mgr = ThemeManager::instance();
+    switch (mgr.mode()) {
+    case ThemeManager::ColorMode::Light:
+        _modeLight->setChecked(true);
+        break;
+    case ThemeManager::ColorMode::Dark:
+        _modeDark->setChecked(true);
+        break;
+    case ThemeManager::ColorMode::System:
+        _modeSystem->setChecked(true);
+        break;
+    }
+    refreshModeHint();
+    for (auto *card : _themeCards) {
+        const Th::Theme *t    = Th::themeById(card->themeId());
+        const bool       dark = t && Th::isDarkTheme(*t);
+        card->setChecked(card->themeId() == mgr.themeIdFor(dark));
+    }
+}
+
+void SettingsDialog::refreshModeHint() {
+    auto &mgr = ThemeManager::instance();
+    if (mgr.mode() != ThemeManager::ColorMode::System) {
+        _modeHint->hide();
+        return;
+    }
+    _modeHint->setText(
+        mgr.effectiveDark() ? tr("Follows the system setting (currently dark)")
+                            : tr("Follows the system setting (currently light)")
+    );
+    _modeHint->show();
 }
 
 void SettingsDialog::saveAppearance() {

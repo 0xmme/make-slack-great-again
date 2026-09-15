@@ -501,6 +501,14 @@ const Theme &defaultTheme() {
     return kAubergine;
 }
 
+const Theme &defaultDarkTheme() {
+    return kCharcoal;
+}
+
+bool isDarkTheme(const Theme &t) {
+    return t.surface.content.lightnessF() < 0.5;
+}
+
 QLinearGradient navGradient(const QWidget *widget, const QColor &top, const QColor &bottom) {
     const QWidget  *win  = widget->window();
     const int       yTop = widget->mapTo(win, QPoint(0, 0)).y();

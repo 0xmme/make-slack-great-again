@@ -109,6 +109,7 @@ private:
     void                   probeAiEditor(bool fillModels);
     LlmProviderConfig      aiEditorConfig() const;
     void                   applyTheme();
+    void                   refreshModeHint();
     void                   saveNotifications();
     void                   loadNotifications();
     void                   saveAppearance();
@@ -154,13 +155,17 @@ private:
     QRadioButton             *_time24           = nullptr;
     QRadioButton             *_threadStandalone = nullptr;
     QRadioButton             *_threadInline     = nullptr;
+    QRadioButton             *_modeLight        = nullptr;
+    QRadioButton             *_modeDark         = nullptr;
+    QRadioButton             *_modeSystem       = nullptr;
+    QLabel                   *_modeHint         = nullptr; // "follows the system (currently dark)"
     QRadioButton             *_fontSmall        = nullptr;
     QRadioButton             *_fontMedium       = nullptr;
     QRadioButton             *_fontLarge        = nullptr;
     QCheckBox                *_showAgentsApps   = nullptr;
     QCheckBox                *_unreadsOnly      = nullptr;
     QCheckBox                *_ctrlEnterSends   = nullptr;
-    QList<ThemePreviewCard *> _themeCards; // one per registry theme
+    QList<ThemePreviewCard *> _themeCards; // one per registry theme, light row then dark row
     // Language the app actually started with — the restart note shows whenever
     // the combo selection differs from this, even across settings re-opens.
     QString                   _startupLanguage;

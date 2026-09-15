@@ -262,6 +262,10 @@ const std::vector<ThemeInfo> &availableThemes();
 // nullptr for unknown ids (callers fall back to defaultTheme()).
 const Theme *themeById(const QString &id);
 
+// Whether the theme darkens the CONTENT area (dark mode), as opposed to only
+// tinting the chrome. Decides which colour-mode slot a theme may fill.
+bool isDarkTheme(const Theme &t);
+
 // ── Access ────────────────────────────────────────────────────────────────────
 
 // Returns the currently active theme. Call via the Th::c() shorthand below.

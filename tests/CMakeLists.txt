@@ -405,6 +405,11 @@ add_msga_widget_test(test_theme
 )
 
 target_link_libraries(test_theme PRIVATE Qt6::Test)
+# Same binary, pre-mode config seeded: exercises ThemeManager's one-time
+# charcoal → dark-mode migration, which only runs in the constructor.
+add_test(NAME test_theme_migration COMMAND test_theme "[migration]")
+set_tests_properties(test_theme_migration PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;MSGA_TEST_SEED_THEME=charcoal")
 
 add_msga_widget_test(test_canvas_diff
     test_canvas_diff.cpp
