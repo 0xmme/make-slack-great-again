@@ -2193,6 +2193,10 @@ void Session::loadMyProfile(std::function<void(MyProfile)> done) {
     _backend->loadMyProfile(std::move(done));
 }
 
+void Session::loadSidebarTheme(std::function<void(SidebarThemePrefs, QString)> done) {
+    _backend->loadSidebarTheme(std::move(done));
+}
+
 void Session::updateProfile(
     const QHash<QString, QString> &fields, std::function<void(bool, QString)> done
 ) {

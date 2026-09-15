@@ -130,6 +130,8 @@ public:
     // --- Own profile ---
     // Load the authed user's editable profile (users.profile.get).
     void loadMyProfile(std::function<void(MyProfile)> done);
+    // The user's stored sidebar theme (Capabilities::sidebarTheme).
+    void loadSidebarTheme(std::function<void(SidebarThemePrefs, QString err)> done);
     // Update profile fields (users.profile.set); `fields` maps Slack profile
     // keys to new values. On success patches our own user entry so the UI
     // (footer, conv list) updates without a poll; failures fire errors() and

@@ -48,8 +48,8 @@ void ThemePreviewCard::paintEvent(QPaintEvent *) {
     p.save();
     p.setClipPath(clip);
 
-    const int    railW = 14; // workspace rail
-    const int    navW  = 36; // conv list column
+    const int    railW = 12; // workspace rail
+    const int    navW  = 30; // conv list column
     const QRectF railRect(mock.left(), mock.top(), railW, mock.height());
     const QRectF navRect(mock.left() + railW, mock.top(), navW, mock.height());
 
@@ -74,30 +74,33 @@ void ThemePreviewCard::paintEvent(QPaintEvent *) {
 
     // Workspace bubble on the rail.
     p.setBrush(th.nav.workspaceBubble);
-    p.drawRoundedRect(QRectF(mock.left() + 3, mock.top() + 7, 8, 8), 2.5, 2.5);
+    p.drawRoundedRect(QRectF(mock.left() + 2.5, mock.top() + 6, 7, 7), 2.5, 2.5);
 
     // Conv list: selected row pill + dim rows + mention badge.
-    const qreal navX = mock.left() + railW + 4;
+    const qreal navX  = mock.left() + railW + 3;
+    const qreal navW2 = navW - 6;
     p.setBrush(th.nav.itemSelected);
-    p.drawRoundedRect(QRectF(navX, mock.top() + 8, 27, 7), 2.5, 2.5);
+    p.drawRoundedRect(QRectF(navX, mock.top() + 7, navW2, 6), 2.5, 2.5);
     p.setBrush(th.nav.itemTextDim);
-    p.drawRoundedRect(QRectF(navX, mock.top() + 20, 21, 4), 2, 2);
-    p.drawRoundedRect(QRectF(navX, mock.top() + 29, 24, 4), 2, 2);
-    p.drawRoundedRect(QRectF(navX, mock.top() + 38, 18, 4), 2, 2);
+    p.drawRoundedRect(QRectF(navX, mock.top() + 17, navW2 * 0.8, 3.5), 1.75, 1.75);
+    p.drawRoundedRect(QRectF(navX, mock.top() + 25, navW2 * 0.9, 3.5), 1.75, 1.75);
+    p.drawRoundedRect(QRectF(navX, mock.top() + 33, navW2 * 0.7, 3.5), 1.75, 1.75);
+    p.setBrush(th.presence.online);
+    p.drawEllipse(QRectF(navX, mock.top() + 41, 4, 4));
     p.setBrush(th.badge.mention);
-    p.drawEllipse(QRectF(navX + 23, mock.top() + 37.5, 5, 5));
+    p.drawEllipse(QRectF(navX + navW2 - 5, mock.top() + 32.5, 5, 5));
 
     // Message area: author + two text lines, then an accent button blob. Widths
     // follow the area so the mock stays proportionate at any card width.
-    const qreal msgX = mock.left() + railW + navW + 6;
-    const qreal msgW = mock.right() - msgX - 5;
+    const qreal msgX = mock.left() + railW + navW + 5;
+    const qreal msgW = mock.right() - msgX - 4;
     p.setBrush(th.text.primary);
-    p.drawRoundedRect(QRectF(msgX, mock.top() + 10, msgW * 0.55, 5), 2, 2);
+    p.drawRoundedRect(QRectF(msgX, mock.top() + 8, msgW * 0.55, 4.5), 2, 2);
     p.setBrush(th.text.secondary);
-    p.drawRoundedRect(QRectF(msgX, mock.top() + 20, msgW, 4), 2, 2);
-    p.drawRoundedRect(QRectF(msgX, mock.top() + 28, msgW * 0.8, 4), 2, 2);
+    p.drawRoundedRect(QRectF(msgX, mock.top() + 17, msgW, 3.5), 1.75, 1.75);
+    p.drawRoundedRect(QRectF(msgX, mock.top() + 24, msgW * 0.8, 3.5), 1.75, 1.75);
     p.setBrush(th.accent.def);
-    p.drawRoundedRect(QRectF(msgX, mock.top() + 41, msgW * 0.5, 9), 2.5, 2.5);
+    p.drawRoundedRect(QRectF(msgX, mock.top() + 35, msgW * 0.5, 8), 2.5, 2.5);
 
     p.restore();
 

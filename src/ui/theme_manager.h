@@ -50,8 +50,25 @@ public:
     // "appearance/themeDark" for dark). Every preset renders over both modes;
     // the slot picks the chrome, the mode picks the content.
     const QString &themeIdFor(bool dark) const { return dark ? _darkId : _lightId; }
-    // Set one slot explicitly. Ignored when `id` is not a registry preset.
+    // Set one slot explicitly. Ignored when `id` is neither a registry preset
+    // nor kCustomId.
     void           setThemeIdFor(bool dark, const QString &id);
+
+    // ── Custom theme ──────────────────────────────────────────────────────
+    // The slot value for the user-defined chrome (Th::CustomTheme); one custom
+    // theme, rendered over both content modes like a preset. Persisted as JSON
+    // under QSettings "appearance/customTheme".
+    static constexpr auto  kCustomId = "custom";
+    const Th::CustomTheme &customTheme() const { return _custom; }
+    // Replace the custom theme: persists, rebuilds both variants, emits
+    // customThemeChanged, and re-renders when the slot on screen is custom.
+    void                   setCustomTheme(const Th::CustomTheme &t);
+    // The built custom theme for one content mode (stable address: preview
+    // cards keep a reference and repaint on customThemeChanged).
+    const Th::Theme &customVariant(bool dark) const { return dark ? _customDark : _customLight; }
+    // Preset or custom: what a slot id renders as for one mode; nullptr for
+    // an unknown id.
+    const Th::Theme *themeFor(const QString &id, bool dark) const;
 
     static QString   modeId(ColorMode mode);        // "light" | "dark" | "system"
     static ColorMode modeFromId(const QString &id); // unknown → System
@@ -75,6 +92,9 @@ signals:
     // its own when it doesn't (so mode-aware UI, like the "currently dark"
     // hint, still refreshes).
     void modeChanged();
+    // The custom theme's definition changed (always after both variants were
+    // rebuilt; themeChanged follows only when it is on screen).
+    void customThemeChanged();
 
 private:
     explicit ThemeManager(QObject *parent = nullptr);
@@ -99,4 +119,9 @@ private:
     QString   _darkId;
     QString   _fontSizeId;
     QFont     _baseAppFont; // app font as set by main() — scaling never compounds
+
+    Th::CustomTheme _custom;
+    Th::Theme       _customLight;
+    Th::Theme       _customDark;
+    void            rebuildCustom();
 };

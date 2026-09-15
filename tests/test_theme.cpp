@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -496,4 +497,304 @@ TEST_CASE("stock file dialog readable whatever the OS palette", "[theme]") {
 
     qApp->setPalette(appPalette);
     ThemeManager::instance().setTheme(Th::defaultTheme());
+}
+
+// ── Custom themes (phase 3) ──────────────────────────────────────────────────
+
+TEST_CASE("custom theme: legacy share strings parse in every spelling", "[theme][custom]") {
+    // Slack's own aubergine example, 8 values with '#'.
+    const auto eight =
+        Th::parseCustomTheme("#4D394B,#3E313C,#4C9689,#FFFFFF,#3E313C,#FFFFFF,#38978D,#EB4D5C");
+    REQUIRE(eight);
+    CHECK(eight->primary.color == QColor("#4D394B"));
+    CHECK(eight->highlight1.color == QColor("#4C9689"));
+    CHECK(eight->pins.itemSelText == QColor("#FFFFFF"));
+    CHECK(eight->pins.itemHover == QColor("#3E313C"));
+    CHECK(eight->pins.itemText == QColor("#FFFFFF"));
+    CHECK(eight->highlight2.color == QColor("#38978D"));
+    CHECK(eight->important.color == QColor("#EB4D5C"));
+    CHECK_FALSE(eight->pins.titleBarBg.isValid());
+    CHECK(eight->brightness == Th::CustomTheme::kBrightnessNeutral);
+    CHECK(eight->sidebarInverted);
+    CHECK(eight->gradient);
+
+    // 10 values, no '#', lower case, spaces after the commas, 3-digit shorthand.
+    const auto ten = Th::parseCustomTheme(
+        "1a1d21, 222529, 1164a3, fff, 350d36, d1d2d3, 2bac76, cd2553, 121016, fff"
+    );
+    REQUIRE(ten);
+    CHECK(ten->primary.color == QColor("#1A1D21"));
+    CHECK(ten->pins.itemSelText == QColor("#FFFFFF"));
+    CHECK(ten->pins.titleBarBg == QColor("#121016"));
+    CHECK(ten->pins.titleBarText == QColor("#FFFFFF"));
+    // A value equal to a swatch remembers the swatch's name.
+    CHECK(ten->highlight2.palette == "jade");
+    CHECK(ten->important.palette == "cherry");
+    CHECK(ten->primary.palette == "nocturne");
+
+    // Whitespace-separated is accepted too (what a copy from a rendered page gives).
+    CHECK(Th::parseCustomTheme("#4D394B #3E313C #4C9689 #FFFFFF #3E313C #FFFFFF #38978D #EB4D5C"));
+    // Surrounding whitespace / newline.
+    CHECK(
+        Th::parseCustomTheme("  #4D394B,#3E313C,#4C9689,#FFFFFF,#3E313C,#FFFFFF,#38978D,#EB4D5C\n")
+    );
+
+    // Garbage: wrong count, a non-hex token, empty, prose, unrelated JSON.
+    CHECK_FALSE(Th::parseCustomTheme("#4D394B,#3E313C,#4C9689,#FFFFFF,#3E313C,#FFFFFF,#38978D"));
+    CHECK_FALSE(
+        Th::parseCustomTheme("#4D394B,#3E313C,#4C9689,#FFFFFF,#3E313C,#FFFFFF,#38978D,#GGGGGG")
+    );
+    CHECK_FALSE(
+        Th::parseCustomTheme("#4D394B,#3E313C,#4C9689,#FFFF,#3E313C,#FFFFFF,#38978D,#EB4D5C")
+    );
+    CHECK_FALSE(Th::parseCustomTheme(""));
+    CHECK_FALSE(Th::parseCustomTheme("hello world"));
+    CHECK_FALSE(Th::parseCustomTheme(R"({"foo":1})"));
+    CHECK_FALSE(Th::parseCustomTheme("{not json"));
+}
+
+TEST_CASE("custom theme: ia_theme JSON with palette names and hex", "[theme][custom]") {
+    // Verbatim shape of what users.prefs.get returns.
+    const auto slack = Th::parseCustomTheme(
+        R"({"primary":{"palette":"aubergine"},"highlight1":{"palette":"aubergine"},)"
+        R"("highlight2":{"palette":"jade"},"important":{"palette":"aubergine"},)"
+        R"("brightness":6,"sidebarInverted":true,"useCustomHex":false})"
+    );
+    REQUIRE(slack);
+    CHECK(slack->primary.color == Th::swatchByName("aubergine")->color);
+    CHECK(slack->primary.palette == "aubergine");
+    CHECK(slack->highlight2.color == Th::swatchByName("jade")->color);
+    CHECK(slack->sidebarInverted);
+    CHECK(slack->gradient); // not a Slack key → our default
+
+    // A hex wins over the name; an unknown name uses the hex, or falls back.
+    const auto mixed = Th::parseCustomTheme(
+        R"({"primary":{"hex":"#112233","palette":"aubergine"},)"
+        R"("highlight1":{"palette":"work hard","hex":"#445566"},)"
+        R"("highlight2":{"palette":"no-such-swatch"},)"
+        R"("important":"#778899","brightness":42,"sidebarInverted":false})"
+    );
+    REQUIRE(mixed);
+    CHECK(mixed->primary.color == QColor("#112233"));
+    CHECK(mixed->primary.palette.isEmpty()); // not a swatch value any more
+    CHECK(mixed->highlight1.color == QColor("#445566"));
+    CHECK(mixed->highlight2 == Th::defaultCustomTheme().highlight2);
+    CHECK(mixed->important.color == QColor("#778899"));
+    CHECK(mixed->brightness == Th::CustomTheme::kBrightnessMax); // clamped
+    CHECK_FALSE(mixed->sidebarInverted);
+
+    // Missing slots take the defaults, but at least one slot must be present.
+    const auto partial = Th::parseCustomTheme(R"({"primary":{"hex":"#000000"}})");
+    REQUIRE(partial);
+    CHECK(partial->primary.color == QColor("#000000"));
+    CHECK(partial->highlight1 == Th::defaultCustomTheme().highlight1);
+}
+
+TEST_CASE("custom theme: serialise → parse is the identity", "[theme][custom]") {
+    Th::CustomTheme t   = Th::defaultCustomTheme();
+    const auto      def = Th::parseCustomTheme(Th::serializeCustomTheme(t));
+    REQUIRE(def);
+    CHECK(*def == t);
+
+    t.primary            = {QColor("#123456"), {}};
+    t.highlight1.color   = QColor("#FEDCBA");
+    t.highlight1.palette = {};
+    t.brightness         = 2;
+    t.sidebarInverted    = false;
+    t.gradient           = false;
+    t.pins.itemHover     = QColor("#0000FF");
+    t.pins.itemSelText   = QColor("#00FF00");
+    t.pins.itemText      = QColor("#FF0000");
+    t.pins.titleBarBg    = QColor("#101010");
+    t.pins.titleBarText  = QColor("#EEEEEE");
+    const QString json   = Th::serializeCustomTheme(t);
+    const auto    back   = Th::parseCustomTheme(json);
+    REQUIRE(back);
+    CHECK(*back == t);
+    // The Slack-shaped keys are there for a paste into Slack.
+    CHECK(json.contains(R"("primary":{"hex":"#123456"})"));
+    CHECK(json.contains(R"("useCustomHex":true)"));
+    CHECK(json.contains(R"("brightness":2)"));
+    CHECK(json.contains(R"("sidebarInverted":false)"));
+    // A swatch pick carries its name.
+    CHECK(Th::serializeCustomTheme(Th::defaultCustomTheme()).contains(R"("palette":"jade")"));
+}
+
+TEST_CASE("custom theme: legacy export → import round-trips", "[theme][custom]") {
+    // menu_bg and hover_item are one token on export (both are the hover), so
+    // the sample uses the same value for both, as Slack's own themes do.
+    const QString in =
+        "#3F0E40,#5A2A5B,#1264A3,#FFFFFF,#5A2A5B,#E1D6E1,#2BAC76,#CD2553,#2B0A2C,#F0E4F0";
+    const auto t = Th::parseCustomTheme(in);
+    REQUIRE(t);
+    const Th::Theme built = Th::buildTheme(Th::chromeFromCustom(*t, false), false);
+    const QString   out   = Th::legacyShareString(*t, built);
+    CHECK(out == in);
+    // …and over dark content the chrome (what the string describes) is the same.
+    const Th::Theme dark = Th::buildTheme(Th::chromeFromCustom(*t, true), true);
+    CHECK(Th::legacyShareString(*t, dark) == in);
+    CHECK(Th::isDarkTheme(dark));
+}
+
+TEST_CASE("custom theme: slots drive the chrome tokens", "[theme][custom]") {
+    Th::CustomTheme t;
+    t.primary    = {QColor("#3F0E40"), {}};
+    t.highlight1 = {QColor("#1264A3"), {}};
+    t.highlight2 = {QColor("#00FF00"), {}};
+    t.important  = {QColor("#FF0000"), {}};
+
+    const Th::Theme light = Th::buildTheme(Th::chromeFromCustom(t, false), false);
+    CHECK(light.nav.bg == QColor("#3F0E40")); // neutral brightness: exact
+    CHECK(light.titleBar.bg == light.nav.bg);
+    CHECK(light.nav.itemSelected == QColor("#1264A3"));
+    CHECK(light.nav.itemSelectedText == QColor("#FFFFFF")); // dark pill → white ink
+    CHECK(light.accent.def == QColor("#1264A3"));
+    CHECK(light.accent.hover.lightnessF() > light.accent.def.lightnessF());
+    CHECK(light.accent.pressed.lightnessF() < light.accent.def.lightnessF());
+    CHECK(light.icon.accent == QColor("#1264A3"));
+    CHECK(light.presence.online == QColor("#00FF00"));
+    CHECK(light.badge.mention == QColor("#FF0000"));
+    CHECK(light.nav.itemText == QColor("#FFFFFF")); // derived: dark rail → white
+    CHECK(light.nav.bgGradTop != light.nav.bgGradBottom);
+    CHECK(light.surface.content == Th::defaultTheme().surface.content);
+    checkChromeTokensValid(light);
+
+    // Brightness shifts the rail's lightness both ways; hue stays.
+    t.brightness           = Th::CustomTheme::kBrightnessMax;
+    const Th::Theme bright = Th::buildTheme(Th::chromeFromCustom(t, false), false);
+    CHECK(bright.nav.bg.lightnessF() > light.nav.bg.lightnessF());
+    CHECK(qAbs(bright.nav.bg.hslHueF() - light.nav.bg.hslHueF()) < 0.02);
+    t.brightness        = Th::CustomTheme::kBrightnessMin;
+    const Th::Theme dim = Th::buildTheme(Th::chromeFromCustom(t, false), false);
+    CHECK(dim.nav.bg.lightnessF() < light.nav.bg.lightnessF());
+    t.brightness = Th::CustomTheme::kBrightnessNeutral;
+
+    // Gradient off: flat endpoints.
+    t.gradient           = false;
+    const Th::Theme flat = Th::buildTheme(Th::chromeFromCustom(t, false), false);
+    CHECK(flat.nav.bgGradTop == flat.nav.bg);
+    CHECK(flat.nav.bgGradBottom == flat.nav.bg);
+    CHECK(flat.nav.primaryGradTop == flat.nav.primary);
+    t.gradient = true;
+
+    // Darker sidebar off: over light content the rail becomes a pale tint of
+    // the primary (a light rail, so the ink flips); over dark content the rail
+    // stays the primary — a pale rail would sit above the content.
+    t.sidebarInverted    = false;
+    const Th::Theme pale = Th::buildTheme(Th::chromeFromCustom(t, false), false);
+    CHECK(pale.nav.bg.lightnessF() > 0.85);
+    CHECK(qAbs(pale.nav.bg.hslHueF() - light.nav.bg.hslHueF()) < 0.02);
+    CHECK(pale.nav.itemText.lightnessF() < 0.2);
+    CHECK(pale.nav.scrollThumb.red() == 0);
+    const Th::Theme paleDark = Th::buildTheme(Th::chromeFromCustom(t, true), true);
+    CHECK(paleDark.nav.bg == QColor("#3F0E40"));
+    CHECK(paleDark.nav.itemText == QColor("#FFFFFF"));
+    t.sidebarInverted = true;
+
+    // A light primary (Slack's Hoth) is a light rail outright; a light pill
+    // carries dark ink; dark content lifts nothing it can't read.
+    t.primary            = {QColor("#F5F0EB"), {}};
+    t.highlight1         = {QColor("#E8E0D8"), {}};
+    const Th::Theme hoth = Th::buildTheme(Th::chromeFromCustom(t, false), false);
+    CHECK(hoth.nav.itemText.lightnessF() < 0.2);
+    CHECK(hoth.nav.itemSelectedText.lightnessF() < 0.2);
+    CHECK(hoth.nav.extBadgeText.lightnessF() < 0.5);
+    const Th::Theme hothDark = Th::buildTheme(Th::chromeFromCustom(t, true), true);
+    CHECK(Th::isDarkTheme(hothDark));
+    CHECK(hothDark.accent.def.lightnessF() < 0.6); // pale highlight dropped to a readable fill
+    checkChromeTokensValid(hoth);
+    checkChromeTokensValid(hothDark);
+
+    // Pins from a legacy string survive derivation.
+    t.pins.itemHover       = QColor("#112233");
+    t.pins.itemSelText     = QColor("#445566");
+    t.pins.itemText        = QColor("#778899");
+    t.pins.titleBarBg      = QColor("#AABBCC");
+    t.pins.titleBarText    = QColor("#DDEEFF");
+    const Th::Theme pinned = Th::buildTheme(Th::chromeFromCustom(t, false), false);
+    CHECK(pinned.nav.itemHover == QColor("#112233"));
+    CHECK(pinned.nav.itemSelectedText == QColor("#445566"));
+    CHECK(pinned.nav.itemText == QColor("#778899"));
+    CHECK(pinned.titleBar.bg == QColor("#AABBCC"));
+    CHECK(pinned.titleBar.controlDefault == QColor("#DDEEFF"));
+    CHECK(pinned.nav.itemTextDim != QColor("#778899")); // derived from the pinned ink
+    CHECK(pinned.nav.itemTextDim.isValid());
+}
+
+TEST_CASE("custom theme: contrast ratio and swatch lookups", "[theme][custom]") {
+    CHECK(Th::contrastRatio(QColor("#000000"), QColor("#FFFFFF")) == Catch::Approx(21.0));
+    CHECK(Th::contrastRatio(QColor("#FFFFFF"), QColor("#FFFFFF")) == Catch::Approx(1.0));
+    CHECK(Th::contrastRatio(QColor("#FFFFFF"), QColor("#3F0E40")) > 10.0);
+    CHECK(Th::contrastRatio(QColor("#3F0E40"), QColor("#FFFFFF")) > 10.0); // symmetric
+    CHECK(Th::contrastRatio(QColor("#777777"), QColor("#888888")) < 1.5);
+
+    REQUIRE_FALSE(Th::swatches().empty());
+    for (const auto &s : Th::swatches()) {
+        CHECK(s.color.isValid());
+        CHECK(Th::swatchByName(s.name) == &s);
+        CHECK(Th::swatchNameFor(s.color) == s.name);
+    }
+    CHECK(Th::swatchByName(" Aubergine ") != nullptr); // case/space tolerant
+    CHECK(Th::swatchByName("nope") == nullptr);
+    CHECK(Th::swatchNameFor(QColor("#010203")).isEmpty());
+}
+
+TEST_CASE("ThemeManager: the custom slot renders the user's theme live", "[theme][custom]") {
+    auto &mgr = ThemeManager::instance();
+    mgr.setMode(ThemeManager::ColorMode::Light);
+    mgr.setThemeIdFor(false, "purple");
+    REQUIRE(mgr.themeId() == "purple");
+    // Fresh settings: the editor's default.
+    CHECK(mgr.customTheme() == Th::defaultCustomTheme());
+
+    QSignalSpy themeSpy(&mgr, &ThemeManager::themeChanged);
+    QSignalSpy customSpy(&mgr, &ThemeManager::customThemeChanged);
+
+    // Editing the definition while a preset is on screen persists but doesn't
+    // re-render.
+    Th::CustomTheme t = mgr.customTheme();
+    t.primary         = {QColor("#102030"), {}};
+    mgr.setCustomTheme(t);
+    CHECK(customSpy.count() == 1);
+    CHECK(themeSpy.count() == 0);
+    CHECK(mgr.customVariant(false).nav.bg == QColor("#102030"));
+    CHECK(mgr.customVariant(true).nav.bg == QColor("#102030"));
+    CHECK(Th::isDarkTheme(mgr.customVariant(true)));
+    const auto stored =
+        Th::parseCustomTheme(QSettings("msga", "msga").value("appearance/customTheme").toString());
+    REQUIRE(stored);
+    CHECK(*stored == t);
+    mgr.setCustomTheme(t); // unchanged → nothing
+    CHECK(customSpy.count() == 1);
+
+    // Selecting the custom card for the mode on screen renders it…
+    mgr.setThemeIdFor(false, ThemeManager::kCustomId);
+    CHECK(mgr.themeId() == ThemeManager::kCustomId);
+    CHECK(themeSpy.count() == 1);
+    CHECK(mgr.theme().nav.bg == QColor("#102030"));
+    CHECK(
+        QSettings("msga", "msga").value("appearance/theme").toString() ==
+        QLatin1String(ThemeManager::kCustomId)
+    );
+    // …and now an edit re-renders at once.
+    t.primary = {QColor("#405060"), {}};
+    mgr.setCustomTheme(t);
+    CHECK(themeSpy.count() == 2);
+    CHECK(mgr.theme().nav.bg == QColor("#405060"));
+    CHECK(mgr.themeFor(ThemeManager::kCustomId, false) == &mgr.customVariant(false));
+    CHECK(mgr.themeFor("blue", true) == Th::themeById("blue", true));
+    CHECK(mgr.themeFor("nope", true) == nullptr);
+
+    // The dark slot can hold it too, and a mode flip lands on the dark variant.
+    mgr.setThemeIdFor(true, ThemeManager::kCustomId);
+    mgr.setMode(ThemeManager::ColorMode::Dark);
+    CHECK(mgr.themeId() == ThemeManager::kCustomId);
+    CHECK(Th::isDarkTheme(mgr.theme()));
+    CHECK(mgr.theme().nav.bg == QColor("#405060"));
+
+    // Back to a clean state for whatever runs next.
+    mgr.setMode(ThemeManager::ColorMode::Light);
+    mgr.setThemeIdFor(false, "purple");
+    mgr.setThemeIdFor(true, "charcoal");
+    mgr.setCustomTheme(Th::defaultCustomTheme());
 }

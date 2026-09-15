@@ -39,10 +39,11 @@ private:
     QString          _name;
     const Th::Theme &_preview;
 
-    // Sized so all four presets fit one row of the Settings panel (kPanelW)
+    // Sized so the four presets plus the custom card fit one row of the
+    // Settings panel (kPanelW, minus the tab column and the page's scrollbar)
     // without a horizontal scrollbar.
-    static constexpr int kCardW    = 112;
-    static constexpr int kMockH    = 76;
+    static constexpr int kCardW    = 90;
+    static constexpr int kMockH    = 64;
     static constexpr int kLabelPad = 12; // vertical breathing room around the caption
     static constexpr int kRadius   = 8;
 };

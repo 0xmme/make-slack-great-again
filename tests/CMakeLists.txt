@@ -386,6 +386,7 @@ add_msga_widget_test(test_message_render
     ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
@@ -400,6 +401,7 @@ add_msga_widget_test(test_message_render
 add_msga_widget_test(test_theme
     test_theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
 )
@@ -432,6 +434,7 @@ add_msga_widget_test(test_canvas_page
     ${CMAKE_SOURCE_DIR}/src/util/mailto_link.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
@@ -453,6 +456,7 @@ add_msga_widget_test(test_canvas_emoji
     ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
@@ -473,6 +477,7 @@ add_msga_widget_test(test_workspace_switcher
     test_workspace_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/workspace_switcher/workspace_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/workspace_switcher/workspace_bubble.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
@@ -486,6 +491,7 @@ add_msga_widget_test(test_user_profile_card
     ${CMAKE_SOURCE_DIR}/src/ui/user_profile_card/user_profile_card.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
@@ -499,6 +505,7 @@ add_msga_widget_test(test_context_menu
     ${CMAKE_SOURCE_DIR}/src/ui/context_menu/context_menu.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 target_link_libraries(test_context_menu PRIVATE Qt6::Test)
@@ -509,6 +516,7 @@ add_msga_widget_test(test_app_dialog
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 target_link_libraries(test_app_dialog PRIVATE Qt6::Test)
@@ -521,6 +529,7 @@ add_msga_widget_test(test_summary_dialog
     ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 target_link_libraries(test_summary_dialog PRIVATE Qt6::Test)
@@ -531,6 +540,7 @@ target_link_libraries(test_summary_dialog PRIVATE Qt6::Test)
 #     ${CMAKE_SOURCE_DIR}/src/ui/typing_indicator/typing_indicator.cpp
 #     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
 #     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+#     ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
 # )
 # target_link_libraries(test_typing_indicator PRIVATE Qt6::Test)
 
@@ -540,6 +550,7 @@ add_msga_widget_test(test_search_widget
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
@@ -642,6 +653,7 @@ add_msga_widget_test(test_session_import_dialog
     ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/token_deriver.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/local_importer.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/browser_login.cpp
@@ -662,6 +674,7 @@ add_msga_widget_test(test_browse_channels_dialog
     ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
@@ -683,6 +696,7 @@ add_msga_widget_test(test_move_to_thread_dialog
     ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
@@ -704,6 +718,7 @@ add_msga_widget_test(test_quick_switcher
     ${CMAKE_SOURCE_DIR}/src/ui/shortcuts.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
@@ -713,6 +728,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/ui/shortcuts.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/composer_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/gif_picker/gif_picker_popup.cpp
@@ -770,6 +786,7 @@ add_msga_widget_test(test_conv_list_widget
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
@@ -845,6 +862,7 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/discussion_summary.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_service.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_wire.cpp
@@ -907,6 +925,7 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/discussion_summary.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_service.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_wire.cpp

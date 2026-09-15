@@ -219,6 +219,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
 
     # UI
     src/ui/theme.cpp
+    src/ui/theme_custom.cpp
     src/ui/theme_manager.cpp
     src/ui/shortcuts.cpp
     src/ui/file_dialog_utils.cpp
@@ -253,6 +254,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/workspace_switcher/workspace_bubble.cpp
     src/ui/settings/settings_dialog.cpp
     src/ui/settings/theme_preview_card.cpp
+    src/ui/settings/custom_theme_editor.cpp
     src/ui/search/search_widget.cpp
     src/ui/thread_panel/thread_panel.cpp
     src/ui/thread_panel/thread_export_job.cpp

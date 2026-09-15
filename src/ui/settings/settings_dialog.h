@@ -8,6 +8,8 @@
 
 #include <QList>
 #include <QWidget>
+
+#include <functional>
 #include <QPoint>
 #include <QRect>
 #include <QList>
@@ -28,6 +30,8 @@ class StyledButton;
 class StyledLineEdit;
 class UpdateChecker;
 class ThemePreviewCard;
+class CustomThemeEditor;
+struct SidebarThemePrefs;
 class QGroupBox;
 class QVBoxLayout;
 class QButtonGroup;
@@ -45,6 +49,17 @@ public:
     // notice deep-links to AI assistance).
     void openAt(Page page);
     void setUpdateChecker(UpdateChecker *checker);
+
+    // Where "Use my Slack theme" (Appearance → Custom theme) reads from: the
+    // owner of the workspace sessions supplies both closures. `available` says
+    // whether any workspace can serve its theme (the button hides otherwise);
+    // `fetch` asks one and calls back with the prefs or an error.
+    struct SlackThemeSource {
+        std::function<bool()> available;
+        std::function<void(std::function<void(const SidebarThemePrefs &, const QString &err)>)>
+            fetch;
+    };
+    void setSlackThemeSource(SlackThemeSource source);
 
     // Which sample notification the "Test" button fires; the int carried by
     // testNotificationRequested is one of these.
@@ -110,6 +125,8 @@ private:
     LlmProviderConfig      aiEditorConfig() const;
     void                   applyTheme();
     void                   refreshModeHint();
+    void                   refreshCustomEditor(); // show the editor iff a Custom card is picked
+    void                   fetchSlackTheme();
     void                   saveNotifications();
     void                   loadNotifications();
     void                   saveAppearance();
@@ -165,7 +182,10 @@ private:
     QCheckBox                *_showAgentsApps   = nullptr;
     QCheckBox                *_unreadsOnly      = nullptr;
     QCheckBox                *_ctrlEnterSends   = nullptr;
-    QList<ThemePreviewCard *> _themeCards; // every preset twice: light row then dark row
+    QList<ThemePreviewCard *> _themeCards; // every preset + custom: light row then dark row
+    QWidget                  *_customSection = nullptr; // heading + editor; shown when custom
+    CustomThemeEditor        *_customEditor  = nullptr;
+    SlackThemeSource          _slackTheme;
     // Language the app actually started with — the restart note shows whenever
     // the combo selection differs from this, even across settings re-opens.
     QString                   _startupLanguage;

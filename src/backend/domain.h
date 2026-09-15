@@ -176,11 +176,24 @@ struct Capabilities {
     bool messageSubjects  = false; // per-message subject line (email); shows the composer subject
                                    // field — see imap-backend-plan §3/§4
     bool collapseQuotedReplies =
-        false; // email: a reply's trailing quoted history + signature is
-               // the previous message(s) already shown above, so collapse
-               // it behind a "show quoted text" toggle (messenger, not mail
-               // client). Chat services quote intentionally → leave false.
+        false;                 // email: a reply's trailing quoted history + signature is
+                               // the previous message(s) already shown above, so collapse
+                               // it behind a "show quoted text" toggle (messenger, not mail
+                               // client). Chat services quote intentionally → leave false.
+    bool sidebarTheme = false; // loadSidebarTheme(): the user's stored sidebar theme (Slack's
+                               // users.prefs.get, served only to a session token) — feeds the
+                               // "Use my Slack theme" button of the custom theme editor.
     bool operator==(const Capabilities &) const = default;
+};
+
+// The user's sidebar theme as the service stores it (Slack: users.prefs.get).
+// `iaTheme` is the redesign's JSON (`{"primary":{"palette":"aubergine"},…}`),
+// `legacyValues` the older custom theme as Slack's comma-joined hex list in
+// slot order (column_bg, menu_bg, …). Either may be empty; Th::parseCustomTheme
+// reads both.
+struct SidebarThemePrefs {
+    QString iaTheme;
+    QString legacyValues;
 };
 
 // --- Core domain structs ---

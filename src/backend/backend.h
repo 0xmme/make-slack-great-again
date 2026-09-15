@@ -333,6 +333,12 @@ public:
         if (done)
             done({});
     }
+    // The user's stored sidebar theme (Capabilities::sidebarTheme). `err` is
+    // empty on success; a backend without the notion answers not_supported.
+    virtual void loadSidebarTheme(std::function<void(SidebarThemePrefs, QString err)> done) {
+        if (done)
+            done({}, QStringLiteral("not_supported"));
+    }
     // Update the authed user's profile (users.profile.set). `fields` maps Slack
     // profile keys (display_name, real_name, email, phone, …) to their new
     // values; only the supplied keys are changed. Note: Slack rejects self

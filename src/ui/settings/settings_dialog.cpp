@@ -3,6 +3,8 @@
 #include "settings_dialog.h"
 #include "network/gif_search.h"
 #include "theme_preview_card.h"
+#include "custom_theme_editor.h"
+#include "backend/domain.h"
 #include "ui/dropdown/dropdown.h"
 #include "ui/icon_button/icon_button.h"
 #include "ui/update_checker/update_checker.h"
@@ -245,11 +247,12 @@ void SettingsDialog::buildPanel() {
     alay->addWidget(themeHeading);
 
     const auto themeName = [this](const QString &id) {
-        return id == QLatin1String("purple")     ? tr("Purple")
-               : id == QLatin1String("charcoal") ? tr("Charcoal")
-               : id == QLatin1String("blue")     ? tr("Blue")
-               : id == QLatin1String("green")    ? tr("Green")
-                                                 : id;
+        return id == QLatin1String("purple")                  ? tr("Purple")
+               : id == QLatin1String("charcoal")              ? tr("Charcoal")
+               : id == QLatin1String("blue")                  ? tr("Blue")
+               : id == QLatin1String("green")                 ? tr("Green")
+               : id == QLatin1String(ThemeManager::kCustomId) ? tr("Custom")
+                                                              : id;
     };
     // Tighter than the page's section spacing: a caption sits right on its
     // row, and the two rows read as one section.
@@ -279,17 +282,31 @@ void SettingsDialog::buildPanel() {
 
         auto *themeGroup = new QButtonGroup(themeBox);
         themeGroup->setExclusive(true);
-        for (const auto &info : Th::availableThemes()) {
-            auto *card =
-                new ThemePreviewCard(info.id, themeName(info.id), *info.variant(dark), themeBox);
+        const auto addCard = [&](const QString &id, const Th::Theme &preview) {
+            auto *card = new ThemePreviewCard(id, themeName(id), preview, themeBox);
             themeGroup->addButton(card);
             themeLayout->addWidget(card);
             _themeCards.append(card);
             // Apply + persist instantly — cheap and trivially reversible.
-            connect(card, &QAbstractButton::clicked, this, [card, dark] {
+            connect(card, &QAbstractButton::clicked, this, [this, card, dark] {
                 ThemeManager::instance().setThemeIdFor(dark, card->themeId());
+                refreshCustomEditor();
             });
-        }
+            return card;
+        };
+        for (const auto &info : Th::availableThemes())
+            addCard(info.id, *info.variant(dark));
+        // The user-defined chrome, last. Its preview is the manager's built
+        // variant (a stable reference) — repainted whenever the definition moves.
+        auto *customCard = addCard(
+            QLatin1String(ThemeManager::kCustomId), ThemeManager::instance().customVariant(dark)
+        );
+        connect(
+            &ThemeManager::instance(),
+            &ThemeManager::customThemeChanged,
+            customCard,
+            qOverload<>(&QWidget::update)
+        );
         themeLayout->addStretch();
 
         // The card row can be wider than the panel's content column — scroll it
@@ -324,6 +341,32 @@ void SettingsDialog::buildPanel() {
     };
     addThemeRow(tr("Light theme"), false);
     addThemeRow(tr("Dark theme"), true);
+
+    // ── Custom theme editor (shown while a Custom card is selected) ─────
+    _customSection  = new QWidget(appearPage);
+    auto *customLay = new QVBoxLayout(_customSection);
+    customLay->setContentsMargins(0, 0, 0, 0);
+    customLay->setSpacing(sp.xl);
+    auto *customHeading = new QLabel(tr("Custom theme"), _customSection);
+    customHeading->setObjectName("sectionHeading");
+    customLay->addWidget(customHeading);
+    auto *customBox = new QGroupBox(_customSection);
+    customBox->setObjectName("customBox");
+    auto *customBoxLay = new QVBoxLayout(customBox);
+    customBoxLay->setContentsMargins(0, 0, 0, 0);
+    _customEditor = new CustomThemeEditor(customBox);
+    customBoxLay->addWidget(_customEditor);
+    customLay->addWidget(customBox);
+    alay->addWidget(_customSection);
+    connect(_customEditor, &CustomThemeEditor::themeEdited, this, [](const Th::CustomTheme &t) {
+        ThemeManager::instance().setCustomTheme(t); // persists; re-renders if on screen
+    });
+    connect(
+        _customEditor,
+        &CustomThemeEditor::slackThemeRequested,
+        this,
+        &SettingsDialog::fetchSlackTheme
+    );
 
     // ── Font size ─────────────────────────────────────────────────────
     auto *fontHeading = new QLabel(tr("Font size"), appearPage);
@@ -1839,6 +1882,7 @@ void SettingsDialog::applyTheme() {
           QString("langBox"),
           QString("timeBox"),
           QString("themeBox"),
+          QString("customBox"),
           QString("colorModeBox"),
           QString("threadBox"),
           QString("fontBox")}) {
@@ -1864,6 +1908,7 @@ void SettingsDialog::applyTheme() {
                 Th::qss(th.editBanner.border)
             )
     );
+    _customEditor->applyTheme();
     const QString radioQss = Th::radioQss(th.fonts.md);
     const QString checkQss = Th::checkBoxQss(th.fonts.md);
     const QString spinQss  = Th::spinBoxQss(th.fonts.md);
@@ -2118,6 +2163,45 @@ void SettingsDialog::loadAppearance() {
         const bool dark = Th::isDarkTheme(card->preview()); // which row the card sits in
         card->setChecked(card->themeId() == mgr.themeIdFor(dark));
     }
+    _customEditor->setTheme(mgr.customTheme());
+    _customEditor->setSlackThemeAvailable(_slackTheme.available && _slackTheme.available());
+    refreshCustomEditor();
+}
+
+void SettingsDialog::refreshCustomEditor() {
+    const auto &mgr    = ThemeManager::instance();
+    const auto  custom = QLatin1String(ThemeManager::kCustomId);
+    _customSection->setVisible(mgr.themeIdFor(false) == custom || mgr.themeIdFor(true) == custom);
+}
+
+void SettingsDialog::setSlackThemeSource(SlackThemeSource source) {
+    _slackTheme = std::move(source);
+}
+
+void SettingsDialog::fetchSlackTheme() {
+    if (!_slackTheme.fetch) {
+        _customEditor->showStatus(tr("No Slack workspace can provide a theme"), true);
+        return;
+    }
+    _slackTheme.fetch([this](const SidebarThemePrefs &prefs, const QString &err) {
+        if (!err.isEmpty()) {
+            _customEditor->showStatus(tr("Could not read your Slack theme (%1)").arg(err), true);
+            return;
+        }
+        // The redesign's definition is what Slack renders today; the legacy
+        // custom values are the fallback for an account that never touched the
+        // new theme picker.
+        auto parsed = Th::parseCustomTheme(prefs.iaTheme);
+        if (!parsed)
+            parsed = Th::parseCustomTheme(prefs.legacyValues);
+        if (!parsed) {
+            _customEditor->showStatus(tr("Your Slack account has no custom theme"), true);
+            return;
+        }
+        _customEditor->setTheme(*parsed);
+        ThemeManager::instance().setCustomTheme(*parsed);
+        _customEditor->showStatus(tr("Slack theme applied"), false);
+    });
 }
 
 void SettingsDialog::refreshModeHint() {

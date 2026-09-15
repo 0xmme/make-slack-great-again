@@ -130,6 +130,7 @@ public:
     void setDndSnooze(int minutes, std::function<void(bool ok, QString err)> done = {}) override;
 
     void loadMyProfile(std::function<void(MyProfile)> done) override;
+    void loadSidebarTheme(std::function<void(SidebarThemePrefs, QString err)> done) override;
     void updateProfile(
         const QHash<QString, QString> &fields, std::function<void(bool ok, QString err)> done = {}
     ) override;

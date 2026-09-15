@@ -18,6 +18,7 @@ constexpr auto kLightKey     = "appearance/theme"; // pre-mode key: old installs
 constexpr auto kDarkKey      = "appearance/themeDark";
 constexpr auto kDefaultLight = "purple";
 constexpr auto kDefaultDark  = "charcoal";
+constexpr auto kCustomKey    = "appearance/customTheme";
 
 double fontFactorFor(const QString &id) {
     if (id == QLatin1String("small"))
@@ -45,10 +46,10 @@ void applyFontScale(Th::Theme &t, double k) {
     f.xxxl       = s(f.xxxl);
 }
 
-// A slot holds a registry preset id; anything else (stale id from another
-// version, hand-edited config) falls back to the slot's default.
+// A slot holds a registry preset id or "custom"; anything else (stale id from
+// another version, hand-edited config) falls back to the slot's default.
 QString validSlotId(const QString &id, bool dark) {
-    if (Th::themeById(id, dark))
+    if (id == QLatin1String(ThemeManager::kCustomId) || Th::themeById(id, dark))
         return id;
     return QLatin1String(dark ? kDefaultDark : kDefaultLight);
 }
@@ -98,6 +99,9 @@ ThemeManager::ThemeManager(QObject *parent) : QObject(parent) {
     // so the persisted theme is active from the very first frame.
     QSettings settings("msga", "msga");
     _fontSizeId = settings.value("appearance/fontSize", QStringLiteral("medium")).toString();
+    _custom     = Th::parseCustomTheme(settings.value(QLatin1String(kCustomKey)).toString())
+                  .value_or(Th::defaultCustomTheme());
+    rebuildCustom();
 
     if (settings.contains(QLatin1String(kModeKey))) {
         _mode    = modeFromId(settings.value(QLatin1String(kModeKey)).toString());
@@ -160,12 +164,36 @@ bool ThemeManager::effectiveDark() const {
     return systemPrefersDark();
 }
 
+const Th::Theme *ThemeManager::themeFor(const QString &id, bool dark) const {
+    if (id == QLatin1String(kCustomId))
+        return &customVariant(dark);
+    return Th::themeById(id, dark);
+}
+
 const Th::Theme &ThemeManager::resolvedTheme() const {
     const bool       dark = effectiveDark();
-    const Th::Theme *t    = Th::themeById(dark ? _darkId : _lightId, dark);
+    const Th::Theme *t    = themeFor(dark ? _darkId : _lightId, dark);
     if (t)
         return *t;
     return dark ? Th::defaultDarkTheme() : Th::defaultTheme();
+}
+
+void ThemeManager::rebuildCustom() {
+    _customLight = Th::buildTheme(Th::chromeFromCustom(_custom, false), false);
+    _customDark  = Th::buildTheme(Th::chromeFromCustom(_custom, true), true);
+}
+
+void ThemeManager::setCustomTheme(const Th::CustomTheme &t) {
+    if (t == _custom)
+        return;
+    _custom = t;
+    QSettings("msga", "msga").setValue(QLatin1String(kCustomKey), Th::serializeCustomTheme(t));
+    rebuildCustom();
+    emit customThemeChanged();
+    // reapply() would see the same (slot, mode) and skip; the definition behind
+    // the slot changed, so re-render outright when it is what's on screen.
+    if (_themeId == QLatin1String(kCustomId))
+        setTheme(resolvedTheme());
 }
 
 void ThemeManager::reapply() {

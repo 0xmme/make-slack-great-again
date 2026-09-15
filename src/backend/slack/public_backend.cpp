@@ -369,6 +369,8 @@ Capabilities PublicBackend::capabilities() const {
     // to a session token. The public reminders.* API is retired and never could
     // attach a reminder to a message.
     c.messageReminders = _sessionAuth;
+    // users.prefs.get (the stored sidebar theme) is session-token only as well.
+    c.sidebarTheme     = _sessionAuth;
     return c;
 }
 
@@ -1193,6 +1195,55 @@ void PublicBackend::setDndSnooze(int minutes, std::function<void(bool, QString)>
 }
 
 // ── Own profile ───────────────────────────────────────────────────
+
+void PublicBackend::loadSidebarTheme(std::function<void(SidebarThemePrefs, QString)> done) {
+    if (!_sessionAuth) { // undocumented client pref call: OAuth tokens get not_authed
+        if (done)
+            done({}, QStringLiteral("not_supported"));
+        return;
+    }
+    _api->call(
+        "users.prefs.get",
+        QUrlQuery{},
+        [done](QJsonObject resp) {
+            const QJsonObject prefs = resp.value("prefs").toObject();
+            SidebarThemePrefs out;
+            out.iaTheme       = prefs.value("ia_theme").toString();
+            // The legacy custom values arrive as a JSON object — usually
+            // serialised into a string — keyed by slot; re-emit them as the
+            // share string every importer understands, in Slack's slot order.
+            QJsonValue legacy = prefs.value("sidebar_theme_custom_values");
+            if (legacy.isString())
+                legacy = QJsonDocument::fromJson(legacy.toString().toUtf8()).object();
+            if (legacy.isObject()) {
+                const QJsonObject o = legacy.toObject();
+                QStringList       parts;
+                for (const char *key :
+                     {"column_bg",
+                      "menu_bg",
+                      "active_item",
+                      "active_item_text",
+                      "hover_item",
+                      "text_color",
+                      "active_presence",
+                      "badge"})
+                    parts << o.value(QLatin1String(key)).toString();
+                if (o.contains("top_nav_bg") && o.contains("top_nav_text"))
+                    parts << o.value("top_nav_bg").toString() << o.value("top_nav_text").toString();
+                if (!parts.contains(QString()))
+                    out.legacyValues = parts.join(QLatin1Char(','));
+            }
+            if (done)
+                done(out, {});
+        },
+        [done](QString e) {
+            qWarning() << "users.prefs.get error:" << e;
+            if (done)
+                done({}, e);
+        },
+        /*quietErrors=*/true
+    );
+}
 
 void PublicBackend::loadMyProfile(std::function<void(MyProfile)> done) {
     _api->call(

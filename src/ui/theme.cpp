@@ -234,10 +234,15 @@ void applyChrome(Theme &t, const ChromeSpec &c) {
         t.nav.extBadgeText     = QColor("#E6C98A");
     }
 
-    t.nav.bgGradTop         = scaleRgb(t.nav.bg, kGradTopFactor);
-    t.nav.bgGradBottom      = scaleRgb(t.nav.bg, kGradBottomFactor);
-    t.nav.primaryGradTop    = scaleRgb(t.nav.primary, kGradTopFactor);
-    t.nav.primaryGradBottom = scaleRgb(t.nav.primary, kGradBottomFactor);
+    if (c.gradient) {
+        t.nav.bgGradTop         = scaleRgb(t.nav.bg, kGradTopFactor);
+        t.nav.bgGradBottom      = scaleRgb(t.nav.bg, kGradBottomFactor);
+        t.nav.primaryGradTop    = scaleRgb(t.nav.primary, kGradTopFactor);
+        t.nav.primaryGradBottom = scaleRgb(t.nav.primary, kGradBottomFactor);
+    } else {
+        t.nav.bgGradTop = t.nav.bgGradBottom = t.nav.bg;
+        t.nav.primaryGradTop = t.nav.primaryGradBottom = t.nav.primary;
+    }
 
     const AccentSet accent = !darkContent                 ? c.accent
                              : c.accentDark.def.isValid() ? c.accentDark
@@ -254,9 +259,9 @@ void applyChrome(Theme &t, const ChromeSpec &c) {
             ? c.iconAccentDark
             : withLightness(c.accent.def, std::max<double>(c.accent.def.lightnessF(), 0.58));
 
-    t.titleBar.bg             = c.rail;
+    t.titleBar.bg             = c.titleBarBg.isValid() ? c.titleBarBg : c.rail;
     t.titleBar.controlDefault = c.titleBarControl.isValid() ? c.titleBarControl : t.nav.itemTextDim;
-    t.titleBar.controlHover   = t.nav.itemText;
+    t.titleBar.controlHover   = c.titleBarControl.isValid() ? c.titleBarControl : t.nav.itemText;
 
     if (c.presenceOnline.isValid())
         t.presence.online = c.presenceOnline;
@@ -595,6 +600,115 @@ const std::vector<Preset> &presets() {
 }
 
 } // namespace
+
+// ── Custom themes ────────────────────────────────────────────────────────────
+
+const std::vector<Swatch> &swatches() {
+    // Our table. Names Slack uses (aubergine, jade, hoth, …) carry our
+    // approximation of its swatch; the rest are the built-in preset tones and
+    // the brand colours, so every preset is reproducible from the editor.
+    static const std::vector<Swatch> kSwatches = {
+        {QStringLiteral("aubergine"), QColor("#3F0E40")},
+        {QStringLiteral("graphite"), QColor("#1F1F1F")},
+        {QStringLiteral("ocean"), QColor("#0E2A40")},
+        {QStringLiteral("forest"), QColor("#0E3D2E")},
+        {QStringLiteral("nocturne"), QColor("#1A1D21")},
+        {QStringLiteral("ochin"), QColor("#303E4D")},
+        {QStringLiteral("blueberry"), QColor("#3B4CCA")},
+        {QStringLiteral("lagoon"), QColor("#1264A3")},
+        {QStringLiteral("jade"), QColor("#2BAC76")},
+        {QStringLiteral("banana"), QColor("#ECB22E")},
+        {QStringLiteral("clementine"), QColor("#E8912D")},
+        {QStringLiteral("cherry"), QColor("#CD2553")},
+        {QStringLiteral("hoth"), QColor("#F5F0EB")},
+    };
+    return kSwatches;
+}
+
+const Swatch *swatchByName(const QString &name) {
+    const QString key = name.trimmed().toLower();
+    for (const auto &s : swatches())
+        if (s.name == key)
+            return &s;
+    return nullptr;
+}
+
+QString swatchNameFor(const QColor &c) {
+    for (const auto &s : swatches())
+        if (s.color.rgb() == c.rgb())
+            return s.name;
+    return {};
+}
+
+CustomTheme defaultCustomTheme() {
+    // Slack's classic look as a starting point: aubergine rail and accent,
+    // jade presence, cherry badge (the same tones the purple preset uses).
+    CustomTheme t;
+    const auto  slot = [](const char *name) {
+        const Swatch *s = swatchByName(QLatin1String(name));
+        return CustomTheme::Slot{s->color, s->name};
+    };
+    t.primary    = slot("aubergine");
+    t.highlight1 = slot("aubergine");
+    t.highlight2 = slot("jade");
+    t.important  = slot("cherry");
+    return t;
+}
+
+ChromeSpec chromeFromCustom(const CustomTheme &t, bool darkContent) {
+    ChromeSpec   c;
+    // Brightness is Slack's "how dark the sidebar is": neutral leaves the
+    // primary as designed, each step shifts the rail's lightness by 4 %.
+    const double shift =
+        (std::clamp(t.brightness, CustomTheme::kBrightnessMin, CustomTheme::kBrightnessMax) -
+         CustomTheme::kBrightnessNeutral) *
+        0.04;
+    // "Darker sidebar" off = the rail follows the content: a pale tint of the
+    // primary over light content (Slack's non-inverted look), the primary
+    // itself over dark content where a pale rail would break the depth order.
+    const QColor primary  = t.primary.color;
+    const bool   paleRail = !t.sidebarInverted && !darkContent;
+    c.rail                = paleRail ? withLightness(primary, 0.93 + shift)
+                            : shift == 0.0 ? primary // exact: the HSL round trip may move a channel by one
+                                           : withLightness(primary, primary.lightnessF() + shift);
+    const bool lightRail  = c.rail.lightnessF() > 0.5;
+    c.workspaceBubble     = lightRail ? scaleRgb(c.rail, 0.90) : scaleRgb(c.rail, 1.25);
+
+    // Highlight 1: the selection pill carries ink of the opposite polarity, and
+    // doubles as the accent (hover/pressed stepped around it).
+    const QColor h1 = t.highlight1.color;
+    c.pill          = h1;
+    c.pillInk       = t.pins.itemSelText.isValid() ? t.pins.itemSelText
+                      : h1.lightnessF() > 0.5      ? kDarkInk
+                                                   : QColor("#FFFFFF");
+    const double l  = h1.lightnessF();
+    c.accent        = {
+               .def      = h1,
+               .hover    = withLightness(h1, l + 0.06),
+               .pressed  = withLightness(h1, l - 0.06),
+               .dark     = withLightness(h1, l - 0.10),
+               .subtleBg = withLightness(h1, 0.95),
+    };
+    // A pale highlight can't be lifted into a readable filled control over
+    // dark content — drop it to the dark-mode floor instead of lifting it.
+    if (l > 0.7)
+        c.accentDark = liftForDark({withLightness(h1, 0.45), {}, {}, {}, {}});
+    c.iconAccentDark = withLightness(h1, std::max<double>(l, 0.62));
+
+    c.presenceOnline = t.highlight2.color;
+    c.badgeMention   = t.important.color;
+    c.gradient       = t.gradient;
+
+    // Pins from a legacy string. Dim text derives from the pinned ink rather
+    // than from white/kDarkInk, so a pinned off-white keeps its cast.
+    c.itemHover = t.pins.itemHover;
+    c.itemText  = t.pins.itemText;
+    if (t.pins.itemText.isValid())
+        c.itemTextDim = overlay(c.rail, t.pins.itemText, 0.72);
+    c.titleBarBg      = t.pins.titleBarBg;
+    c.titleBarControl = t.pins.titleBarText;
+    return c;
+}
 
 const std::vector<ThemeInfo> &availableThemes() {
     static const std::vector<ThemeInfo> kThemes = [] {

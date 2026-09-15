@@ -5,6 +5,8 @@
 // Use Th::qss(color) to embed a QColor inside a Qt stylesheet string.
 #pragma once
 
+#include "theme_custom.h"
+
 #include <QColor>
 #include <QLinearGradient>
 #include <QString>
@@ -268,12 +270,14 @@ struct ChromeSpec {
     QColor    itemTextDim;     // nav.itemTextDim (optional: derived from the rail)
     AccentSet accent;          // over light content
     AccentSet accentDark; // over dark content (optional: `accent` lifted to a readable lightness)
-    QColor    iconAccentDark; // icon.accent over dark content (optional: lifted from accent.def)
+    QColor    iconAccentDark;  // icon.accent over dark content (optional: lifted from accent.def)
+    bool      gradient = true; // false: flat sidebar (gradient endpoints = the solid tones)
     // Pins for imported themes (optional).
     QColor    itemHover;       // nav.itemHover
     QColor    itemText;        // nav.itemText
     QColor    presenceOnline;  // presence.online
     QColor    badgeMention;    // badge.mention
+    QColor    titleBarBg;      // titleBar.bg (default: the rail)
     QColor    titleBarControl; // titleBar.controlDefault
 };
 
@@ -281,6 +285,31 @@ struct ChromeSpec {
 // `darkContent`, then `chrome` laid over it (with a light rail flipping every
 // ink drawn on the chrome to dark).
 Theme buildTheme(const ChromeSpec &chrome, bool darkContent);
+
+// ── Custom themes ────────────────────────────────────────────────────────────
+
+// A named colour the custom-theme editor offers per slot, and what a `palette`
+// name in an imported Slack theme resolves against. Our table, Slack-shaped:
+// the names Slack uses that we can identify (aubergine, jade, …) carry our
+// approximation of Slack's swatch until its table is captured (see
+// docs/theming-plan.md, phase 4).
+struct Swatch {
+    QString name; // lower-case id, as stored in JSON
+    QColor  color;
+};
+const std::vector<Swatch> &swatches();
+const Swatch              *swatchByName(const QString &name); // nullptr when unknown
+// Name of the swatch equal to `c`, or empty.
+QString                    swatchNameFor(const QColor &c);
+
+// The chrome a custom theme describes over one content mode: the rail from
+// `primary` (shifted by brightness; a light tint of it when the sidebar is not
+// inverted over light content), pill + accent set from `highlight1`, presence
+// from `highlight2`, mention badge from `important`, pins as pinned.
+ChromeSpec chromeFromCustom(const CustomTheme &t, bool darkContent);
+
+// What the editor starts from (Slack's classic aubergine look).
+CustomTheme defaultCustomTheme();
 
 // ── Theme registry ────────────────────────────────────────────────────────────
 

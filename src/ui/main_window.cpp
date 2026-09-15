@@ -610,6 +610,32 @@ QWidget *MainWindow::buildMainPage() {
         _settingsDialog->hide();
         migrateSlackToSession();
     });
+    // "Use my Slack theme": the active workspace when it can serve one (Slack
+    // session auth), else the first that can.
+    const auto themeSession = [this]() -> Session * {
+        if (_session && _session->capabilities().sidebarTheme)
+            return _session;
+        for (auto &[teamId, ws] : _sessions)
+            if (ws.session && ws.session->capabilities().sidebarTheme)
+                return ws.session.get();
+        return nullptr;
+    };
+    _settingsDialog->setSlackThemeSource({
+        .available = [themeSession] { return themeSession() != nullptr; },
+        .fetch =
+            [this, themeSession](auto done) {
+                Session *s = themeSession();
+                if (!s) {
+                    done({}, QStringLiteral("no_workspace"));
+                    return;
+                }
+                s->loadSidebarTheme([dlg = QPointer<SettingsDialog>(_settingsDialog),
+                                     done](SidebarThemePrefs prefs, QString err) {
+                    if (dlg) // the reply may land after the dialog was torn down
+                        done(prefs, err);
+                });
+            },
+    });
 
     return page;
 }
