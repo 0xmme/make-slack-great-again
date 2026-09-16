@@ -55,7 +55,6 @@
         <file alias="ui/sticky-note-plus.svg">../gfx/ui/sticky-note-plus.svg</file>
         <file alias="ui/message-circle.svg">../gfx/ui/message-circle.svg</file>
         <file alias="ui/ellipsis-vertical.svg">../gfx/ui/ellipsis-vertical.svg</file>
-        <file alias="ui/refresh-cw.svg">../gfx/ui/refresh-cw.svg</file>
         <file alias="ui/message-square.svg">../gfx/ui/message-square.svg</file>
         <file alias="ui/message-square-reply.svg">../gfx/ui/message-square-reply.svg</file>
         <file alias="ui/messages-square.svg">../gfx/ui/messages-square.svg</file>
