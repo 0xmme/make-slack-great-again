@@ -15,6 +15,8 @@
 #include <QDateTime>
 #include <QImage>
 #include <QPainter>
+#include <QAbstractTextDocumentLayout>
+#include <QTextBlock>
 #include <QTextDocument>
 
 #include "ui/message_list/message_render.h"
@@ -629,6 +631,50 @@ TEST_CASE(
     CHECK(rects[0].height() > 10);             // tall enough to look like a button
     CHECK(rects[1].left() > rects[0].right()); // side by side
     CHECK(MsgRender::codeBlockRects(&doc).isEmpty());
+}
+
+TEST_CASE("button rows wrap between buttons, never inside a label", "[render][buttons]") {
+    Message msg;
+    Block   actions;
+    actions.typeStr = "actions";
+    actions.buttons.push_back({"See PR", "https://example.com/pr", ""});
+    actions.buttons.push_back({"Go to task", "https://example.com/task", ""});
+    actions.buttons.push_back({"Configure", "https://example.com/cfg", ""});
+    msg.blocks.push_back(actions);
+    Block after;
+    after.typeStr = "section";
+    after.text    = MrkdwnParser::parse("trailing text");
+    msg.blocks.push_back(after);
+    const QString html = MsgRender::buildMsgHtml(msg, nullptr);
+
+    QTextDocument wide;
+    wide.setHtml(html);
+    wide.setTextWidth(600);
+    const auto wideRects = MsgRender::botButtonRects(&wide);
+    REQUIRE(wideRects.size() == 3);
+    CHECK(wideRects[2].left() > wideRects[1].right()); // one row
+    CHECK(qFuzzyCompare(wideRects[0].top(), wideRects[2].top()));
+
+    QTextDocument narrow;
+    narrow.setHtml(html);
+    narrow.setTextWidth(200); // room for two buttons, not three
+    const auto narrowRects = MsgRender::botButtonRects(&narrow);
+    REQUIRE(narrowRects.size() == 3);
+    CHECK(narrowRects[2].top() >= narrowRects[0].bottom()); // third wrapped to a new row
+    CHECK(qFuzzyCompare(narrowRects[2].left(), narrowRects[0].left()));
+    // Each button keeps its single-line size — the row wrapped, the labels didn't.
+    for (int i = 0; i < 3; ++i) {
+        CHECK(qFuzzyCompare(narrowRects[i].width(), wideRects[i].width()));
+        CHECK(qFuzzyCompare(narrowRects[i].height(), wideRects[i].height()));
+    }
+    // The trailing section clears the buttons instead of flowing beside them.
+    QTextBlock lastBlock = narrow.lastBlock();
+    while (lastBlock.isValid() && lastBlock.text().isEmpty())
+        lastBlock = lastBlock.previous();
+    REQUIRE(lastBlock.isValid());
+    CHECK(lastBlock.text() == "trailing text");
+    CHECK(narrow.documentLayout()->blockBoundingRect(lastBlock).top() >= narrowRects[2].bottom());
+    CHECK(MsgRender::codeBlockRects(&narrow).isEmpty());
 }
 
 // ── Image blocks (Slack GIF picker / Giphy) ──────────────────────────────────

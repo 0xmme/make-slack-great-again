@@ -702,9 +702,12 @@ static void collectCodeTables(QTextFrame *frame, QVector<QTextTable *> &out) {
             continue;
         if (auto *table = qobject_cast<QTextTable *>(child)) {
             // Code blocks are the only single-column percentage-width tables toHtml
-            // emits (blockquotes are two-column, fixed width).
+            // emits with zero cell spacing (blockquotes are two-column, fixed
+            // width; the bot-button container is full-width but carries the
+            // kBotBtnCellSpacing marker).
             if (table->columns() == 1 &&
-                table->format().width().type() == QTextLength::PercentageLength)
+                table->format().width().type() == QTextLength::PercentageLength &&
+                qRound(table->format().cellSpacing()) != kBotBtnCellSpacing)
                 out.push_back(table);
         }
         collectCodeTables(child, out);
@@ -834,13 +837,18 @@ static QString imageBlockHtml(
     return html;
 }
 
-// Bot buttons as a row of real-looking buttons. Each button is a table cell;
-// the rounded border + background are painted underneath by
-// paintBotButtonChrome() (Qt rich text can't do border-radius), which finds
-// these tables via the kBotBtnCellSpacing marker. Every button is an anchor so
-// it's hit-testable and gets the pointing cursor: URL buttons open their URL,
-// interactive-only ones use the msga://botbtn/ scheme — clicking shows why the
-// action can't be delivered (see BotButton).
+// Bot buttons as a flowing row of real-looking buttons. Each button is its own
+// single-cell table floated left inside one full-width container cell: floats
+// pack side by side and wrap to the next row when the message is narrow, so a
+// row that doesn't fit breaks BETWEEN buttons instead of inside a label (a
+// plain <tr> of cells can't wrap and squeezed the text instead). The container
+// is what clears the floats — without it the following paragraph flows around
+// them. The rounded border + background are painted underneath by
+// paintBotButtonChrome() (Qt rich text can't do border-radius), which finds the
+// container via the kBotBtnCellSpacing marker and the buttons as its floats.
+// Every button is an anchor so it's hit-testable and gets the pointing cursor:
+// URL buttons open their URL, interactive-only ones use the msga://botbtn/
+// scheme — clicking shows why the action can't be delivered (see BotButton).
 static QString buttonsHtml(const std::vector<BotButton> &buttons) {
     if (buttons.empty())
         return {};
@@ -854,42 +862,52 @@ static QString buttonsHtml(const std::vector<BotButton> &buttons) {
             btn.url.isEmpty() ? kBotBtnAnchorPrefix + QString::number(i)
                               : kBotBtnAnchorPrefix +
                                     "url:" + QString::fromLatin1(QUrl::toPercentEncoding(btn.url));
-        cells += "<td style='padding:4px 12px'><a href='" + href.toHtmlEscaped() +
+        cells += "<table cellspacing='0' cellpadding='0' style='float:left;margin:0 " +
+                 QString::number(kBotBtnCellSpacing) + "px " + QString::number(kBotBtnCellSpacing) +
+                 "px 0'><tr><td style='padding:4px 12px'><a href='" + href.toHtmlEscaped() +
                  "' style='color:" + Th::qss(fg) + ";font-weight:bold;text-decoration:none'>" +
-                 btn.text.toHtmlEscaped() + "</a></td>";
+                 btn.text.toHtmlEscaped() + "</a></td></tr></table>";
     }
-    return "<table cellspacing='" + QString::number(kBotBtnCellSpacing) +
-           "' cellpadding='0' style='margin:4px 0 2px'><tr>" + cells + "</tr></table>";
+    return "<table width='100%' cellspacing='" + QString::number(kBotBtnCellSpacing) +
+           "' cellpadding='0' style='margin:4px 0 2px'><tr><td>" + cells + "</td></tr></table>";
 }
 
-static void collectButtonTables(QTextFrame *frame, QVector<QTextTable *> &out) {
+static void collectButtonContainers(QTextFrame *frame, QVector<QTextTable *> &out) {
     for (auto it = frame->begin(); it != frame->end(); ++it) {
         QTextFrame *child = it.currentFrame();
         if (!child)
             continue;
         if (auto *table = qobject_cast<QTextTable *>(child)) {
-            // Button rows are the only tables buttonsHtml emits with this exact
-            // cell spacing (code blocks and blockquotes use 0).
+            // Button containers are the only tables emitted with this exact cell
+            // spacing (code blocks, blockquotes and data tables use 0).
             if (qRound(table->format().cellSpacing()) == kBotBtnCellSpacing)
                 out.push_back(table);
         }
-        collectButtonTables(child, out);
+        collectButtonContainers(child, out);
     }
 }
 
 QVector<QRectF> botButtonRects(const QTextDocument *doc) {
-    QVector<QTextTable *> tables;
-    collectButtonTables(doc->rootFrame(), tables);
+    QVector<QTextTable *> containers;
+    collectButtonContainers(doc->rootFrame(), containers);
     QVector<QRectF> rects;
     auto           *layout = doc->documentLayout();
-    for (QTextTable *table : tables) {
-        for (int col = 0; col < table->columns(); ++col) {
-            // Same approach as codeBlockRects: rebuild each cell's rect from its
+    for (QTextTable *container : containers) {
+        // The buttons are the floating single-cell tables inside the container's
+        // one cell; Qt's frame iterator visits floats in document order.
+        const auto cell = container->cellAt(0, 0);
+        if (!cell.isValid())
+            continue;
+        for (auto it = cell.begin(); it != cell.end(); ++it) {
+            auto *button = qobject_cast<QTextTable *>(it.currentFrame());
+            if (!button || button->format().position() == QTextFrameFormat::InFlow)
+                continue;
+            // Same approach as codeBlockRects: rebuild the cell's rect from its
             // block geometry + paddings (frameBoundingRect is unusable for tables).
-            const auto   cell  = table->cellAt(0, col);
-            const QRectF first = layout->blockBoundingRect(cell.firstCursorPosition().block());
-            const QRectF last  = layout->blockBoundingRect(cell.lastCursorPosition().block());
-            const auto   cf    = cell.format().toTableCellFormat();
+            const auto   bc    = button->cellAt(0, 0);
+            const QRectF first = layout->blockBoundingRect(bc.firstCursorPosition().block());
+            const QRectF last  = layout->blockBoundingRect(bc.lastCursorPosition().block());
+            const auto   cf    = bc.format().toTableCellFormat();
             rects.push_back(QRectF(
                 QPointF(first.left() - cf.leftPadding(), first.top() - cf.topPadding()),
                 QPointF(first.right() + cf.rightPadding(), last.bottom() + cf.bottomPadding())

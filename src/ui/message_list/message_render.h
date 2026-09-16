@@ -365,8 +365,10 @@ inline QString botButtonUrlFromAnchor(const QString &href) {
     return QUrl::fromPercentEncoding(rest.mid(4).toLatin1());
 }
 
-// Marker cell spacing identifying bot-button tables in a QTextDocument (code
-// blocks and blockquotes use 0); read back by botButtonRects().
+// Marker cell spacing identifying the bot-button container table in a
+// QTextDocument (code blocks, blockquotes and data tables use 0); read back by
+// botButtonRects(), which takes the buttons as the container's floating tables.
+// Doubles as the gap between buttons.
 inline constexpr int kBotBtnCellSpacing = 4;
 
 // Inline image-block size cap — matches the message list's kImgMaxW/kImgMaxH.

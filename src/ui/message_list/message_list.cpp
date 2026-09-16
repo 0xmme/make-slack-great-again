@@ -3942,8 +3942,12 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         );
         _tooltip->showAbove(tr("Transcribe with AI"), btnGlobal);
     } else if (!anchor.isEmpty() && !isUserAnchor && !isChanAnchor && !isToggle) {
+        // The URL the anchor leads to: bot buttons wrap theirs in the internal
+        // scheme (interactive-only ones lead nowhere — no tooltip). Shown
+        // percent-decoded — a tracking/redirect URL's %2F%3A soup is unreadable.
+        const QString url = isBotBtn ? MsgRender::botButtonUrlFromAnchor(anchor) : anchor;
         // Collect link display text; skip tooltip when it is identical to the URL.
-        QString linkText;
+        QString       linkText;
         if (_hoveredLinkRow >= 0 && _hoveredLinkRow < (int)_items.size()) {
             const auto &item = _items[_hoveredLinkRow];
             linkText         = collectLinkText(item.textDoc.get(), anchor);
@@ -3955,9 +3959,11 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
                 }
             }
         }
-        if (linkText != anchor) {
+        if (!url.isEmpty() && linkText != url) {
             const QPoint gPos = viewport()->mapToGlobal(pos);
-            _tooltip->showAbove(anchor, QRect(gPos - QPoint(0, 2), QSize(1, 4)));
+            _tooltip->showAbove(
+                QUrl::fromPercentEncoding(url.toUtf8()), QRect(gPos - QPoint(0, 2), QSize(1, 4))
+            );
         } else {
             _tooltip->hide();
         }
