@@ -20,6 +20,17 @@ constexpr auto kDefaultLight = "purple";
 constexpr auto kDefaultDark  = "charcoal";
 constexpr auto kCustomKey    = "appearance/customTheme";
 
+// The app's settings store. Tests point MSGA_THEME_SETTINGS_FILE at a
+// temp INI file: QSettings::setPath() cannot redirect the two-argument
+// constructor on macOS/Windows (CFPreferences / registry), so without this
+// hook a test run would read and write the developer's real preferences.
+QSettings openSettings() {
+    const QString file = qEnvironmentVariable("MSGA_THEME_SETTINGS_FILE");
+    if (!file.isEmpty())
+        return QSettings(file, QSettings::IniFormat);
+    return QSettings(QStringLiteral("msga"), QStringLiteral("msga"));
+}
+
 double fontFactorFor(const QString &id) {
     if (id == QLatin1String("small"))
         return 0.9;
@@ -97,7 +108,7 @@ ThemeManager::ColorMode ThemeManager::modeFromId(const QString &id) {
 ThemeManager::ThemeManager(QObject *parent) : QObject(parent) {
     // The singleton is first touched (via Th::c()) before any widget paints,
     // so the persisted theme is active from the very first frame.
-    QSettings settings("msga", "msga");
+    QSettings settings = openSettings();
     _fontSizeId = settings.value("appearance/fontSize", QStringLiteral("medium")).toString();
     _custom     = Th::parseCustomTheme(settings.value(QLatin1String(kCustomKey)).toString())
                   .value_or(Th::defaultCustomTheme());
@@ -187,7 +198,7 @@ void ThemeManager::setCustomTheme(const Th::CustomTheme &t) {
     if (t == _custom)
         return;
     _custom = t;
-    QSettings("msga", "msga").setValue(QLatin1String(kCustomKey), Th::serializeCustomTheme(t));
+    openSettings().setValue(QLatin1String(kCustomKey), Th::serializeCustomTheme(t));
     rebuildCustom();
     emit customThemeChanged();
     // reapply() would see the same (slot, mode) and skip; the definition behind
@@ -258,7 +269,7 @@ void ThemeManager::setThemeIdFor(bool dark, const QString &id) {
     if (slot == id)
         return;
     slot = id;
-    QSettings("msga", "msga").setValue(QLatin1String(dark ? kDarkKey : kLightKey), id);
+    openSettings().setValue(QLatin1String(dark ? kDarkKey : kLightKey), id);
     if (dark == effectiveDark())
         reapply();
 }
@@ -267,7 +278,7 @@ void ThemeManager::setMode(ColorMode mode) {
     if (mode == _mode)
         return;
     _mode = mode;
-    QSettings("msga", "msga").setValue(QLatin1String(kModeKey), modeId(mode));
+    openSettings().setValue(QLatin1String(kModeKey), modeId(mode));
     reapply();
 }
 
@@ -279,7 +290,7 @@ void ThemeManager::setFontSizeId(const QString &id) {
     if (id == _fontSizeId)
         return;
     _fontSizeId = id;
-    QSettings("msga", "msga").setValue("appearance/fontSize", id);
+    openSettings().setValue("appearance/fontSize", id);
     // App font FIRST: the themeChanged handlers below rebuild message docs,
     // which size their text from QApplication::font().
     applyAppFontScale();

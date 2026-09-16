@@ -16,20 +16,27 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
+// Same store ThemeManager uses (see MSGA_THEME_SETTINGS_FILE in main()).
+static QSettings testSettings() {
+    return QSettings(qEnvironmentVariable("MSGA_THEME_SETTINGS_FILE"), QSettings::IniFormat);
+}
+
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-theme");
     app.setOrganizationName("msga-test");
-    // ThemeManager persists via QSettings("msga", "msga") — redirect user-scope
-    // storage so tests never touch the real config.
+    // ThemeManager persists via testSettings(). setPath() cannot
+    // redirect that on macOS (CFPreferences) or Windows (registry), so point
+    // the manager at a per-process temp INI instead — this also keeps the two
+    // ctest entries built from this binary from sharing one store.
     static QTemporaryDir settingsDir;
-    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
+    qputenv("MSGA_THEME_SETTINGS_FILE", settingsDir.filePath("msga.ini").toUtf8());
     // The ctest entry test_theme_migration runs this binary with a pre-mode
     // config (a single "appearance/theme" key) so the ThemeManager constructor's
     // one-time migration can be exercised; it runs once per process.
     const QByteArray seed = qgetenv("MSGA_TEST_SEED_THEME");
     if (!seed.isEmpty())
-        QSettings("msga", "msga").setValue("appearance/theme", QString::fromUtf8(seed));
+        testSettings().setValue("appearance/theme", QString::fromUtf8(seed));
     return Catch::Session().run(argc, argv);
 }
 
@@ -281,7 +288,7 @@ TEST_CASE("ThemeManager switches, persists and ignores unknown ids", "[theme]") 
     CHECK(mgr.themeId() == "blue");
     CHECK(mgr.theme().nav.bg == Th::themeById("blue", false)->nav.bg);
     CHECK(spy.count() == 1);
-    CHECK(QSettings("msga", "msga").value("appearance/theme").toString() == QStringLiteral("blue"));
+    CHECK(testSettings().value("appearance/theme").toString() == QStringLiteral("blue"));
 
     mgr.setThemeById("blue"); // no-op: already active
     CHECK(spy.count() == 1);
@@ -294,7 +301,7 @@ TEST_CASE("ThemeManager switches, persists and ignores unknown ids", "[theme]") 
     CHECK(mgr.themeId() == "purple");
     CHECK(spy.count() == 2);
     CHECK(
-        QSettings("msga", "msga").value("appearance/theme").toString() == QStringLiteral("purple")
+        testSettings().value("appearance/theme").toString() == QStringLiteral("purple")
     );
 }
 
@@ -336,14 +343,14 @@ TEST_CASE("colour mode: default is System, slots are per mode, persisted", "[the
     CHECK(Th::isDarkTheme(mgr.theme()));
     CHECK(themeSpy.count() == 1);
     CHECK(modeSpy.count() == 1);
-    CHECK(QSettings("msga", "msga").value("appearance/mode").toString() == "dark");
+    CHECK(testSettings().value("appearance/mode").toString() == "dark");
 
     // Editing the light slot while dark is shown changes nothing on screen…
     mgr.setThemeIdFor(false, "blue");
     CHECK(mgr.themeId() == "charcoal");
     CHECK(themeSpy.count() == 1);
     CHECK(mgr.themeIdFor(false) == "blue");
-    CHECK(QSettings("msga", "msga").value("appearance/theme").toString() == "blue");
+    CHECK(testSettings().value("appearance/theme").toString() == "blue");
     CHECK(mgr.themeIdFor(true) == "charcoal"); // untouched default: not written until changed
 
     // …until the mode flips to it.
@@ -358,7 +365,7 @@ TEST_CASE("colour mode: default is System, slots are per mode, persisted", "[the
     CHECK(mgr.themeId() == "blue"); // the light slot, still on screen
     CHECK_FALSE(Th::isDarkTheme(mgr.theme()));
     CHECK(themeSpy.count() == 2);
-    CHECK(QSettings("msga", "msga").value("appearance/themeDark").toString() == "blue");
+    CHECK(testSettings().value("appearance/themeDark").toString() == "blue");
     mgr.setThemeIdFor(true, "nope"); // unknown → ignored
     CHECK(mgr.themeIdFor(true) == "blue");
     mgr.setThemeIdFor(false, "charcoal"); // graphite chrome over light content
@@ -451,7 +458,7 @@ TEST_CASE("legacy charcoal pick migrates to a fixed dark mode", "[theme][migrati
     CHECK(mgr.themeId() == "charcoal");
     CHECK(mgr.themeIdFor(true) == "charcoal");
     CHECK(mgr.themeIdFor(false) == "purple");
-    QSettings s("msga", "msga");
+    QSettings s = testSettings();
     CHECK(s.value("appearance/mode").toString() == "dark");
     CHECK(s.value("appearance/theme").toString() == "purple");
     CHECK(s.value("appearance/themeDark").toString() == "charcoal");
@@ -761,7 +768,7 @@ TEST_CASE("ThemeManager: the custom slot renders the user's theme live", "[theme
     CHECK(mgr.customVariant(true).nav.bg == QColor("#102030"));
     CHECK(Th::isDarkTheme(mgr.customVariant(true)));
     const auto stored =
-        Th::parseCustomTheme(QSettings("msga", "msga").value("appearance/customTheme").toString());
+        Th::parseCustomTheme(testSettings().value("appearance/customTheme").toString());
     REQUIRE(stored);
     CHECK(*stored == t);
     mgr.setCustomTheme(t); // unchanged → nothing
@@ -773,7 +780,7 @@ TEST_CASE("ThemeManager: the custom slot renders the user's theme live", "[theme
     CHECK(themeSpy.count() == 1);
     CHECK(mgr.theme().nav.bg == QColor("#102030"));
     CHECK(
-        QSettings("msga", "msga").value("appearance/theme").toString() ==
+        testSettings().value("appearance/theme").toString() ==
         QLatin1String(ThemeManager::kCustomId)
     );
     // …and now an edit re-renders at once.
