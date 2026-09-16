@@ -372,3 +372,166 @@ TEST_CASE("activeProvider falls back to any connected provider") {
     CHECK(called);
     CHECK(err.contains("No AI provider"));
 }
+
+// ── Speech-to-text ─────────────────────────────────────────────────────────────
+
+#include "llm/audio_transcriber.h"
+
+TEST_CASE("transcribe: multipart round trip through a custom provider, default STT model") {
+    auto          &svc = LlmService::instance();
+    FakeHttpServer srv;
+    auto          *p = customFor(srv, "secret-key");
+    REQUIRE(p);
+    CHECK(p->supportsTranscription());
+    CHECK(p->sttModel() == "whisper-1"); // custom default
+    svc.setDefaultProviderId(p->id());
+
+    srv.enqueue(R"({"text":"Test, test, battery."})");
+    LlmWire::TranscriptionInput in;
+    in.audio    = QByteArray("RIFF\x00\x01\x02\x03WAVE", 12);
+    in.fileName = "F1.wav";
+    in.mimeType = "audio/wav";
+
+    bool    done = false;
+    QString text, err;
+    svc.transcribe(
+        in,
+        [&](QString t) {
+            text = std::move(t);
+            done = true;
+        },
+        [&](QString e) {
+            err  = std::move(e);
+            done = true;
+        }
+    );
+    waitFor(done);
+    REQUIRE(done);
+    CHECK(err.isEmpty());
+    CHECK(text == "Test, test, battery.");
+    REQUIRE(srv.requestPaths.size() == 1);
+    CHECK(srv.requestPaths[0] == "/v1/audio/transcriptions");
+    CHECK(srv.requestHeaders[0].contains("Authorization: Bearer secret-key"));
+    CHECK(srv.requestHeaders[0].contains("Content-Type: multipart/form-data; boundary="));
+    CHECK(srv.requestBodies[0].contains("name=\"model\"\r\n\r\nwhisper-1\r\n"));
+    CHECK(srv.requestBodies[0].contains("filename=\"F1.wav\""));
+    CHECK(srv.requestBodies[0].contains(in.audio));
+
+    // The STT model is an overridable, persisted setting.
+    LlmProviderConfig cfg = p->config();
+    cfg.sttModel          = "Systran/faster-whisper-large-v3";
+    svc.updateProvider(p->id(), cfg, {});
+    CHECK(p->sttModel() == "Systran/faster-whisper-large-v3");
+    {
+        QSettings s("msga", "msga");
+        CHECK(
+            s.value(QString("llm/providers/%1/sttModel").arg(p->id())).toString() ==
+            "Systran/faster-whisper-large-v3"
+        );
+    }
+    svc.removeCustom(p->id());
+}
+
+TEST_CASE("transcribe: Anthropic has no speech endpoint — refused before any HTTP") {
+    auto &svc       = LlmService::instance();
+    auto *anthropic = svc.provider("anthropic");
+    REQUIRE(anthropic);
+    CHECK_FALSE(anthropic->supportsTranscription());
+    CHECK(svc.provider("openai")->supportsTranscription());
+    CHECK(svc.provider("openai")->sttModel() == "gpt-transcribe");
+
+    bool    called = false;
+    QString err;
+    anthropic->transcribe(
+        {},
+        [&](QString) { called = true; },
+        [&](QString e) {
+            err    = std::move(e);
+            called = true;
+        }
+    );
+    CHECK(called); // synchronous
+    CHECK(err.contains("speech-to-text"));
+}
+
+TEST_CASE("AudioTranscriber: one request per file, cached result, dead contexts skipped") {
+    auto          &svc = LlmService::instance();
+    FakeHttpServer srv;
+    auto          *p = customFor(srv);
+    REQUIRE(p);
+    svc.setDefaultProviderId(p->id());
+    auto &at = AudioTranscriber::instance();
+    at.clearCache();
+
+    QStringList states;
+    QObject     sigCtx;
+    QObject::connect(&at, &AudioTranscriber::stateChanged, &sigCtx, [&](const QString &id) {
+        states << id;
+    });
+
+    LlmWire::TranscriptionInput in;
+    in.audio    = "bytes";
+    in.fileName = "F2.mp3";
+    CHECK_FALSE(at.inFlight("F2"));
+    CHECK_FALSE(at.cached("F2").has_value());
+
+    srv.enqueue(R"({"text":"once"})");
+    QObject ctxA;
+    auto   *ctxB = new QObject; // dies before the reply lands
+    int     gotA = 0, gotB = 0, errs = 0;
+    bool    doneA = false;
+    at.transcribe(
+        "F2",
+        in,
+        [&](QString t) {
+            gotA += t == "once";
+            doneA = true;
+        },
+        [&](QString) {
+            ++errs;
+            doneA = true;
+        },
+        &ctxA
+    );
+    CHECK(at.inFlight("F2"));
+    at.transcribe(
+        "F2", in, [&](QString) { ++gotB; }, [&](QString) { ++errs; }, ctxB
+    ); // same file → no second HTTP request
+    delete ctxB;
+
+    waitFor(doneA);
+    CHECK(gotA == 1);
+    CHECK(gotB == 0);
+    CHECK(errs == 0);
+    CHECK_FALSE(at.inFlight("F2"));
+    CHECK(srv.requestPaths.size() == 1);
+    CHECK(at.cached("F2") == QString("once"));
+    CHECK(states == QStringList{"F2", "F2"}); // started, finished
+
+    // A later click answers synchronously from the cache, no HTTP.
+    int gotAgain = 0;
+    at.transcribe("F2", in, [&](QString t) { gotAgain += t == "once"; }, {}, &ctxA);
+    CHECK(gotAgain == 1);
+    CHECK(srv.requestPaths.size() == 1);
+
+    // Failures are not cached: the next click retries.
+    srv.enqueueStatus(404, "Not Found", "text/plain", "nope");
+    QString err;
+    bool    done = false;
+    at.transcribe(
+        "F3",
+        in,
+        [&](QString) { done = true; },
+        [&](QString e) {
+            err  = e;
+            done = true;
+        },
+        &ctxA
+    );
+    waitFor(done);
+    CHECK(err.contains("speech-to-text"));
+    CHECK_FALSE(at.cached("F3").has_value());
+    CHECK_FALSE(at.inFlight("F3"));
+
+    svc.removeCustom(p->id());
+}

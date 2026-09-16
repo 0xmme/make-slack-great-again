@@ -503,6 +503,12 @@ private:
     void        toggleAudio(const File &file);
     // "View transcript" under a voice clip: Slack's own transcript in a dialog.
     void        openTranscript(const File &file, const Message &msg);
+    // "Transcribe" button on the audio card: speech-to-text through the AI
+    // layer (AudioTranscriber), shown in the same dialog; failures (no
+    // provider, provider without STT, server error) land in it as a message.
+    void        startTranscription(const File &file, const Message &msg);
+    // Session::aiTranscriptChanged: patch the file in every row holding it and relayout.
+    void        onAiTranscript(const QString &fileId);
     void        repaintAudioChip(const QString &fileId);
     // Returns the hovered file whose inline preview (image or PDF first page)
     // is under viewportPos, or nullptr.
@@ -790,10 +796,11 @@ private:
     // time, and the position under the cursor (shown until release seeks there).
     QString             _audioScrubKey;
     QRect               _audioScrubBar;
-    qint64              _audioScrubMs   = -1;
-    int                 _hoveredFileBtn = -1;  // 0=download, 1=share, 2=more; -1=none
-    QString             _hoveredLinkUrl;       // URL of the link currently under the mouse cursor
-    int                 _hoveredLinkRow  = -1; // row index owning that link (-1 if none)
+    qint64              _audioScrubMs = -1;
+    QString             _hoveredAudioTranscribe; // file id whose "Transcribe" button is hovered
+    int                 _hoveredFileBtn = -1;    // 0=download, 1=share, 2=more; -1=none
+    QString             _hoveredLinkUrl;         // URL of the link currently under the mouse cursor
+    int                 _hoveredLinkRow  = -1;   // row index owning that link (-1 if none)
     int                 _hoveredReplyRow = -1; // row index whose reply bar is hovered (-1 if none)
     Ts                  _hoveredThreadFooter;  // root ts whose inline "Reply to thread" is hovered
     std::pair<int, int> _hoveredReaction = {-1, -1}; // {row, reactionIdx} under the mouse

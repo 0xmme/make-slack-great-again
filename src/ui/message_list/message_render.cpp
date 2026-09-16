@@ -1650,11 +1650,13 @@ constexpr int kChipPadX   = 12;
 constexpr int kChipRadius = 4;
 
 // Audio card: round play button + title block on top, slider row underneath.
-constexpr int kAudioPad    = 12;
-constexpr int kAudioBtn    = 36; // play/pause circle
-constexpr int kAudioKnob   = 12;
-constexpr int kAudioBarH   = 4;
-constexpr int kAudioRadius = 8;
+constexpr int kAudioPad      = 12;
+constexpr int kAudioBtn      = 36; // play/pause circle
+constexpr int kAudioKnob     = 12;
+constexpr int kAudioBarH     = 4;
+constexpr int kAudioRadius   = 8;
+constexpr int kAudioAction   = 28; // "Transcribe" button (square hit area, round hover)
+constexpr int kAudioLabelGap = 6;  // time label → action button
 
 QRect clampChip(const QRect &rect, const File &f) {
     return QRect(rect.x(), rect.y(), std::min(rect.width(), kFileChipMaxW), fileChipHeight(f));
@@ -1787,15 +1789,19 @@ void paintAudioCard(QPainter &p, const File &f, const QRect &rect, const AudioCh
     // Icons — re-baked on DPR/theme change (never a bare static — see .rules).
     static const QSize kGlyphSz(16, 16);
     static qreal       kDpr = 0;
-    static QColor      kAccent;
-    static QPixmap     kPlay, kPause;
+    static QColor      kAccent, kMuted;
+    static QPixmap     kPlay, kPause, kCaptionsAccent, kCaptionsMuted;
     const QColor       accent = Th::c().accent.def;
+    const QColor       muted  = Th::c().text.secondary;
     if (const qreal d = p.device()->devicePixelRatioF();
-        !qFuzzyCompare(d, kDpr) || accent != kAccent) {
-        kDpr    = d;
-        kAccent = accent;
-        kPlay   = svgPixmapPhys(":/ui/play.svg", kGlyphSz, accent, d);
-        kPause  = svgPixmapPhys(":/ui/pause.svg", kGlyphSz, accent, d);
+        !qFuzzyCompare(d, kDpr) || accent != kAccent || muted != kMuted) {
+        kDpr            = d;
+        kAccent         = accent;
+        kMuted          = muted;
+        kPlay           = svgPixmapPhys(":/ui/play.svg", kGlyphSz, accent, d);
+        kPause          = svgPixmapPhys(":/ui/pause.svg", kGlyphSz, accent, d);
+        kCaptionsAccent = svgPixmapPhys(":/ui/captions.svg", kGlyphSz, accent, d);
+        kCaptionsMuted  = svgPixmapPhys(":/ui/captions.svg", kGlyphSz, muted, d);
     }
 
     // Round play/pause button
@@ -1877,18 +1883,35 @@ void paintAudioCard(QPainter &p, const File &f, const QRect &rect, const AudioCh
         label = formatDuration(pos);
     else if (dur > 0)
         label = formatDuration(dur, true);
+    const QRect action = audioChipTranscribeRect(chip);
     p.setFont(subFont);
     p.setPen(Th::c().text.secondary);
     p.drawText(
         QRect(
             bar.right() + 1,
             bar.center().y() - kAudioBtn / 2,
-            chip.right() + 1 - kAudioPad - bar.right() - 1,
+            action.left() - kAudioLabelGap - bar.right() - 1,
             kAudioBtn
         ),
         Qt::AlignRight | Qt::AlignVCenter,
         label
     );
+
+    // "Transcribe" button: muted glyph, accent on hover / while the AI works
+    {
+        const bool lit = audio->transcribeHovered || audio->transcribing;
+        if (lit) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(Th::c().accent.subtleBg);
+            p.drawEllipse(QRectF(action));
+        }
+        const QPixmap &glyph = lit ? kCaptionsAccent : kCaptionsMuted;
+        p.drawPixmap(
+            action.left() + (action.width() - kGlyphSz.width()) / 2,
+            action.top() + (action.height() - kGlyphSz.height()) / 2,
+            glyph
+        );
+    }
 
     // Transcript line under the card
     if (f.hasTranscript()) {
@@ -1932,15 +1955,29 @@ QRect audioChipButtonRect(const QRect &chipRect) {
     return QRect(c.x() + kAudioPad, c.y() + kAudioPad, kAudioBtn, kAudioBtn);
 }
 
+// Vertical centre of the slider row: centred in the band under the title block.
+static int audioRowMid(const QRect &c) {
+    return c.bottom() + 1 - kAudioPad - kAudioBtn / 2 + 4;
+}
+
 QRect audioChipBarRect(const QRect &chipRect, qint64 durationMs) {
     const QRect        c = clampChip(chipRect, kAudioChipH);
     const QFontMetrics subFm(chipSubFont());
     const int          labelW = audioTimeLabelW(subFm, durationMs);
     const int          x      = c.x() + kAudioPad + kAudioKnob / 2;
-    const int          right  = c.right() + 1 - kAudioPad - labelW - 12;
-    // Slider row is centred in the band under the title block.
-    const int          rowMid = c.bottom() + 1 - kAudioPad - kAudioBtn / 2 + 4;
+    const int          right  = audioChipTranscribeRect(c).left() - kAudioLabelGap - labelW - 12;
+    const int          rowMid = audioRowMid(c);
     return QRect(x, rowMid - kAudioBarH / 2, std::max(20, right - x), kAudioBarH);
+}
+
+QRect audioChipTranscribeRect(const QRect &chipRect) {
+    const QRect c = clampChip(chipRect, kAudioChipH);
+    return QRect(
+        c.right() + 1 - kAudioPad + 4 - kAudioAction,
+        audioRowMid(c) - kAudioAction / 2,
+        kAudioAction,
+        kAudioAction
+    );
 }
 
 AudioTranscriptLayout audioChipTranscriptLayout(const QRect &chipRect, const File &f) {

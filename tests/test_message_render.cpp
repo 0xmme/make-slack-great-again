@@ -1124,3 +1124,50 @@ TEST_CASE(
     CHECK(tl2.linkRect.right() <= chip.right());
     CHECK(tl2.textRect.width() < 380);
 }
+
+TEST_CASE(
+    "audio card: the transcribe button sits right of the slider row, after the time label",
+    "[render][audio][stt]"
+) {
+    File f;
+    f.mimeType = "audio/mpeg";
+    const QRect chip(10, 20, 380, MsgRender::kAudioChipH);
+    const QRect btn    = MsgRender::audioChipButtonRect(chip);
+    const QRect bar    = MsgRender::audioChipBarRect(chip, 5000);
+    const QRect action = MsgRender::audioChipTranscribeRect(chip);
+    CHECK(chip.contains(action));
+    CHECK(action.width() == action.height());
+    CHECK(action.left() > bar.right() + 30); // the time label lives in between
+    CHECK(action.right() <= chip.right());
+    CHECK(std::abs(action.center().y() - bar.center().y()) <= 1); // same row
+    CHECK(action.top() > btn.bottom());
+    CHECK_FALSE(action.intersects(bar));
+    CHECK_FALSE(action.intersects(btn));
+
+    // Clamped like the rest of the geometry.
+    const QRect wide(10, 20, 1000, MsgRender::kAudioChipH);
+    CHECK(MsgRender::audioChipTranscribeRect(wide).right() < 10 + MsgRender::kFileChipMaxW);
+    CHECK(MsgRender::audioChipTranscribeRect(wide) == action);
+
+    // Hovered / busy states paint (accent circle) without touching outside the chip.
+    QImage img(400, 120, QImage::Format_ARGB32_Premultiplied);
+    for (bool hovered : {false, true})
+        for (bool busy : {false, true}) {
+            img.fill(Qt::transparent);
+            QPainter                  p(&img);
+            MsgRender::AudioChipState st;
+            st.transcribeHovered = hovered;
+            st.transcribing      = busy;
+            MsgRender::paintFileChip(p, f, chip, &st);
+            p.end();
+            bool outside = false;
+            for (int y = 0; y < img.height() && !outside; ++y)
+                for (int x = 0; x < img.width(); ++x)
+                    if (!chip.adjusted(-1, -1, 1, 1).contains(x, y) && qAlpha(img.pixel(x, y))) {
+                        outside = true;
+                        break;
+                    }
+            CHECK_FALSE(outside);
+            CHECK(qAlpha(img.pixel(action.center())) > 0); // the glyph is there
+        }
+}

@@ -28,16 +28,17 @@ LlmService::LlmService() {
 
     for (auto preset : {LlmProviderConfig::anthropicPreset(), LlmProviderConfig::openAiPreset()}) {
         LlmTokenStore::scrubLegacyOAuth(preset.id);
-        preset.model = s.value(cfgKey(preset.id, "model")).toString();
+        preset.model    = s.value(cfgKey(preset.id, "model")).toString();
+        preset.sttModel = s.value(cfgKey(preset.id, "sttModel")).toString();
         registerProvider(preset);
     }
     for (const QString &id : s.value(kCustomIdsKey).toStringList()) {
-        LlmProviderConfig c;
-        c.id      = id;
-        c.wire    = LlmWire::Format::OpenAiChat;
-        c.name    = s.value(cfgKey(id, "name")).toString();
-        c.baseUrl = s.value(cfgKey(id, "baseUrl")).toString();
-        c.model   = s.value(cfgKey(id, "model")).toString();
+        LlmProviderConfig c = LlmProviderConfig::newCustom(); // for the STT default
+        c.id                = id;
+        c.name              = s.value(cfgKey(id, "name")).toString();
+        c.baseUrl           = s.value(cfgKey(id, "baseUrl")).toString();
+        c.model             = s.value(cfgKey(id, "model")).toString();
+        c.sttModel          = s.value(cfgKey(id, "sttModel")).toString();
         if (c.baseUrl.isEmpty())
             continue; // half-written entry — skip rather than show a broken row
         registerProvider(c);
@@ -55,6 +56,10 @@ LlmProvider *LlmService::registerProvider(const LlmProviderConfig &cfg) {
 void LlmService::persistConfig(const LlmProvider *p) const {
     QSettings   s("msga", "msga");
     const auto &c = p->config();
+    if (c.sttModel.isEmpty())
+        s.remove(cfgKey(c.id, "sttModel"));
+    else
+        s.setValue(cfgKey(c.id, "sttModel"), c.sttModel);
     if (c.isPreset) {
         if (c.model.isEmpty())
             s.remove(cfgKey(c.id, "model"));
@@ -85,6 +90,8 @@ LlmProvider *LlmService::addCustom(const LlmProviderConfig &cfg, const QString &
     c.wire              = LlmWire::Format::OpenAiChat;
     if (c.id.isEmpty())
         c.id = LlmProviderConfig::newCustom().id;
+    if (c.defaultSttModel.isEmpty())
+        c.defaultSttModel = LlmProviderConfig::newCustom().defaultSttModel;
     auto *p = registerProvider(c);
     persistConfig(p);
     p->setApiKey(apiKey);
@@ -178,4 +185,16 @@ void LlmService::chat(const Llm::Request &req, Llm::OnResponse onResponse, Llm::
         return;
     }
     p->chat(req, std::move(onResponse), std::move(onError));
+}
+
+void LlmService::transcribe(
+    LlmWire::TranscriptionInput in, Llm::OnText onText, Llm::OnError onError
+) {
+    auto *p = activeProvider();
+    if (!p) {
+        if (onError)
+            onError(tr("No AI provider connected — connect one in Settings → AI assistance"));
+        return;
+    }
+    p->transcribe(std::move(in), std::move(onText), std::move(onError));
 }

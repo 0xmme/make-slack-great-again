@@ -14,6 +14,11 @@
 //                      API — kept because its OpenAI-compatibility layer is
 //                      documented as "not production-ready" and drops
 //                      structured outputs / prompt caching / refusal detail.
+//
+// Speech-to-text rides the OpenAI format only: POST <base>/audio/transcriptions
+// (multipart/form-data, Whisper-style), answered by OpenAI and by the compat
+// servers that host a Whisper model (speaches/faster-whisper-server, LocalAI,
+// vLLM, LiteLLM, …). Anthropic's API has no audio endpoint at all.
 #pragma once
 
 #include "llm_types.h"
@@ -63,6 +68,36 @@ struct ModelsResult {
 
 HttpRequest buildChat(const Endpoint &ep, const Llm::Request &req);
 HttpRequest buildListModels(const Endpoint &ep);
+
+// ── Speech-to-text ────────────────────────────────────────────────────
+
+struct TranscriptionInput {
+    QByteArray audio;
+    QString    fileName; // with the real extension — servers sniff the format by it
+    QString    mimeType; // part Content-Type ("audio/mpeg"); empty → octet-stream
+    QString    model;    // "gpt-transcribe", "whisper-1", …
+};
+
+struct TranscriptionResult {
+    bool    ok = false;
+    QString text;
+    QString error;
+};
+
+// Whether the format has a transcription endpoint at all (OpenAiChat only).
+bool        supportsTranscription(Format format);
+// Multipart POST <base>/audio/transcriptions with `model`, `file` and
+// `response_format=json`. `boundary` is generated when empty (tests pin it).
+// Precondition: supportsTranscription(ep.format).
+HttpRequest buildTranscription(
+    const Endpoint &ep, const TranscriptionInput &in, const QByteArray &boundary = {}
+);
+// {"text": …} on success; a 200 that isn't JSON is taken as the plain text
+// (servers that ignore response_format).
+TranscriptionResult parseTranscription(int httpStatus, const QByteArray &body);
+// Part Content-Type for an audio file extension ("mp3" → "audio/mpeg"); empty
+// when unknown.
+QString             audioMimeForExtension(const QString &ext);
 
 // httpStatus 0 = transport failure (body may hold the Qt error string).
 ChatResult   parseChat(Format format, int httpStatus, const QByteArray &body);

@@ -35,5 +35,6 @@ struct Response {
 using OnResponse = std::function<void(Response)>;
 using OnError    = std::function<void(QString)>;
 using OnModels   = std::function<void(QStringList)>;
+using OnText     = std::function<void(QString)>; // speech-to-text transcript
 
 } // namespace Llm

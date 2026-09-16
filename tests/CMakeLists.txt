@@ -351,6 +351,7 @@ add_msga_qt_test(test_llm_service
     test_llm_service.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_wire.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/audio_transcriber.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_service.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
@@ -867,6 +868,7 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/llm/llm_service.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_wire.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/audio_transcriber.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
@@ -930,6 +932,7 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/llm/llm_service.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_wire.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/audio_transcriber.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp

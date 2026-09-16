@@ -115,6 +115,7 @@ void Session::start() {
             for (auto it = followed.crbegin(); it != followed.crend(); ++it)
                 _followedThreads.insert(*it, stamp++);
         }
+        _aiTranscripts    = _cache->loadAiTranscripts();
         _reminderPreviews = _cache->loadReminderPreviews();
         for (auto &r : _cache->loadReminders()) {
             const QString key = reminderKey(r.conv, r.ts);
@@ -2417,6 +2418,42 @@ void Session::deleteCanvas(const QString &canvasId, std::function<void(bool ok)>
         if (done)
             done(ok);
     });
+}
+
+void Session::setAiTranscript(const QString &fileId, const QString &text, const QString &provider) {
+    if (fileId.isEmpty() || text.isEmpty())
+        return;
+    const AiTranscript t{text, provider};
+    if (_aiTranscripts.value(fileId) == t)
+        return;
+    _aiTranscripts.insert(fileId, t);
+    if (_cache)
+        _cache->saveAiTranscripts(_aiTranscripts);
+    _aiTranscriptHub.fire_copy(fileId);
+}
+
+std::optional<AiTranscript> Session::aiTranscript(const QString &fileId) const {
+    const auto it = _aiTranscripts.constFind(fileId);
+    if (it == _aiTranscripts.constEnd())
+        return std::nullopt;
+    return *it;
+}
+
+void Session::applyAiTranscript(File &f) const {
+    const auto it = _aiTranscripts.constFind(f.id);
+    if (it == _aiTranscripts.constEnd())
+        return;
+    f.transcriptStatus  = QStringLiteral("complete");
+    f.transcriptPreview = it->text;
+    f.transcriptVttUrl.clear(); // Slack's cues describe Slack's words, not these
+    f.transcriptBy = it->provider;
+}
+
+void Session::applyAiTranscripts(Message &m) const {
+    if (_aiTranscripts.isEmpty())
+        return;
+    for (auto &f : m.files)
+        applyAiTranscript(f);
 }
 
 std::vector<Message> Session::cachedMessages(ConversationId conv) const {

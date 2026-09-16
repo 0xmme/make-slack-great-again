@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QUuid>
 
 namespace LlmWire {
 
@@ -79,12 +80,18 @@ QString jsonErrorMessage(const QJsonObject &obj, int httpStatus) {
     return {};
 }
 
-QString httpFailure(int httpStatus, const QByteArray &body) {
+// What a 404 means for the endpoint being called — the chat URL is the one
+// users mistype; a missing transcription route is a server without STT.
+enum class Route { Chat, Transcription };
+
+QString httpFailure(int httpStatus, const QByteArray &body, Route route = Route::Chat) {
     if (httpStatus == 0)
         return body.isEmpty() ? tr("network error") : QString::fromUtf8(body);
     QString snippet = QString::fromUtf8(body).simplified();
     if (snippet.size() > 200)
         snippet = snippet.left(200) + QChar(0x2026);
+    if (httpStatus == 404 && route == Route::Transcription)
+        return tr("This server has no speech-to-text endpoint (HTTP 404)");
     if (httpStatus == 404)
         return tr("No chat endpoint at this URL (HTTP 404) — most servers expect it to end in /v1");
     if (snippet.isEmpty())
@@ -94,7 +101,13 @@ QString httpFailure(int httpStatus, const QByteArray &body) {
 
 // Shared prelude: transport errors, HTTP errors and JSON-carried errors. Returns
 // the parsed object on success; sets `error` otherwise.
-bool preflight(int httpStatus, const QByteArray &body, QJsonObject &obj, QString &error) {
+bool preflight(
+    int               httpStatus,
+    const QByteArray &body,
+    QJsonObject      &obj,
+    QString          &error,
+    Route             route = Route::Chat
+) {
     if (httpStatus == 0) {
         error = httpFailure(0, body);
         return false;
@@ -102,7 +115,7 @@ bool preflight(int httpStatus, const QByteArray &body, QJsonObject &obj, QString
     QJsonParseError     perr{};
     const QJsonDocument doc = QJsonDocument::fromJson(body, &perr);
     if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
-        error = httpStatus >= 400 ? httpFailure(httpStatus, body)
+        error = httpStatus >= 400 ? httpFailure(httpStatus, body, route)
                                   : tr("Unexpected response from server (not JSON)");
         return false;
     }
@@ -113,10 +126,18 @@ bool preflight(int httpStatus, const QByteArray &body, QJsonObject &obj, QString
         return false;
     }
     if (httpStatus >= 400) {
-        error = httpFailure(httpStatus, body);
+        error = httpFailure(httpStatus, body, route);
         return false;
     }
     return true;
+}
+
+void addFormField(
+    QByteArray &body, const QByteArray &boundary, const char *name, const QByteArray &value
+) {
+    body += "--" + boundary + "\r\n";
+    body += "Content-Disposition: form-data; name=\"" + QByteArray(name) + "\"\r\n\r\n";
+    body += value + "\r\n";
 }
 
 } // namespace
@@ -164,6 +185,84 @@ HttpRequest buildListModels(const Endpoint &ep) {
             addHeader(out, "Authorization", "Bearer " + ep.apiKey.toUtf8());
     }
     return out;
+}
+
+bool supportsTranscription(Format format) {
+    return format == Format::OpenAiChat;
+}
+
+HttpRequest
+buildTranscription(const Endpoint &ep, const TranscriptionInput &in, const QByteArray &boundaryIn) {
+    HttpRequest out;
+    out.url = QUrl(joinUrl(ep.baseUrl, "/audio/transcriptions"));
+    if (!ep.apiKey.isEmpty())
+        addHeader(out, "Authorization", "Bearer " + ep.apiKey.toUtf8());
+    // A UUID never occurs inside compressed audio; no need to scan the bytes.
+    const QByteArray boundary =
+        boundaryIn.isEmpty() ? "msga-" + QUuid::createUuid().toString(QUuid::Id128).toLatin1()
+                             : boundaryIn;
+    addHeader(out, "Content-Type", "multipart/form-data; boundary=" + boundary);
+
+    QByteArray &body = out.body;
+    addFormField(body, boundary, "model", in.model.toUtf8());
+    addFormField(body, boundary, "response_format", "json");
+    // Quotes in the file name would break the header; the id-based names the
+    // caller passes never carry any, but be safe.
+    QByteArray fileName = in.fileName.toUtf8();
+    fileName.replace('"', '_').replace('\r', ' ').replace('\n', ' ');
+    body += "--" + boundary + "\r\n";
+    body += "Content-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\n";
+    body +=
+        "Content-Type: " +
+        (in.mimeType.isEmpty() ? QByteArray("application/octet-stream") : in.mimeType.toUtf8()) +
+        "\r\n\r\n";
+    body += in.audio + "\r\n";
+    body += "--" + boundary + "--\r\n";
+    return out;
+}
+
+TranscriptionResult parseTranscription(int httpStatus, const QByteArray &body) {
+    TranscriptionResult r;
+    QJsonObject         obj;
+    if (!preflight(httpStatus, body, obj, r.error, Route::Transcription)) {
+        // Some servers answer a plain-text transcript regardless of
+        // response_format — a 2xx that isn't JSON is that, not a failure.
+        if (httpStatus >= 200 && httpStatus < 300 && !body.trimmed().isEmpty() &&
+            !body.trimmed().startsWith('{')) {
+            r.ok = true;
+            r.error.clear();
+            r.text = QString::fromUtf8(body).trimmed();
+        }
+        return r;
+    }
+    if (!obj.contains("text")) {
+        r.error = tr("Unexpected response from server (no text)");
+        return r;
+    }
+    r.text = obj.value("text").toString().trimmed();
+    r.ok   = true;
+    return r;
+}
+
+QString audioMimeForExtension(const QString &extIn) {
+    const QString ext = extIn.toLower();
+    if (ext == "mp3" || ext == "mpga" || ext == "mpeg")
+        return "audio/mpeg";
+    if (ext == "mp4" || ext == "m4a")
+        return "audio/mp4";
+    if (ext == "wav")
+        return "audio/wav";
+    if (ext == "flac")
+        return "audio/flac";
+    if (ext == "ogg" || ext == "oga")
+        return "audio/ogg";
+    if (ext == "opus")
+        return "audio/opus";
+    if (ext == "webm")
+        return "audio/webm";
+    if (ext == "aac")
+        return "audio/aac";
+    return {};
 }
 
 ChatResult parseChat(Format format, int httpStatus, const QByteArray &body) {

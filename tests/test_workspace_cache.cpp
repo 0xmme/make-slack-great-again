@@ -489,3 +489,23 @@ TEST_CASE_METHOD(CacheFixture, "loadBots skips entries with empty id", "[cache][
     REQUIRE(loaded.size() == 1);
     CHECK(loaded.contains("B001"));
 }
+
+TEST_CASE_METHOD(CacheFixture, "AI transcripts round-trip by file id", "[cache][stt]") {
+    CHECK(cache.loadAiTranscripts().isEmpty());
+    QHash<QString, AiTranscript> in;
+    in.insert("F1", {"Тест, раз, два, три.", "OpenAI"});
+    in.insert("F2", {"hello", "Local LLM"});
+    in.insert("F3", {"", "OpenAI"}); // empty text is never a transcript
+    cache.saveAiTranscripts(in);
+
+    const auto out = cache.loadAiTranscripts();
+    CHECK(out.size() == 2);
+    CHECK(out.value("F1") == AiTranscript{"Тест, раз, два, три.", "OpenAI"});
+    CHECK(out.value("F2").provider == "Local LLM");
+    CHECK(!out.contains("F3"));
+
+    // Other meta.json keys survive the write.
+    cache.saveFollowedThreads({"C1\t1.0"});
+    CHECK(cache.loadAiTranscripts().size() == 2);
+    CHECK(cache.loadFollowedThreads() == QStringList{"C1\t1.0"});
+}

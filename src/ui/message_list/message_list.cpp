@@ -27,6 +27,7 @@
 #include "util/clipboard.h"
 #include "util/mailto_link.h"
 #include "util/slack_links.h"
+#include "llm/audio_transcriber.h"
 #include "media/audio_player.h"
 #include "cache/cache_evictor.h"
 
@@ -81,6 +82,12 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
     connect(
         &Media::AudioPlayer::instance(),
         &Media::AudioPlayer::statusChanged,
+        this,
+        [this](const QString &key) { repaintAudioChip(key); }
+    );
+    connect(
+        &AudioTranscriber::instance(),
+        &AudioTranscriber::stateChanged,
         this,
         [this](const QString &key) { repaintAudioChip(key); }
     );
@@ -263,8 +270,9 @@ void MessageListWidget::clear() {
     _hoveredTable    = {};
     _hoveredReplyRow = -1;
     _hoveredThreadFooter.clear();
-    _hoveredFile           = {-1, -1};
-    _hoveredFileBtn        = -1;
+    _hoveredFile    = {-1, -1};
+    _hoveredFileBtn = -1;
+    _hoveredAudioTranscribe.clear();
     _selAnchor             = {};
     _selFocus              = {};
     _selDragging           = false;
@@ -357,6 +365,11 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                                        },
                                        _eventLifetime
                                    );
+
+    // The user's AI transcribed an audio file: its rows gain/replace the
+    // transcript line under the player (height changes → relayout).
+    _session->aiTranscriptChanged() |
+        rpl::on_next([this](QString fileId) { onAiTranscript(fileId); }, _eventLifetime);
 
     // If we've shown this chat before, restore exactly where the user left it —
     // ignoring the unread target so switching chats/workspaces never jumps the
@@ -651,6 +664,7 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     _hoveredReplyRow = -1;
     _hoveredFile     = {-1, -1};
     _hoveredFileBtn  = -1;
+    _hoveredAudioTranscribe.clear();
     verticalScrollBar()->setRange(0, 0);
     viewport()->update();
 
@@ -685,6 +699,11 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
                                        },
                                        _eventLifetime
                                    );
+
+    // The user's AI transcribed an audio file: its rows gain/replace the
+    // transcript line under the player (height changes → relayout).
+    _session->aiTranscriptChanged() |
+        rpl::on_next([this](QString fileId) { onAiTranscript(fileId); }, _eventLifetime);
 
     _session->backend()->loadThread(conv, rootTs, std::nullopt) |
         rpl::on_next(
@@ -761,6 +780,7 @@ void MessageListWidget::expandInlineThread(ConversationId conv, const Ts &rootTs
                     }
                     MessageItem item;
                     item.msg = m;
+                    _session->applyAiTranscripts(item.msg);
                     th.replies.push_back(std::move(item));
                 }
                 rebuildLayout();
@@ -798,6 +818,8 @@ void MessageListWidget::mergeNetworkMessages(
             auto &item = _items[*it];
             if (item.msg != msg) {
                 item.msg = msg;
+                if (_session)
+                    _session->applyAiTranscripts(item.msg);
                 item.textDoc.reset();
                 item.docWidth = 0;
                 item.attachDocs.clear();
@@ -822,6 +844,8 @@ void MessageListWidget::mergeNetworkMessages(
         }
         MessageItem item;
         item.msg = msg;
+        if (_session)
+            _session->applyAiTranscripts(item.msg);
         _items.insert(_items.begin() + insertAt, std::move(item));
     }
 
@@ -881,6 +905,7 @@ void MessageListWidget::mergeNetworkMessages(
             _hoveredReplyRow = -1;
             _hoveredFile     = {-1, -1};
             _hoveredFileBtn  = -1;
+            _hoveredAudioTranscribe.clear();
         }
     }
 
@@ -897,6 +922,8 @@ void MessageListWidget::appendMessageDeferred(const Message &msg) {
         _session->fetchBotIfNeeded(msg.author);
     MessageItem item;
     item.msg = msg;
+    if (_session)
+        _session->applyAiTranscripts(item.msg);
     _items.push_back(std::move(item));
 }
 
@@ -3163,6 +3190,12 @@ bool MessageListWidget::tryHandleAudioChipPress(const QPoint &pos) {
         if (pos.y() > chipRect.top() + MsgRender::kAudioChipH)
             return true;
     }
+    if (MsgRender::audioChipTranscribeRect(chipRect).contains(pos)) {
+        _tooltip->hide(); // the dialog overlay keeps the pointer "inside" — no Leave
+        if (msgIdx >= 0 && msgIdx < (int)_items.size())
+            startTranscription(*f, _items[msgIdx].msg);
+        return true;
+    }
     // Seek bar (only meaningful once the player holds this file with a known
     // length): start a scrub, release seeks. Give it a few px of slack.
     const auto &st = Media::AudioPlayer::instance().status();
@@ -3257,10 +3290,12 @@ void MessageListWidget::toggleAudio(const File &file) {
 }
 
 void MessageListWidget::openTranscript(const File &file, const Message &msg) {
-    const QString who  = _session ? _session->userDisplayName(msg.author) : QString();
-    const QString when = TimeFmt::formatTime(msg.date / 1000000);
-    auto         *dlg =
-        new TranscriptDialog(who.isEmpty() ? when : tr("%1 at %2").arg(who, when), window());
+    const QString who      = _session ? _session->userDisplayName(msg.author) : QString();
+    const QString when     = TimeFmt::formatTime(msg.date / 1000000);
+    QString       subtitle = who.isEmpty() ? when : tr("%1 at %2").arg(who, when);
+    if (!file.transcriptBy.isEmpty()) // the user's own STT replaced Slack's line
+        subtitle = tr("%1 · transcribed by %2").arg(subtitle, file.transcriptBy);
+    auto *dlg = new TranscriptDialog(subtitle, window());
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->open();
     if (file.transcriptVttUrl.isEmpty() || !_session) {
@@ -3283,6 +3318,139 @@ void MessageListWidget::openTranscript(const File &file, const Message &msg) {
             qWarning() << "Transcript download failed:" << err;
             if (guard)
                 guard->setText(preview);
+        }
+    );
+}
+
+void MessageListWidget::onAiTranscript(const QString &fileId) {
+    if (!_session)
+        return;
+    bool changed = false;
+    for (auto &item : _items)
+        for (auto &f : item.msg.files)
+            if (f.id == fileId) {
+                _session->applyAiTranscript(f);
+                changed = true;
+            }
+    if (!changed)
+        return;
+    rebuildLayout();
+    viewport()->update();
+}
+
+void MessageListWidget::startTranscription(const File &file, const Message &msg) {
+    const QString who      = _session ? _session->userDisplayName(msg.author) : QString();
+    const QString when     = TimeFmt::formatTime(msg.date / 1000000);
+    QString       subtitle = who.isEmpty() ? when : tr("%1 at %2").arg(who, when);
+    if (const auto *prov = LlmService::instance().activeProvider())
+        subtitle = tr("%1 · transcribed by %2").arg(subtitle, prov->displayName());
+    auto *dlg = new TranscriptDialog(subtitle, window());
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->open();
+    QPointer<TranscriptDialog> guard(dlg);
+
+    auto &transcriber = AudioTranscriber::instance();
+    if (const auto hit = transcriber.cached(file.id)) {
+        dlg->setText(*hit);
+        return;
+    }
+
+    // Hand the bytes to the AI layer. The dialog is the callbacks' context: a
+    // closed dialog drops them, the transcript is still cached for next time.
+    const QPointer<MessageListWidget> self(this);
+    const QString                     provider = LlmService::instance().activeProvider()
+                                                     ? LlmService::instance().activeProvider()->displayName()
+                                                     : QString();
+    auto run = [guard, self, provider, file](const QByteArray &data, const QString &sourceUrl) {
+        if (!guard)
+            return;
+        QString ext = Media::AudioPlayer::extensionOf(sourceUrl);
+        if (ext.isEmpty())
+            ext = Media::AudioPlayer::extensionOf(file.name);
+        LlmWire::TranscriptionInput in;
+        in.audio    = data;
+        in.fileName = file.id + (ext.isEmpty() ? QString() : QLatin1Char('.') + ext);
+        in.mimeType = LlmWire::audioMimeForExtension(ext);
+        if (in.mimeType.isEmpty())
+            in.mimeType = file.mimeType;
+        AudioTranscriber::instance().transcribe(
+            file.id,
+            std::move(in),
+            [guard, self, fileId = file.id, provider](QString text) {
+                // Adopt the result even if the dialog is gone: it replaces
+                // Slack's transcript line under the player from now on.
+                if (!text.isEmpty() && self && self->_session)
+                    self->_session->setAiTranscript(fileId, text, provider);
+                if (!guard)
+                    return;
+                if (text.isEmpty())
+                    guard->setFailed(MessageListWidget::tr("No speech was recognised"));
+                else
+                    guard->setText(text);
+            },
+            [guard](QString err) {
+                if (guard)
+                    guard->setFailed(MessageListWidget::tr("Couldn't transcribe: %1").arg(err));
+            },
+            self.data() // outlives the dialog: a closed dialog still adopts the text
+        );
+    };
+
+    // Fail fast — no download when nothing could consume it.
+    const auto *prov = LlmService::instance().activeProvider();
+    if (!prov) {
+        dlg->setFailed(
+            tr("Transcription needs an AI provider. Connect one in Settings → AI assistance.")
+        );
+        return;
+    }
+    if (!prov->supportsTranscription()) {
+        dlg->setFailed(
+            tr("%1 does not support speech-to-text. Pick an OpenAI-compatible provider in "
+               "Settings → AI assistance.")
+                .arg(prov->displayName())
+        );
+        return;
+    }
+
+    if (file.urlPrivate.startsWith("file://")) { // pending upload — bytes are on disk
+        QFile f(QUrl(file.urlPrivate).toLocalFile());
+        if (!f.open(QIODevice::ReadOnly)) {
+            dlg->setFailed(tr("Could not read the file"));
+            return;
+        }
+        run(f.readAll(), file.urlPrivate);
+        return;
+    }
+    if (!_session || file.urlPrivate.isEmpty()) {
+        dlg->setFailed(tr("Download failed"));
+        return;
+    }
+    // Same bytes the player uses, so a clip already played needs no fetch.
+    const QString url  = Media::AudioPlayer::instance().sourceUrlFor(file);
+    const QString path = audioCachePath(file, url);
+    if (QFile f(path); f.exists() && f.size() > 0 && f.open(QIODevice::ReadOnly)) {
+        run(f.readAll(), url);
+        return;
+    }
+    _session->downloadFile(
+        url,
+        [run, guard, path, url](QByteArray data) {
+            if (data.isEmpty()) {
+                if (guard)
+                    guard->setFailed(MessageListWidget::tr("Download failed"));
+                return;
+            }
+            QDir().mkpath(QFileInfo(path).path());
+            QSaveFile f(path);
+            if (f.open(QIODevice::WriteOnly) && f.write(data) == data.size() && f.commit())
+                CacheEvictor::noteBytesWritten(data.size());
+            run(data, url);
+        },
+        [guard](QString err) {
+            qWarning() << "Audio download for transcription failed:" << err;
+            if (guard)
+                guard->setFailed(MessageListWidget::tr("Download failed"));
         }
     );
 }
@@ -3314,7 +3482,9 @@ std::optional<MsgRender::AudioChipState> MessageListWidget::audioChipState(const
         return std::nullopt;
     const auto               &st = Media::AudioPlayer::instance().status();
     MsgRender::AudioChipState a;
-    a.durationMs = f.durationMs;
+    a.durationMs        = f.durationMs;
+    a.transcribeHovered = _hoveredAudioTranscribe == f.id;
+    a.transcribing      = AudioTranscriber::instance().inFlight(f.id);
     if (st.key != f.id || st.state == Media::AudioPlayer::State::Idle)
         return a; // idle card
     using S = Media::AudioPlayer::State;
@@ -3370,12 +3540,13 @@ void MessageListWidget::doMouseLeave() {
     if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1 ||
         _hoveredReplyRow != -1 || _hoveredFile.first != -1 || _hoveredReaction.first != -1 ||
         !_hoveredThreadFooter.isEmpty() || _hoveredTable.valid()) {
-        _hoveredRow          = -1;
-        _hoveredToolBtn      = -1;
-        _hoveredAttach       = {-1, -1};
-        _hoveredReplyRow     = -1;
-        _hoveredFile         = {-1, -1};
-        _hoveredFileBtn      = -1;
+        _hoveredRow      = -1;
+        _hoveredToolBtn  = -1;
+        _hoveredAttach   = {-1, -1};
+        _hoveredReplyRow = -1;
+        _hoveredFile     = {-1, -1};
+        _hoveredFileBtn  = -1;
+        _hoveredAudioTranscribe.clear();
         _hoveredReaction     = {-1, -1};
         _hoveredThreadFooter = Ts{};
         _hoveredTable        = {};
@@ -3657,6 +3828,18 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
     }
 
+    // The "Transcribe" button on an audio card.
+    QString newHoveredAudioTranscribe;
+    QRect   transcribeBtnRect;
+    if (newHoveredFile.first >= 0 && newHoveredFileBtn < 0) {
+        QRect chipRect;
+        if (const File *af = fileChipAt(pos, &chipRect); af && af->isAudio()) {
+            transcribeBtnRect = MsgRender::audioChipTranscribeRect(chipRect);
+            if (transcribeBtnRect.contains(pos))
+                newHoveredAudioTranscribe = af->id;
+        }
+    }
+
     QRect                     reactionChipRect;
     const std::pair<int, int> newHoveredReaction = reactionAt(pos, &reactionChipRect);
     const TableHit            newHoveredTable    = tableHitAt(pos);
@@ -3665,16 +3848,17 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         newHoveredAttach != _hoveredAttach || newHoveredReplyRow != _hoveredReplyRow ||
         newHoveredFile != _hoveredFile || newHoveredFileBtn != _hoveredFileBtn ||
         newHoveredReaction != _hoveredReaction || newHoveredThreadFoot != _hoveredThreadFooter ||
-        newHoveredTable != _hoveredTable) {
-        _hoveredRow          = newHoveredRow;
-        _hoveredToolBtn      = newHoveredBtn;
-        _hoveredAttach       = newHoveredAttach;
-        _hoveredReplyRow     = newHoveredReplyRow;
-        _hoveredFile         = newHoveredFile;
-        _hoveredFileBtn      = newHoveredFileBtn;
-        _hoveredReaction     = newHoveredReaction;
-        _hoveredThreadFooter = newHoveredThreadFoot;
-        _hoveredTable        = newHoveredTable;
+        newHoveredTable != _hoveredTable || newHoveredAudioTranscribe != _hoveredAudioTranscribe) {
+        _hoveredRow             = newHoveredRow;
+        _hoveredToolBtn         = newHoveredBtn;
+        _hoveredAttach          = newHoveredAttach;
+        _hoveredReplyRow        = newHoveredReplyRow;
+        _hoveredFile            = newHoveredFile;
+        _hoveredFileBtn         = newHoveredFileBtn;
+        _hoveredAudioTranscribe = newHoveredAudioTranscribe;
+        _hoveredReaction        = newHoveredReaction;
+        _hoveredThreadFooter    = newHoveredThreadFoot;
+        _hoveredTable           = newHoveredTable;
         viewport()->update();
     }
 
@@ -3752,6 +3936,11 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const QRect          btnLocal = fileActionBarButtonRect(newHoveredFileBtn, fr);
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
         _tooltip->showAbove(kFileTips[newHoveredFileBtn], btnGlobal);
+    } else if (!newHoveredAudioTranscribe.isEmpty()) {
+        const QRect btnGlobal(
+            viewport()->mapToGlobal(transcribeBtnRect.topLeft()), transcribeBtnRect.size()
+        );
+        _tooltip->showAbove(tr("Transcribe with AI"), btnGlobal);
     } else if (!anchor.isEmpty() && !isUserAnchor && !isChanAnchor && !isToggle) {
         // Collect link display text; skip tooltip when it is identical to the URL.
         QString linkText;
@@ -3854,6 +4043,7 @@ void MessageListWidget::handleEvent(const Event &e) {
         const int existing = findByTs(ev->msg.ts);
         if (existing >= 0) {
             _items[existing].msg = ev->msg;
+            _session->applyAiTranscripts(_items[existing].msg);
             _items[existing].textDoc.reset();
             _items[existing].docWidth = 0;
             _items[existing].attachDocs.clear();
@@ -3891,6 +4081,7 @@ void MessageListWidget::handleEvent(const Event &e) {
             _items[i].msg.edited  = true;
         } else {
             _items[i].msg = ev->msg;
+            _session->applyAiTranscripts(_items[i].msg);
         }
         _items[i].textDoc.reset(); // invalidate rendered docs
         _items[i].docWidth = 0;
@@ -3927,7 +4118,8 @@ void MessageListWidget::handleEvent(const Event &e) {
             _hoveredReplyRow = -1;
             _hoveredFile     = {-1, -1};
             _hoveredFileBtn  = -1;
-            changed          = true;
+            _hoveredAudioTranscribe.clear();
+            changed = true;
         }
         if (changed) {
             rebuildLayout();

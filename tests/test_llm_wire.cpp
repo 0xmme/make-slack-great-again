@@ -309,3 +309,89 @@ TEST_CASE("isCleartextRemote flags plain http to a real network only") {
     CHECK(isCleartextRemote("http://8.8.8.8/v1"));
     CHECK(isCleartextRemote("http://172.32.0.1/v1")); // just outside 172.16/12
 }
+
+// ── Speech-to-text ─────────────────────────────────────────────────────────────
+
+TEST_CASE(
+    "buildTranscription: multipart POST to /audio/transcriptions with model + file", "[stt]"
+) {
+    CHECK(supportsTranscription(Format::OpenAiChat));
+    CHECK_FALSE(supportsTranscription(Format::AnthropicMessages));
+
+    TranscriptionInput in;
+    in.audio            = QByteArray("ID3\x03\x00binary\r\n--not-a-boundary\x00", 30);
+    in.fileName         = "F0123.mp3";
+    in.mimeType         = "audio/mpeg";
+    in.model            = "whisper-1";
+    const HttpRequest r = buildTranscription(openAiCompat("sk-x"), in, "BOUNDARY");
+
+    CHECK(r.url.toString() == "http://localhost:8000/v1/audio/transcriptions");
+    CHECK(header(r, "Authorization") == "Bearer sk-x");
+    CHECK(header(r, "Content-Type") == "multipart/form-data; boundary=BOUNDARY");
+
+    const QByteArray &b = r.body;
+    CHECK(b.startsWith("--BOUNDARY\r\n"));
+    CHECK(b.endsWith("\r\n--BOUNDARY--\r\n"));
+    CHECK(b.contains("Content-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-1\r\n"));
+    CHECK(b.contains("Content-Disposition: form-data; name=\"response_format\"\r\n\r\njson\r\n"));
+    CHECK(b.contains(
+        "Content-Disposition: form-data; name=\"file\"; filename=\"F0123.mp3\"\r\n"
+        "Content-Type: audio/mpeg\r\n\r\n"
+    ));
+    // The audio bytes travel verbatim (NULs included), between the header and
+    // the closing delimiter.
+    const int at = b.indexOf(in.audio);
+    REQUIRE(at > 0);
+    CHECK(b.mid(at + in.audio.size()).startsWith("\r\n--BOUNDARY--"));
+
+    // No key → no Authorization; unknown MIME → octet-stream; a random boundary otherwise.
+    in.mimeType          = {};
+    const HttpRequest r2 = buildTranscription(openAiCompat(), in);
+    CHECK(header(r2, "Authorization").isEmpty());
+    CHECK(r2.body.contains("Content-Type: application/octet-stream\r\n"));
+    const QByteArray ct = header(r2, "Content-Type");
+    CHECK(ct.startsWith("multipart/form-data; boundary=msga-"));
+    CHECK(r2.body.startsWith("--" + ct.mid(ct.indexOf('=') + 1) + "\r\n"));
+}
+
+TEST_CASE("parseTranscription: text, plain-text fallback, and the error shapes", "[stt]") {
+    auto ok = parseTranscription(200, R"({"text":"  Hello there.  "})");
+    CHECK(ok.ok);
+    CHECK(ok.text == "Hello there.");
+
+    // A server that ignores response_format and answers text/plain.
+    auto plain = parseTranscription(200, "Just the words.\n");
+    CHECK(plain.ok);
+    CHECK(plain.text == "Just the words.");
+    CHECK(plain.error.isEmpty());
+
+    auto noText = parseTranscription(200, R"({"segments":[]})");
+    CHECK_FALSE(noText.ok);
+    CHECK(noText.error.contains("no text"));
+
+    // 404 = the server has no STT route (not the "/v1" hint the chat route gives).
+    auto missing = parseTranscription(404, "Not Found");
+    CHECK_FALSE(missing.ok);
+    CHECK(missing.error.contains("speech-to-text"));
+    CHECK_FALSE(missing.error.contains("/v1"));
+
+    auto apiErr = parseTranscription(
+        400, R"({"error":{"message":"Unsupported file format","type":"invalid_request_error"}})"
+    );
+    CHECK_FALSE(apiErr.ok);
+    CHECK(apiErr.error == "Unsupported file format");
+
+    auto transport = parseTranscription(0, "Connection refused");
+    CHECK_FALSE(transport.ok);
+    CHECK(transport.error == "Connection refused");
+}
+
+TEST_CASE("audioMimeForExtension covers what Slack serves", "[stt]") {
+    CHECK(audioMimeForExtension("mp3") == "audio/mpeg");
+    CHECK(audioMimeForExtension("MP4") == "audio/mp4");
+    CHECK(audioMimeForExtension("m4a") == "audio/mp4");
+    CHECK(audioMimeForExtension("wav") == "audio/wav");
+    CHECK(audioMimeForExtension("webm") == "audio/webm");
+    CHECK(audioMimeForExtension("xyz").isEmpty());
+    CHECK(audioMimeForExtension({}).isEmpty());
+}

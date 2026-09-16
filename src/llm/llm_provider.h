@@ -23,8 +23,13 @@ struct LlmProviderConfig {
     QString         name; // display name (product name for presets — not translated)
     LlmWire::Format wire = LlmWire::Format::OpenAiChat;
     QString         baseUrl;
-    QString         model;                       // empty on a preset → its default model
-    QString         lightModel;                  // presets only; custom falls back to `model`
+    QString         model;      // empty on a preset → its default model
+    QString         lightModel; // presets only; custom falls back to `model`
+    // Speech-to-text model for /audio/transcriptions (OpenAI-format endpoints
+    // only). Empty → defaultSttModel. No settings UI yet: overridable through
+    // llm/providers/<id>/sttModel for servers that name their Whisper differently.
+    QString         sttModel;
+    QString         defaultSttModel;
     QString         lightReasoningEffort;        // OpenAI preset: "none" for the light tier
     bool            maxCompletionTokens = false; // OpenAI preset only
     bool            isPreset            = false;
@@ -56,6 +61,9 @@ public:
     [[nodiscard]] QString model() const;
     // Cheaper model for short, frequent tasks (summaries); == model() for custom.
     [[nodiscard]] QString lightModel() const;
+    // Speech-to-text: only OpenAI-format endpoints have /audio/transcriptions.
+    [[nodiscard]] bool    supportsTranscription() const;
+    [[nodiscard]] QString sttModel() const;
 
     // A preset is connected once it has a key; a custom endpoint is connected
     // by existing (its key is optional).
@@ -76,6 +84,9 @@ public:
     void chat(const Llm::Request &req, Llm::OnResponse onResponse, Llm::OnError onError);
     // GET /models — doubles as the connection/key test.
     void listModels(Llm::OnModels onModels, Llm::OnError onError);
+    // Speech-to-text of one audio file. Fails immediately (onError) when the
+    // wire has no transcription endpoint; `in.model` empty → sttModel().
+    void transcribe(LlmWire::TranscriptionInput in, Llm::OnText onText, Llm::OnError onError);
 
     // listModels() for a not-yet-saved configuration (the settings editor's
     // "Test connection" / "Fetch models"). `ctx` scopes the callbacks: they

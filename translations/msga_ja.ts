@@ -776,20 +776,27 @@ Create a free one — it takes a minute — then paste it below. You can change 
 <context>
     <name>LlmProvider</name>
     <message>
-        <location filename="../src/llm/llm_provider.cpp" line="145"/>
+        <location filename="../src/llm/llm_provider.cpp" line="160"/>
         <source>API key</source>
         <translation>APIキー</translation>
     </message>
     <message>
-        <location filename="../src/llm/llm_provider.cpp" line="186"/>
+        <location filename="../src/llm/llm_provider.cpp" line="204"/>
+        <location filename="../src/llm/llm_provider.cpp" line="244"/>
         <source>%1 is not connected</source>
         <translation>%1は接続されていません</translation>
+    </message>
+    <message>
+        <location filename="../src/llm/llm_provider.cpp" line="239"/>
+        <source>%1 does not support speech-to-text</source>
+        <translation>%1は音声の文字起こしに対応していません</translation>
     </message>
 </context>
 <context>
     <name>LlmService</name>
     <message>
-        <location filename="../src/llm/llm_service.cpp" line="177"/>
+        <location filename="../src/llm/llm_service.cpp" line="184"/>
+        <location filename="../src/llm/llm_service.cpp" line="196"/>
         <source>No AI provider connected — connect one in Settings → AI assistance</source>
         <translation>AIプロバイダーが接続されていません — 設定→「AIアシスタンス」で接続してください</translation>
     </message>
@@ -797,37 +804,47 @@ Create a free one — it takes a minute — then paste it below. You can change 
 <context>
     <name>LlmWire</name>
     <message>
-        <location filename="../src/llm/llm_wire.cpp" line="70"/>
+        <location filename="../src/llm/llm_wire.cpp" line="71"/>
         <source>unknown error</source>
         <translation>不明なエラー</translation>
     </message>
     <message>
-        <location filename="../src/llm/llm_wire.cpp" line="84"/>
+        <location filename="../src/llm/llm_wire.cpp" line="89"/>
         <source>network error</source>
         <translation>ネットワークエラー</translation>
     </message>
     <message>
-        <location filename="../src/llm/llm_wire.cpp" line="89"/>
+        <location filename="../src/llm/llm_wire.cpp" line="94"/>
+        <source>This server has no speech-to-text endpoint (HTTP 404)</source>
+        <translation>このサーバーには音声文字起こしのエンドポイントがありません（HTTP 404）</translation>
+    </message>
+    <message>
+        <location filename="../src/llm/llm_wire.cpp" line="96"/>
         <source>No chat endpoint at this URL (HTTP 404) — most servers expect it to end in /v1</source>
         <translation>このURLにチャットエンドポイントがありません（HTTP 404）— 多くのサーバーでは末尾が /v1 である必要があります</translation>
     </message>
     <message>
-        <location filename="../src/llm/llm_wire.cpp" line="91"/>
+        <location filename="../src/llm/llm_wire.cpp" line="98"/>
         <source>HTTP %1</source>
         <translation>HTTP %1</translation>
     </message>
     <message>
-        <location filename="../src/llm/llm_wire.cpp" line="92"/>
+        <location filename="../src/llm/llm_wire.cpp" line="99"/>
         <source>HTTP %1: %2</source>
         <translation>HTTP %1: %2</translation>
     </message>
     <message>
-        <location filename="../src/llm/llm_wire.cpp" line="106"/>
+        <location filename="../src/llm/llm_wire.cpp" line="119"/>
         <source>Unexpected response from server (not JSON)</source>
         <translation>サーバーから予期しない応答が返されました（JSONではありません）</translation>
     </message>
     <message>
-        <location filename="../src/llm/llm_wire.cpp" line="192"/>
+        <location filename="../src/llm/llm_wire.cpp" line="239"/>
+        <source>Unexpected response from server (no text)</source>
+        <translation>サーバーから予期しない応答が返されました（textがありません）</translation>
+    </message>
+    <message>
+        <location filename="../src/llm/llm_wire.cpp" line="291"/>
         <source>Unexpected response from server (no choices)</source>
         <translation>サーバーから予期しない応答が返されました（choicesがありません）</translation>
     </message>
@@ -1125,249 +1142,288 @@ Create a free one — it takes a minute — then paste it below. You can change 
 <context>
     <name>MessageListWidget</name>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1996"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2006"/>
         <location filename="../src/ui/message_list/message_list_paint.cpp" line="190"/>
         <source>Open full table</source>
         <translation>テーブル全体を表示</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2254"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2264"/>
         <source>Reply in thread</source>
         <translation>スレッドで返信</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2271"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2281"/>
         <source>Unmute thread</source>
         <translation>スレッドのミュート解除</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2271"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2281"/>
         <source>Mute thread</source>
         <translation>スレッドをミュート</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2289"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2299"/>
         <source>Edit message</source>
         <translation>メッセージを編集</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2303"/>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2758"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2313"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2768"/>
         <source>Copy link</source>
         <translation>リンクをコピー</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2313"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2323"/>
         <source>Copy message</source>
         <translation>メッセージをコピー</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2327"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2337"/>
         <source>Unpin from channel</source>
         <translation>チャンネルへのピン留めを解除</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2344"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2354"/>
         <source>Pin to channel</source>
         <translation>チャンネルにピン留め</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2368"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2378"/>
         <source>Remove reminder</source>
         <translation>リマインダーを削除</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2380"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2390"/>
         <source>Remind me</source>
         <translation>リマインドする</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2393"/>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3741"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2403"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3881"/>
         <source>Forward message</source>
         <translation>メッセージを転送</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2407"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2417"/>
         <source>Move to thread…</source>
         <translation>スレッドに移動…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2417"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2427"/>
         <source>Summarize down</source>
         <translation>ここから下を要約</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2428"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2438"/>
         <source>Delete message…</source>
         <translation>メッセージを削除…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2465"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2475"/>
         <source>Remind me about this…</source>
         <translation>これについてリマインド…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2466"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2476"/>
         <source>In 20 minutes</source>
         <translation>20分後</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2467"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2477"/>
         <source>In 1 hour</source>
         <translation>1時間後</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2468"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2478"/>
         <source>In 3 hours</source>
         <translation>3時間後</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2470"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2480"/>
         <source>Tomorrow</source>
         <translation>明日</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2473"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2483"/>
         <source>Next week</source>
         <translation>来週</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2477"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2487"/>
         <source>Custom…</source>
         <translation>カスタム…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2501"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2511"/>
         <source>Summaries need an AI provider. Connect one in Settings → AI assistance.</source>
         <translation>要約にはAIプロバイダーが必要です。設定 → AIアシスタンスで接続してください。</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2544"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2554"/>
         <source>You</source>
         <translation>あなた</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2753"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2763"/>
         <source>Open link</source>
         <translation>リンクを開く</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2825"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2835"/>
         <source>Slack doesn&apos;t let third-party apps press bot buttons, we are working on a workaround</source>
         <translation>Slack はサードパーティ製アプリからのボットボタン操作を許可していません。回避策を検討中です。</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2840"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2850"/>
         <source>No email app — address copied</source>
         <translation>メールアプリがないため、アドレスをコピーしました</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2876"/>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3028"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2886"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3038"/>
         <source>file</source>
         <translation>ファイル</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2878"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2888"/>
         <source>Save file</source>
         <translation>ファイルを保存</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2887"/>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3030"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2897"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3040"/>
         <source>Downloading %1</source>
         <translation>%1をダウンロード中</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2929"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2939"/>
         <source>image</source>
         <translation>画像</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2930"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2940"/>
         <source>Copying %1</source>
         <translation>%1をコピー中</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2980"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2990"/>
         <source>Preview</source>
         <translation>プレビュー</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2986"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2996"/>
         <source>Copy link to image</source>
         <translation>画像へのリンクをコピー</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2986"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2996"/>
         <source>Copy link to file</source>
         <translation>ファイルへのリンクをコピー</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2996"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3006"/>
         <source>Copy full image</source>
         <translation>画像全体をコピー</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3010"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3020"/>
         <source>Delete image…</source>
         <translation>画像を削除…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3010"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3020"/>
         <source>Delete file…</source>
         <translation>ファイルを削除…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3037"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3047"/>
         <source>This file is empty</source>
         <translation>このファイルは空です</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3042"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3052"/>
         <source>Showing the first %1 of %2 rows</source>
         <translation>全%2行のうち最初の%1行を表示しています</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3240"/>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3254"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3255"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3269"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3382"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3397"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3409"/>
         <source>Download failed</source>
         <translation>ダウンロードに失敗しました</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3246"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3261"/>
         <source>Could not save the file</source>
         <translation>ファイルを保存できませんでした</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3263"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3278"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3308"/>
         <source>%1 at %2</source>
         <translation>%1（%2）</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3741"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3310"/>
+        <source>%1 · transcribed by %2</source>
+        <translation>%1 · %2による文字起こし</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3343"/>
+        <source>No speech was recognised</source>
+        <translation>音声を認識できませんでした</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3349"/>
+        <source>Couldn&apos;t transcribe: %1</source>
+        <translation>文字起こしできませんでした: %1</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3359"/>
+        <source>Transcription needs an AI provider. Connect one in Settings → AI assistance.</source>
+        <translation>文字起こしにはAIプロバイダーが必要です。設定 → AIアシスタンスで接続してください。</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3365"/>
+        <source>%1 does not support speech-to-text. Pick an OpenAI-compatible provider in Settings → AI assistance.</source>
+        <translation>%1は音声の文字起こしに対応していません。設定 → AIアシスタンスでOpenAI互換のプロバイダーを選んでください。</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3375"/>
+        <source>Could not read the file</source>
+        <translation>ファイルを読み込めませんでした</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3881"/>
         <source>Add reaction</source>
         <translation>リアクションを追加</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3741"/>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3750"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3881"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3890"/>
         <source>More actions</source>
         <translation>その他の操作</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3750"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3890"/>
         <source>Download</source>
         <translation>ダウンロード</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3750"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3890"/>
         <source>Share</source>
         <translation>共有</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3782"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3899"/>
+        <source>Transcribe with AI</source>
+        <translation>AIで文字起こし</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3927"/>
         <source>Remove preview</source>
         <translation>プレビューを削除</translation>
     </message>
@@ -1616,13 +1672,13 @@ Create a free one — it takes a minute — then paste it below. You can change 
         <translation>さらに表示</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="1831"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="1837"/>
         <source>Loading…</source>
         <translation>読み込み中…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="1911"/>
-        <location filename="../src/ui/message_list/message_render.cpp" line="1951"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="1934"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="1988"/>
         <source>View transcript</source>
         <translation>文字起こしを表示</translation>
     </message>

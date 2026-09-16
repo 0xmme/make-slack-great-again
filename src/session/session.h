@@ -382,6 +382,18 @@ public:
     // and by the destructor.
     void scheduleSaveUnreads();
 
+    // --- AI transcripts of audio files ---
+    // The user's own speech-to-text result for an audio file replaces Slack's
+    // transcript line under the player (and fills one in for uploads, which
+    // Slack never transcribes). Kept per workspace across restarts; every
+    // Message the UI builds a row from passes through applyAiTranscripts().
+    void setAiTranscript(const QString &fileId, const QString &text, const QString &provider);
+    std::optional<AiTranscript> aiTranscript(const QString &fileId) const;
+    void                        applyAiTranscript(File &f) const;
+    void                        applyAiTranscripts(Message &m) const;
+    // Fires the file id whose transcript was set — rows holding it re-lay out.
+    rpl::producer<QString>      aiTranscriptChanged() const { return _aiTranscriptHub.events(); }
+
     // --- Persistent cache ---
     std::vector<Message> cachedMessages(ConversationId conv) const;
     void                 cacheMessages(ConversationId conv, const std::vector<Message> &msgs);
@@ -810,6 +822,8 @@ private:
     QHash<QString, qint64>          _reminderCreatedMs;
     QTimer                          _reminderTimer; // single-shot, armReminderTimer()
     rpl::event_stream<>             _remindersChangedHub;
+    QHash<QString, AiTranscript>    _aiTranscripts; // file id → local STT result
+    rpl::event_stream<QString>      _aiTranscriptHub;
     static constexpr qint64         kRemindersRefreshGapMs  = 5 * 60'000;
     qint64                          _lastRemindersRefreshMs = 0;
     static constexpr qint64         kStarredRefreshGapMs    = 5 * 60'000;

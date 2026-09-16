@@ -629,6 +629,15 @@ struct FileThumb {
     bool    operator==(const FileThumb &) const = default;
 };
 
+// A transcript the user's own AI provider produced for an audio file — kept
+// per workspace so it keeps replacing Slack's (or fills in for an upload
+// Slack never transcribes) across restarts. See Session::setAiTranscript.
+struct AiTranscript {
+    QString text;
+    QString provider; // display name, shown as "transcribed by …"
+    bool    operator==(const AiTranscript &) const = default;
+};
+
 // File shared in a Slack message (from the "files" array).
 struct File {
     QString                id;
@@ -662,6 +671,10 @@ struct File {
     QString                transcriptStatus;
     QString                transcriptPreview;
     QString                transcriptVttUrl;
+    // Non-empty when transcriptPreview is NOT Slack's: the user's own AI
+    // provider transcribed the file locally (Session::applyAiTranscripts) and
+    // its text replaced Slack's line. Holds the provider's display name.
+    QString                transcriptBy;
 
     // Preview source covering physW physical pixels: the smallest thumbnail wide
     // enough, else the largest available (never the original — it can be huge),

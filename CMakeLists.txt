@@ -142,6 +142,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/llm/llm_provider.cpp
     src/llm/llm_service.cpp
     src/llm/discussion_summary.cpp
+    src/llm/audio_transcriber.cpp
 
     # Backend port + factory (neutral)
     src/backend/backend_factory.cpp

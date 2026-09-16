@@ -216,6 +216,10 @@ struct AudioChipState {
     qint64  durationMs = 0;  // 0 = unknown
     qint64  scrubMs    = -1; // ≥0 while the user drags the slider: shown instead of positionMs
     QString error;           // Phase::Error
+    // "Transcribe" button (right of the slider row): hovered, and busy while the
+    // AI provider is working on this file.
+    bool    transcribeHovered = false;
+    bool    transcribing      = false;
 };
 
 // Paint a single non-image file chip into rect using the canonical message-list
@@ -225,10 +229,12 @@ void paintFileChip(
 );
 
 // Audio card geometry, in the coordinates of the rect given to paintFileChip:
-// the round play/pause button and the slider track — sized from durationMs so its right edge
-// doesn't jitter as the time label ticks.
+// the round play/pause button, the slider track — sized from durationMs so its
+// right edge doesn't jitter as the time label ticks — and the "Transcribe"
+// button at the right end of the slider row (after the time label).
 QRect audioChipButtonRect(const QRect &chipRect);
 QRect audioChipBarRect(const QRect &chipRect, qint64 durationMs);
+QRect audioChipTranscribeRect(const QRect &chipRect);
 // The transcript line under the card (File::hasTranscript()): quote bar, the
 // preview text elided to what fits, then the "View transcript" link. Rects are
 // null when the file has no transcript.

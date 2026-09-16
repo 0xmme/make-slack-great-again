@@ -17,6 +17,7 @@
         <file alias="ui/headphones.svg">../gfx/ui/headphones.svg</file>
         <file alias="ui/play.svg">../gfx/ui/play.svg</file>
         <file alias="ui/pause.svg">../gfx/ui/pause.svg</file>
+        <file alias="ui/captions.svg">../gfx/ui/captions.svg</file>
         <file alias="ui/star.svg">../gfx/ui/star.svg</file>
         <file alias="ui/star-solid.svg">../gfx/ui/star-solid.svg</file>
         <file alias="ui/send.svg">../gfx/ui/send.svg</file>

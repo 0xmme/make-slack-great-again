@@ -9,7 +9,7 @@
 //       [](QString err)    { … });
 //
 // Persistence (QSettings "msga"): llm/defaultProvider, llm/customProviders
-// (ordered id list), llm/providers/<id>/{name,baseUrl,model}. Keys live in the
+// (ordered id list), llm/providers/<id>/{name,baseUrl,model,sttModel}. Keys live in the
 // secret store via LlmTokenStore.
 #pragma once
 
@@ -54,6 +54,9 @@ public:
 
     // Routes to activeProvider(). Calls onError immediately if none connected.
     void chat(const Llm::Request &req, Llm::OnResponse onResponse, Llm::OnError onError);
+    // Speech-to-text through activeProvider(); onError immediately when none is
+    // connected or it has no transcription endpoint (Anthropic).
+    void transcribe(LlmWire::TranscriptionInput in, Llm::OnText onText, Llm::OnError onError);
 
 signals:
     // Connection state, default selection, or registry membership changed.

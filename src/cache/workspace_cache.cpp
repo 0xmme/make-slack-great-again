@@ -648,6 +648,26 @@ QStringList WorkspaceCache::loadFollowedThreads() const {
     return out;
 }
 
+void WorkspaceCache::saveAiTranscripts(const QHash<QString, AiTranscript> &byFileId) {
+    QJsonObject o;
+    for (auto it = byFileId.constBegin(); it != byFileId.constEnd(); ++it)
+        o[it.key()] = QJsonObject{{"text", it.value().text}, {"by", it.value().provider}};
+    metaObject()["aiTranscripts"] = o;
+    writeMeta();
+}
+
+QHash<QString, AiTranscript> WorkspaceCache::loadAiTranscripts() const {
+    QHash<QString, AiTranscript> out;
+    const QJsonObject            o = metaObject().value("aiTranscripts").toObject();
+    for (auto it = o.constBegin(); it != o.constEnd(); ++it) {
+        const QJsonObject e = it.value().toObject();
+        AiTranscript      t{e.value("text").toString(), e.value("by").toString()};
+        if (!t.text.isEmpty())
+            out.insert(it.key(), t);
+    }
+    return out;
+}
+
 void WorkspaceCache::saveReminders(const std::vector<MessageReminder> &reminders) {
     QJsonArray arr;
     for (const auto &r : reminders) {

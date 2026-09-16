@@ -84,6 +84,7 @@ LlmProviderConfig LlmProviderConfig::anthropicPreset() {
     c.isPreset     = true;
     c.apiKeyUrl    = "https://console.anthropic.com/settings/keys";
     c.knownModels  = {"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-fable-5-1"};
+    // No audio endpoint in the Messages API — transcribe() refuses up front.
     return c;
 }
 
@@ -103,13 +104,19 @@ LlmProviderConfig LlmProviderConfig::openAiPreset() {
     c.isPreset             = true;
     c.apiKeyUrl            = "https://platform.openai.com/api-keys";
     c.knownModels          = {"gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-6-astra"};
+    // OpenAI's recommended file-transcription model (successor of
+    // gpt-4o-transcribe; whisper-1 still works for those who override).
+    c.defaultSttModel      = "gpt-transcribe";
     return c;
 }
 
 LlmProviderConfig LlmProviderConfig::newCustom() {
     LlmProviderConfig c;
-    c.id   = "custom-" + QUuid::createUuid().toString(QUuid::Id128).left(8);
-    c.wire = LlmWire::Format::OpenAiChat;
+    c.id              = "custom-" + QUuid::createUuid().toString(QUuid::Id128).left(8);
+    c.wire            = LlmWire::Format::OpenAiChat;
+    // What every self-hosted Whisper front (speaches, LocalAI, LiteLLM) answers
+    // to; vLLM wants the served model's own name — hence the override.
+    c.defaultSttModel = "whisper-1";
     return c;
 }
 
@@ -134,6 +141,14 @@ QString LlmProvider::lightModel() const {
     return _cfg.lightModel.isEmpty() ? model() : _cfg.lightModel;
 }
 
+bool LlmProvider::supportsTranscription() const {
+    return LlmWire::supportsTranscription(_cfg.wire);
+}
+
+QString LlmProvider::sttModel() const {
+    return _cfg.sttModel.isEmpty() ? _cfg.defaultSttModel : _cfg.sttModel;
+}
+
 bool LlmProvider::isConnected() const {
     return _cfg.isPreset ? hasApiKey() : !_cfg.baseUrl.isEmpty();
 }
@@ -156,15 +171,18 @@ void LlmProvider::setApiKey(const QString &key) {
 
 void LlmProvider::applyConfig(const LlmProviderConfig &cfg) {
     if (_cfg.isPreset) {
-        if (_cfg.model == cfg.model)
+        if (_cfg.model == cfg.model && _cfg.sttModel == cfg.sttModel)
             return;
-        _cfg.model = cfg.model;
+        _cfg.model    = cfg.model;
+        _cfg.sttModel = cfg.sttModel;
     } else {
-        if (_cfg.name == cfg.name && _cfg.baseUrl == cfg.baseUrl && _cfg.model == cfg.model)
+        if (_cfg.name == cfg.name && _cfg.baseUrl == cfg.baseUrl && _cfg.model == cfg.model &&
+            _cfg.sttModel == cfg.sttModel)
             return;
-        _cfg.name    = cfg.name;
-        _cfg.baseUrl = cfg.baseUrl;
-        _cfg.model   = cfg.model;
+        _cfg.name     = cfg.name;
+        _cfg.baseUrl  = cfg.baseUrl;
+        _cfg.model    = cfg.model;
+        _cfg.sttModel = cfg.sttModel;
     }
     emit configChanged();
 }
@@ -206,6 +224,41 @@ void LlmProvider::chat(const Llm::Request &req, Llm::OnResponse onResponse, Llm:
             if (r.ok) {
                 if (onResponse)
                     onResponse(std::move(r.response));
+            } else if (onError) {
+                onError(r.error);
+            }
+        }
+    );
+}
+
+void LlmProvider::transcribe(
+    LlmWire::TranscriptionInput in, Llm::OnText onText, Llm::OnError onError
+) {
+    if (!supportsTranscription()) {
+        if (onError)
+            onError(tr("%1 does not support speech-to-text").arg(_cfg.name));
+        return;
+    }
+    if (!isConnected()) {
+        if (onError)
+            onError(tr("%1 is not connected").arg(_cfg.name));
+        return;
+    }
+    if (in.model.isEmpty())
+        in.model = sttModel();
+    auto *reply = send(LlmWire::buildTranscription(endpoint(), in));
+    connect(
+        reply,
+        &QNetworkReply::finished,
+        this,
+        [reply, onText = std::move(onText), onError = std::move(onError)] {
+            reply->deleteLater();
+            QByteArray body;
+            const int  status = statusOf(reply, body);
+            auto       r      = LlmWire::parseTranscription(status, body);
+            if (r.ok) {
+                if (onText)
+                    onText(std::move(r.text));
             } else if (onError) {
                 onError(r.error);
             }

@@ -61,6 +61,11 @@ public:
     void        saveFollowedThreads(const QStringList &keys);
     QStringList loadFollowedThreads() const;
 
+    // Transcripts the user's AI provider made for audio files, by file id
+    // (Session::_aiTranscripts). Small: a few hundred bytes per clip.
+    void                         saveAiTranscripts(const QHash<QString, AiTranscript> &byFileId);
+    QHash<QString, AiTranscript> loadAiTranscripts() const;
+
     // Message reminders (Session::_reminders): the server list plus the local
     // enrichment (thread root, snippet, fired flag) the server doesn't store.
     // Persisted so blue tints paint and overdue reminders still fire on a start

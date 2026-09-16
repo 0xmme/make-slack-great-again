@@ -5266,3 +5266,60 @@ TEST_CASE_METHOD(
     CHECK(errors.isEmpty());
     CHECK(c.events.size() == 2); // no second delete for the already-gone ghost
 }
+
+// ── AI transcripts ────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "setAiTranscript replaces Slack's transcript on every pass and persists",
+    "[session][stt]"
+) {
+    File voice; // a voice clip with Slack's own (wrong) transcript
+    voice.id                = "F_VOICE";
+    voice.mimeType          = "audio/mp4";
+    voice.subtype           = "slack_audio";
+    voice.transcriptStatus  = "complete";
+    voice.transcriptPreview = "Test, test, test, battery.";
+    voice.transcriptVttUrl  = "https://files.slack.com/vtt/F_VOICE";
+    File upload; // a plain upload Slack never transcribes
+    upload.id       = "F_MP3";
+    upload.mimeType = "audio/mpeg";
+    Message m;
+    m.ts    = "1000.000001";
+    m.files = {voice, upload};
+
+    // Nothing set: files pass through untouched.
+    Message pass = m;
+    session->applyAiTranscripts(pass);
+    CHECK(pass.files[0].transcriptPreview == "Test, test, test, battery.");
+    CHECK(pass.files[0].transcriptBy.isEmpty());
+    CHECK_FALSE(pass.files[1].hasTranscript());
+    CHECK_FALSE(session->aiTranscript("F_VOICE").has_value());
+
+    QStringList   fired;
+    rpl::lifetime lt;
+    session->aiTranscriptChanged() | rpl::on_next([&](QString id) { fired << id; }, lt);
+
+    session->setAiTranscript("F_VOICE", "Тест, раз, два, три.", "OpenAI");
+    session->setAiTranscript("F_MP3", "Hello from the upload.", "OpenAI");
+    session->setAiTranscript("F_MP3", "Hello from the upload.", "OpenAI"); // no-op repeat
+    session->setAiTranscript("F_EMPTY", "", "OpenAI");                     // ignored
+    CHECK(fired == QStringList{"F_VOICE", "F_MP3"});
+    CHECK(session->aiTranscript("F_VOICE") == AiTranscript{"Тест, раз, два, три.", "OpenAI"});
+
+    Message patched = m;
+    session->applyAiTranscripts(patched);
+    CHECK(patched.files[0].hasTranscript());
+    CHECK(patched.files[0].transcriptPreview == "Тест, раз, два, три.");
+    CHECK(patched.files[0].transcriptBy == "OpenAI");
+    CHECK(patched.files[0].transcriptVttUrl.isEmpty()); // Slack's cues no longer apply
+    CHECK(patched.files[1].hasTranscript());            // the upload gained a line
+    CHECK(patched.files[1].transcriptPreview == "Hello from the upload.");
+
+    // Survives a restart of the workspace session.
+    restartSession({kGeneral, kRandom}, {kAlice, kBob});
+    Message again = m;
+    session->applyAiTranscripts(again);
+    CHECK(again.files[0].transcriptPreview == "Тест, раз, два, три.");
+    CHECK(again.files[1].transcriptBy == "OpenAI");
+}
