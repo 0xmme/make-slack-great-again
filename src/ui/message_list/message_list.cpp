@@ -2290,8 +2290,10 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
         addedThreadSection = true;
     }
     // Mute/unmute the thread this message belongs to (root with replies, or a
-    // reply). Threads notify by default; muting silences their replies.
-    if (_session) {
+    // reply). Threads notify by default; muting silences their replies. Only
+    // in the channel view: inside the thread panel every message is the same
+    // thread, so the toggle lives in the panel header instead.
+    if (_session && !_isThreadMode) {
         if (const auto threadRoot = threadRootOf(msg)) {
             const bool muted = _session->isThreadMuted(_currentConv, *threadRoot);
             menu->addItem(

@@ -72,6 +72,10 @@ private:
     // Ask for a save path and hand off to a ThreadExportJob, which re-fetches
     // the whole thread from the API (the open view may only hold its head).
     void downloadThread();
+    // Flip the mute state of the open thread and refresh the header bell.
+    void toggleMuted();
+    // Point the header bell at the open thread's current mute state.
+    void refreshMuteButton();
 
     Session                      *_session = nullptr;
     ConversationId                _conv;
@@ -83,6 +87,7 @@ private:
     QWidget           *_headerWidget = nullptr;
     QWidget           *_leftShadow   = nullptr;
     QLabel            *_header       = nullptr;
+    IconButton        *_muteBtn      = nullptr;
     IconButton        *_downloadBtn  = nullptr;
     IconButton        *_closeBtn     = nullptr;
     PopupTooltip      *_tooltip      = nullptr;

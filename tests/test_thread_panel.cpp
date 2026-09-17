@@ -24,6 +24,7 @@
 #include <QDir>
 #include <QFile>
 #include <QKeyEvent>
+#include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTextEdit>
@@ -695,4 +696,36 @@ TEST_CASE("Forward message on a thread reply reaches the host", "[thread][forwar
     // message from it, and the panel is not always on the conversation shown.
     CHECK(forwarded[0].first == kConv.id);
     CHECK(forwarded[0].second.ts == QStringLiteral("100.600"));
+}
+
+TEST_CASE("the header bell mutes and unmutes the open thread", "[thread][mute]") {
+    // Inside the panel every message belongs to the same thread, so the mute
+    // toggle lives in the header rather than on each message's menu. The bell
+    // is also the only place the muted state is visible, so it must track it.
+    Fixture     f;
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+
+    auto *bell = panel.findChild<QPushButton *>("threadMuteBtn");
+    REQUIRE(bell != nullptr);
+    CHECK_FALSE(f.session->isThreadMuted(kConv.id, kRoot));
+
+    bell->click();
+    CHECK(f.session->isThreadMuted(kConv.id, kRoot));
+    bell->click();
+    CHECK_FALSE(f.session->isThreadMuted(kConv.id, kRoot));
+
+    // A thread muted elsewhere (channel menu) opens with the bell already off:
+    // the toggle acts on the real state, not on a stale local flag.
+    f.session->setThreadMuted(kConv.id, kRoot, true);
+    panel.openThread(kConv.id, Ts{"100.600"});
+    panel.openThread(kConv.id, kRoot);
+    bell->click();
+    CHECK_FALSE(f.session->isThreadMuted(kConv.id, kRoot));
+
+    // With no thread open the bell is inert.
+    panel.close();
+    bell->click();
+    CHECK_FALSE(f.session->isThreadMuted(kConv.id, kRoot));
 }

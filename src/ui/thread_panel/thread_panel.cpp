@@ -73,6 +73,13 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
 
     _tooltip = new PopupTooltip(this);
 
+    // Thread-wide toggle; the bell doubles as the "this thread is muted" indicator.
+    _muteBtn = new IconButton(QStringLiteral(":/ui/bell.svg"), 32, 18, _headerWidget);
+    _muteBtn->setObjectName("threadMuteBtn");
+    _muteBtn->installEventFilter(this);
+    connect(_muteBtn, &QPushButton::clicked, this, &ThreadPanel::toggleMuted);
+    headerLayout->addWidget(_muteBtn);
+
     _downloadBtn = new IconButton(QStringLiteral(":/ui/download.svg"), 32, 18, _headerWidget);
     _downloadBtn->setObjectName("threadDownloadBtn");
     _downloadBtn->installEventFilter(this);
@@ -229,6 +236,7 @@ void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
     _msgList->openThread(conv, rootTs);
     _composer->setEnabled(true);
     _composer->setPlaceholderText(tr("Reply in thread…"));
+    refreshMuteButton();
 }
 
 void ThreadPanel::jumpToTs(const Ts &ts) {
@@ -241,6 +249,28 @@ void ThreadPanel::close() {
     _rootTs = {};
     _msgList->clear();
     _composer->setEnabled(false);
+    refreshMuteButton();
+}
+
+void ThreadPanel::toggleMuted() {
+    if (!_session || _conv.value.isEmpty() || _rootTs.isEmpty())
+        return;
+    _session->setThreadMuted(_conv, _rootTs, !_session->isThreadMuted(_conv, _rootTs));
+    refreshMuteButton();
+    // The label flipped under the cursor; re-show the tooltip with the new one.
+    if (_muteBtn->underMouse())
+        _tooltip->showAbove(
+            _session->isThreadMuted(_conv, _rootTs) ? tr("Unmute thread") : tr("Mute thread"),
+            QRect(_muteBtn->mapToGlobal(QPoint(0, 0)), _muteBtn->size())
+        );
+}
+
+void ThreadPanel::refreshMuteButton() {
+    const bool open  = _session && !_conv.value.isEmpty() && !_rootTs.isEmpty();
+    const bool muted = open && _session->isThreadMuted(_conv, _rootTs);
+    _muteBtn->setSvgPath(
+        muted ? QStringLiteral(":/ui/bell-off.svg") : QStringLiteral(":/ui/bell.svg")
+    );
 }
 
 void ThreadPanel::refreshTimestamps() {
@@ -291,14 +321,18 @@ void ThreadPanel::downloadThread() {
 }
 
 bool ThreadPanel::eventFilter(QObject *watched, QEvent *e) {
-    if (watched == _downloadBtn) {
-        if (e->type() == QEvent::Enter)
-            _tooltip->showAbove(
-                tr("Download thread as text"),
-                QRect(_downloadBtn->mapToGlobal(QPoint(0, 0)), _downloadBtn->size())
-            );
-        else if (e->type() == QEvent::Leave || e->type() == QEvent::MouseButtonPress)
+    if (watched == _downloadBtn || watched == _muteBtn) {
+        auto *btn = static_cast<QWidget *>(watched);
+        if (e->type() == QEvent::Enter) {
+            QString text = tr("Download thread as text");
+            if (watched == _muteBtn) {
+                const bool muted = _session && _session->isThreadMuted(_conv, _rootTs);
+                text             = muted ? tr("Unmute thread") : tr("Mute thread");
+            }
+            _tooltip->showAbove(text, QRect(btn->mapToGlobal(QPoint(0, 0)), btn->size()));
+        } else if (e->type() == QEvent::Leave || e->type() == QEvent::MouseButtonPress) {
             _tooltip->hide();
+        }
     }
     return QWidget::eventFilter(watched, e);
 }

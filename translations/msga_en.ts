@@ -1606,327 +1606,327 @@ Create a free one — it takes a minute — then paste it below. You can change 
         <translation>Reply in thread</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2298"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2300"/>
         <source>Unmute thread</source>
         <translation>Unmute thread</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2298"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2300"/>
         <source>Mute thread</source>
         <translation>Mute thread</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2316"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2318"/>
         <source>Edit message</source>
         <translation>Edit message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2337"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2339"/>
         <source>Copy link</source>
         <translation>Copy link</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2350"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2352"/>
         <source>Copy link from message</source>
         <translation>Copy link from message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2360"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2362"/>
         <source>Copy message</source>
         <translation>Copy message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2374"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2376"/>
         <source>Unpin from channel</source>
         <translation>Unpin from channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2391"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2393"/>
         <source>Pin to channel</source>
         <translation>Pin to channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2415"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2417"/>
         <source>Remove reminder</source>
         <translation>Remove reminder</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2427"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2429"/>
         <source>Remind me</source>
         <translation>Remind me</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2440"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2442"/>
         <source>Forward message</source>
         <translation>Forward message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2454"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2456"/>
         <source>Move to thread…</source>
         <translation>Move to thread…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2464"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2466"/>
         <source>Summarize down</source>
         <translation>Summarize down</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2475"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2477"/>
         <source>Delete message…</source>
         <translation>Delete message…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2512"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2514"/>
         <source>Remind me about this…</source>
         <translation>Remind me about this…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2513"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2515"/>
         <source>In 20 minutes</source>
         <translation>In 20 minutes</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2514"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2516"/>
         <source>In 1 hour</source>
         <translation>In 1 hour</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2515"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2517"/>
         <source>In 3 hours</source>
         <translation>In 3 hours</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2517"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2519"/>
         <source>Tomorrow</source>
         <translation>Tomorrow</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2520"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2522"/>
         <source>Next week</source>
         <translation>Next week</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2524"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2526"/>
         <source>Custom…</source>
         <translation>Custom…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2548"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2550"/>
         <source>Summaries need an AI provider. Connect one in Settings → AI assistance.</source>
         <translation>Summaries need an AI provider. Connect one in Settings → AI assistance.</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2591"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2593"/>
         <source>You</source>
         <translation>You</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2800"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2802"/>
         <source>Open link</source>
         <translation>Open link</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2805"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2807"/>
         <source>Copy link</source>
         <translation>Copy link</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2872"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2874"/>
         <source>Slack doesn't let third-party apps press bot buttons, we are working on a workaround</source>
         <translation>Slack doesn't let third-party apps press bot buttons, we are working on a workaround</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2887"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2889"/>
         <source>No email app — address copied</source>
         <translation>No email app — address copied</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2923"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2925"/>
         <source>file</source>
         <translation>file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2925"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2927"/>
         <source>Save file</source>
         <translation>Save file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2934"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2936"/>
         <source>Downloading %1</source>
         <translation>Downloading %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2976"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2978"/>
         <source>image</source>
         <translation>image</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2977"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2979"/>
         <source>Copying %1</source>
         <translation>Copying %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3027"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3029"/>
         <source>Preview</source>
         <translation>Preview</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3033"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3035"/>
         <source>Copy link to image</source>
         <translation>Copy link to image</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3033"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3035"/>
         <source>Copy link to file</source>
         <translation>Copy link to file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3043"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3045"/>
         <source>Copy full image</source>
         <translation>Copy full image</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3057"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3059"/>
         <source>Delete image…</source>
         <translation>Delete image…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3057"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3059"/>
         <source>Delete file…</source>
         <translation>Delete file…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3075"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3077"/>
         <source>file</source>
         <translation>file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3077"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3079"/>
         <source>Downloading %1</source>
         <translation>Downloading %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3084"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3086"/>
         <source>This file is empty</source>
         <translation>This file is empty</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3089"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3091"/>
         <source>Showing the first %1 of %2 rows</source>
         <translation>Showing the first %1 of %2 rows</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3293"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3295"/>
         <source>Download failed</source>
         <translation>Download failed</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3299"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3301"/>
         <source>Could not save the file</source>
         <translation>Could not save the file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3307"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3309"/>
         <source>Download failed</source>
         <translation>Download failed</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3315"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3317"/>
         <source>%1 at %2</source>
         <translation>%1 at %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3317"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3319"/>
         <source>%1 · transcribed by %2</source>
         <translation>%1 · transcribed by %2</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3364"/>
-        <source>%1 at %2</source>
-        <translation>%1 at %2</translation>
     </message>
     <message>
         <location filename="../src/ui/message_list/message_list.cpp" line="3366"/>
+        <source>%1 at %2</source>
+        <translation>%1 at %2</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3368"/>
         <source>%1 · transcribed by %2</source>
         <translation>%1 · transcribed by %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3407"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3409"/>
         <source>No speech was recognised</source>
         <translation>No speech was recognised</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3413"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3415"/>
         <source>Couldn't transcribe: %1</source>
         <translation>Couldn't transcribe: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3423"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3425"/>
         <source>Transcription needs an AI provider. Connect one in Settings → AI assistance.</source>
         <translation>Transcription needs an AI provider. Connect one in Settings → AI assistance.</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3429"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3431"/>
         <source>%1 does not support speech-to-text. Pick an OpenAI-compatible provider in Settings → AI assistance.</source>
         <translation>%1 does not support speech-to-text. Pick an OpenAI-compatible provider in Settings → AI assistance.</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3439"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3441"/>
         <source>Could not read the file</source>
         <translation>Could not read the file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3446"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3448"/>
         <source>Download failed</source>
         <translation>Download failed</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3461"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3463"/>
         <source>Download failed</source>
         <translation>Download failed</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3473"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3475"/>
         <source>Download failed</source>
         <translation>Download failed</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3945"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3947"/>
         <source>Add reaction</source>
         <translation>Add reaction</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3945"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3947"/>
         <source>Forward message</source>
         <translation>Forward message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3945"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3947"/>
         <source>More actions</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3954"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3956"/>
         <source>Download</source>
         <translation>Download</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3954"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3956"/>
         <source>Share</source>
         <translation>Share</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3954"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3956"/>
         <source>More actions</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3963"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3965"/>
         <source>Transcribe with AI</source>
         <translation>Transcribe with AI</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3997"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3999"/>
         <source>Remove preview</source>
         <translation>Remove preview</translation>
     </message>
@@ -3818,19 +3818,39 @@ It follows the app language until you pick one here.</translation>
         <translation>Thread</translation>
     </message>
     <message>
-        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="231"/>
+        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="238"/>
         <source>Reply in thread…</source>
         <translation>Reply in thread…</translation>
     </message>
     <message>
-        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="287"/>
+        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="263"/>
+        <source>Unmute thread</source>
+        <translation>Unmute thread</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="263"/>
+        <source>Mute thread</source>
+        <translation>Mute thread</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="317"/>
         <source>Save thread</source>
         <translation>Save thread</translation>
     </message>
     <message>
-        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="297"/>
+        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="327"/>
         <source>Download thread as text</source>
         <translation>Download thread as text</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="330"/>
+        <source>Unmute thread</source>
+        <translation>Unmute thread</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="330"/>
+        <source>Mute thread</source>
+        <translation>Mute thread</translation>
     </message>
 </context>
 <context>
