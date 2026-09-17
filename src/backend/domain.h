@@ -165,6 +165,10 @@ struct Capabilities {
                                    // Rides the internal saved.* API family, which Slack only
                                    // serves to a session (xoxc) token — OAuth workspaces would
                                    // get every call rejected, so the menu entry is gated here.
+    bool permalinks       = false; // "Copy link" on a message: the service has a stable, shareable
+                                   // per-message URL we can BUILD locally (Slack: the /archives/
+                                   // permalink from teamUrl + conv + ts). Teams/IMAP have no such
+                                   // client-constructible link, so the menu entry is gated here.
     bool fileUpload       = false; // upload + share files
     bool scheduledSend    = false; // send a message at a future time (chat.scheduleMessage).
                                    // Slack-only: Teams' Graph has no delegated scheduled-send and

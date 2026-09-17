@@ -88,3 +88,37 @@ TEST_CASE("messagePermalink rebuilds the URL it was parsed from", "[links]") {
                           "?thread_ts=1786008900.000100&cid=C1";
     CHECK(SlackLinks::messagePermalink(SlackLinks::parseMessageLink(reply)) == reply);
 }
+
+TEST_CASE("messagePermalink builds a message's own link from teamUrl", "[links]") {
+    const QString team = "https://cityteam.slack.com/";
+    // Top-level message: plain link, no thread suffix.
+    CHECK(
+        SlackLinks::messagePermalink(team, "C1", "1786008939.071009") ==
+        "https://cityteam.slack.com/archives/C1/p1786008939071009"
+    );
+    // A root's threadRoot is its own ts — still a plain link.
+    CHECK(
+        SlackLinks::messagePermalink(team, "C1", "1786008939.071009", "1786008939.071009") ==
+        "https://cityteam.slack.com/archives/C1/p1786008939071009"
+    );
+    // A reply carries its thread root so the link opens the thread.
+    CHECK(
+        SlackLinks::messagePermalink(team, "C1", "1786008939.071009", "1786008900.000100") ==
+        "https://cityteam.slack.com/archives/C1/p1786008939071009"
+        "?thread_ts=1786008900.000100&cid=C1"
+    );
+    // Trailing slash or not, the host is what matters.
+    CHECK(
+        SlackLinks::messagePermalink("https://cityteam.slack.com", "D2", "1.000001") ==
+        "https://cityteam.slack.com/archives/D2/p1000001"
+    );
+    // No teamUrl yet (auth.test pending) → nothing to copy.
+    CHECK(SlackLinks::messagePermalink("", "C1", "1786008939.071009").isEmpty());
+    // The built link round-trips through the parser.
+    const auto ref = SlackLinks::parseMessageLink(
+        SlackLinks::messagePermalink(team, "C1", "1786008939.071009", "1786008900.000100")
+    );
+    CHECK(ref.conv == "C1");
+    CHECK(ref.ts == "1786008939.071009");
+    CHECK(ref.threadTs == "1786008900.000100");
+}

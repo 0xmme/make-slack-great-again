@@ -122,4 +122,27 @@ inline QString messagePermalink(const MessageRef &ref) {
     return url;
 }
 
+// Build the permalink of a message we are displaying, from the workspace web
+// base URL (`Backend::teamUrl()`, "https://<team>.slack.com/") and the message's
+// coordinates. `threadTs` is the message's thread root (empty, or its own ts,
+// for a top-level message) — a reply gets Slack's `?thread_ts=…&cid=…` suffix so
+// the link opens the thread, a root a plain link. Empty when `teamUrl` carries no
+// host (auth.test hasn't answered yet).
+inline QString messagePermalink(
+    const QString &teamUrl, const QString &conv, const QString &ts, const QString &threadTs = {}
+) {
+    const QString host = QUrl(teamUrl).host();
+    if (host.isEmpty() || conv.isEmpty() || ts.isEmpty())
+        return {};
+    return messagePermalink(
+        MessageRef{
+            .host     = host,
+            .conv     = conv,
+            .ts       = ts,
+            .threadTs = threadTs == ts ? QString() : threadTs,
+            .author   = {},
+        }
+    );
+}
+
 } // namespace SlackLinks

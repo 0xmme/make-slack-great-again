@@ -2325,10 +2325,30 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
         menu->addSeparator();
     }
 
+    // "Copy link" is the message's own permalink — the same item, label and
+    // URL as Slack's client (issue #71: paste a thread link into another tool).
+    // A reply's link carries its thread root so it opens the thread.
+    if (caps.permalinks && _session) {
+        const QString permalink = SlackLinks::messagePermalink(
+            _session->teamUrl(), _currentConv.value, msg.ts, msg.threadRoot.value_or(QString())
+        );
+        if (!permalink.isEmpty()) {
+            menu->addItem(
+                tr("Copy link"),
+                "L",
+                [permalink] { Clipboard::setText(permalink); },
+                false,
+                false,
+                ":/ui/link.svg"
+            );
+        }
+    }
+
+    // A URL the message body contains (first one wins).
     if (!linkUrl.isEmpty()) {
         menu->addItem(
-            tr("Copy link"),
-            "L",
+            tr("Copy link from message"),
+            {},
             [linkUrl] { Clipboard::setText(linkUrl); },
             false,
             false,

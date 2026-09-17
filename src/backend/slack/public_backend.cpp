@@ -375,6 +375,9 @@ Capabilities PublicBackend::capabilities() const {
     c.moveToThread     = true; // sendMessage confirms from the chat.postMessage response
     c.fileUpload       = true;
     c.scheduledSend    = true; // chat.scheduleMessage
+    // A message permalink is teamUrl (auth.test's `url`) + /archives/<conv>/p<ts>,
+    // the exact string chat.getPermalink would return — no API call needed.
+    c.permalinks       = true;
     // The Threads overview rides subscriptions.thread.getView, which Slack only
     // serves to a session (xoxc) token — an OAuth workspace would get every call
     // rejected, so don't claim the capability there (no dead roster entry).
