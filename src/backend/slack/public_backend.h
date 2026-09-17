@@ -22,6 +22,7 @@ namespace slack {
 
 class SocketModeRealtime;
 class SessionRealtime;
+class RtmPresence;
 
 // Real Slack backend using the public API + Socket Mode.
 // The app-level Socket Mode socket is supplied by the refcounted slack::
@@ -50,8 +51,10 @@ public:
     // delivery path — poll it every few seconds (spends the user's own rate
     // limits) instead of the 60 s app-token backstop cadence.
     int  foregroundPollGapMs() const override { return _sessionAuth ? 5'000 : 60'000; }
-    // Session auth has no push (classic RTM is unusable — Slack caps the legacy
-    // socket at ~5 s); the Session drives discovery/roster refresh by polling.
+    // Session auth has no push transport wired up: classic RTM does work for a
+    // session token (RtmPresence holds one for presence), but message delivery
+    // over it is a separate effort — the Session drives discovery/roster refresh
+    // by polling.
     bool hasRealtimePush() const override { return !_sessionAuth; }
 
     bool isSyntheticUser(UserId) const override;
@@ -121,6 +124,8 @@ public:
     ) override;
 
     void setPresence(bool away, std::function<void(bool ok, QString err)> done = {}) override;
+    void setPresenceMode(PresenceMode mode) override;
+    void noteUserActivity() override;
     void setStatus(
         const QString                            &emoji,
         const QString                            &text,
@@ -320,6 +325,10 @@ private:
     bool                             _starsUnavailable       = false;
     // Per-workspace RTM realtime for session auth (null for OAuth workspaces).
     std::unique_ptr<SessionRealtime> _sessionRealtime;
+    // Per-workspace presence link for session auth (null for OAuth workspaces —
+    // rtm.connect refuses a granular OAuth token): the RTM socket that makes
+    // Slack show this user "active" without an official client. See PresenceMode.
+    std::unique_ptr<RtmPresence>     _rtmPresence;
     QTimer                          *_proactiveRefreshTimer = nullptr;
 
     // Token refresh deduplication

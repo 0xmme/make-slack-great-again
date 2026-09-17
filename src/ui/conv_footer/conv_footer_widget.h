@@ -21,9 +21,11 @@ class PopupTooltip;
 //   • "visible" — automatic presence (users.setPresence "auto"), circle-user-round icon
 //   • "hidden"  — manually away  (users.setPresence "away"),  hat-glasses icon
 //
-// Slack offers no API to force "active": a Web-API-only client always appears
-// away to others unless an official client is connected. So the only real
-// choice we expose is auto vs. away, surfaced here as visible vs. hidden.
+// Slack offers no API to force "active": a user is active only while one of
+// Slack's clients holds a socket. The Session holds such a socket itself when
+// the presence preference asks for it (PresenceMode / Session::presenceLink());
+// the toggle here stays auto vs. away (visible vs. hidden), and the tooltip
+// explains a lingering "away" from the link's state.
 class ConvFooterWidget : public QWidget {
     Q_OBJECT
 public:
@@ -33,6 +35,9 @@ public:
     void setUser(const QString &displayName, const QString &avatarUrl);
     // Rich self presence: drives the avatar dot and the toggle icon/tooltip.
     void setSelfPresence(const SelfPresence &sp);
+    // State of the presence-holding link (Session::presenceLink()) — only used to
+    // word the toggle's tooltip while the user still appears away.
+    void setPresenceLink(PresenceLinkState link);
     // Whether the active backend has a user-presence concept (Capabilities::presence).
     // When false (e.g. IMAP/email), the visible/hidden presence toggle is dropped
     // entirely — there's nothing to toggle and the avatar shows no presence dot.
@@ -92,6 +97,7 @@ private:
     QMetaObject::Connection _avatarConn;
     UserAvatar::State       _state;
     SelfPresence            _sp;
+    PresenceLinkState       _link              = PresenceLinkState::Off;
     bool                    _presenceSupported = true; // backend has a presence concept
     Hot                     _hot               = Hot::None;
     Hot                     _pressed           = Hot::None;

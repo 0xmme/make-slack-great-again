@@ -243,6 +243,7 @@ set(SLACK_BACKEND_SRCS
     ${CMAKE_SOURCE_DIR}/src/backend/slack/json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/socket_mode_realtime.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_realtime.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/rtm_presence.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_events.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/shared_realtime.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
@@ -588,6 +589,16 @@ add_msga_qt_test(test_socket_mode_realtime
 )
 target_link_libraries(test_socket_mode_realtime PRIVATE Qt6::Network Qt6::WebSockets)
 set_target_properties(test_socket_mode_realtime PROPERTIES AUTOMOC ON)
+
+add_msga_qt_test(test_rtm_presence
+    test_rtm_presence.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/rtm_presence.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/web_api_client.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/http_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+)
+target_link_libraries(test_rtm_presence PRIVATE Qt6::Network Qt6::WebSockets)
+set_target_properties(test_rtm_presence PROPERTIES AUTOMOC ON)
 
 add_msga_qt_test(test_enterprise_grid
     test_enterprise_grid.cpp

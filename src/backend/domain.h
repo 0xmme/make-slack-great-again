@@ -183,6 +183,10 @@ struct Capabilities {
     bool sidebarTheme = false; // loadSidebarTheme(): the user's stored sidebar theme (Slack's
                                // users.prefs.get, served only to a session token) — feeds the
                                // "Use my Slack theme" button of the custom theme editor.
+    bool presenceLink = false; // setPresenceMode(): the backend can hold the connection that
+                               // makes the service show this user "active" without an
+                               // official client (Slack: RTM on a session token; an OAuth
+                               // token is refused rtm.connect). Requires presence.
     bool operator==(const Capabilities &) const = default;
 };
 
@@ -244,6 +248,30 @@ struct SelfPresence {
     // Slack client is connected — not because they chose (or idled into) away.
     bool phantomAway() const { return loaded && !active && !online && !manualAway; }
     bool operator==(const SelfPresence &) const = default;
+};
+
+// How the app should hold the user's presence on services that only show a user
+// "active" while one of the service's own clients has a live connection (Slack:
+// the official apps' socket — a Web-API-only client is always "away" to others,
+// users.setPresence can force away but never active). The backend can hold such
+// a connection itself (Slack: an RTM socket on the user's session token) so the
+// user appears active from this app alone. Chosen once in Settings → System →
+// Presence (util/presence_settings.h) and applied to every workspace.
+enum class PresenceMode {
+    Native,       // leave it to the service's official clients (no connection held)
+    WhileUsing,   // hold the connection while the user interacts with the app; drop
+                  // it after ~30 min without input (like the official auto-away)
+    WhileRunning, // hold the connection for as long as the app runs
+};
+
+// State of that presence-holding connection, so the UI can explain WHY the user
+// still appears away (Backend::setPresenceMode → EvPresenceLinkChanged).
+enum class PresenceLinkState {
+    Off,         // PresenceMode::Native, or the backend has no such connection
+    Connecting,  // wanted but not (yet / currently) established — incl. reconnect backoff
+    Active,      // established: the service counts this app as a connected client
+    Idle,        // WhileUsing: dropped on purpose after the idle timeout
+    Unavailable, // the service refused it for this workspace (e.g. an OAuth token)
 };
 
 // Editable fields of the authed user's own profile (users.profile.get /
@@ -1106,6 +1134,14 @@ struct EvRealtimeContended {
     int otherConnections = 0;
 };
 
+// The presence-holding connection (see PresenceMode) changed state. Raised by
+// the backend; the Session records it (Session::presenceLink()) and re-polls the
+// rich self presence, since Slack flips `online`/`active` as the socket comes
+// and goes.
+struct EvPresenceLinkChanged {
+    PresenceLinkState state = PresenceLinkState::Off;
+};
+
 // An API request hit HTTP 429 and is being transparently retried after
 // `retryAfterSecs`. Informational — the call still completes; the UI can show a
 // transient "rate-limited" notice. `method` is the throttled API method.
@@ -1175,5 +1211,6 @@ using Event = std::variant<
     EvHuddleChanged,
     EvRealtimeReconnected,
     EvRealtimeContended,
+    EvPresenceLinkChanged,
     EvRateLimited,
     EvReminderDue>;

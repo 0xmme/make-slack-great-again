@@ -5,6 +5,7 @@
 #include "backend/common_commands.h"
 #include "cache/workspace_cache.h"
 #include "text/mrkdwn_parser.h"
+#include "util/presence_settings.h"
 #include "util/time_format.h"
 
 #include <QCoreApplication>
@@ -135,6 +136,9 @@ void Session::start() {
     }
 
     _backend->connectRealtime();
+    // Hold the presence link per the global preference (no-op for backends
+    // without one). After connectRealtime: the link is part of "being online".
+    _backend->setPresenceMode(PresenceSettings::mode());
 
     // Resolve our own user id first — optimistic sends and own-message
     // detection depend on it.
@@ -145,6 +149,10 @@ void Session::start() {
     refreshSelfPresence();
     QObject::connect(&_selfPresenceTimer, &QTimer::timeout, [this] { refreshSelfPresence(); });
     _selfPresenceTimer.start(60 * 1000);
+    _presenceLinkRefreshTimer.setSingleShot(true);
+    QObject::connect(&_presenceLinkRefreshTimer, &QTimer::timeout, [this] {
+        refreshSelfPresence();
+    });
 
     // Safety net for the realtime socket. Its own watchdog only catches a
     // connection that goes silent; it cannot see one that still answers pings
@@ -467,6 +475,14 @@ void Session::start() {
                     // open the chat. Self-throttled; upward-merges, so it composes with
                     // the reload above regardless of which completes first.
                     resyncUnreads();
+                } else if (const auto *pl = std::get_if<EvPresenceLinkChanged>(&e)) {
+                    _presenceLink = pl->state;
+                    // Slack flips `online`/`active` as the socket comes and goes,
+                    // but the self snapshot is polled only every 60 s — re-poll
+                    // shortly (not instantly: the server registers the connection
+                    // a beat after `hello`) so the dot turns green without a wait.
+                    _presenceLinkRefreshTimer.start(2'000);
+                    return; // internal — nothing for the UI's event stream
                 } else if (std::holds_alternative<EvRealtimeContended>(e)) {
                     // Slack keeps evicting our shared socket from the app's
                     // connection pool — another msga instance is running on the
@@ -2151,6 +2167,22 @@ void Session::setPresence(bool away) {
         // server — re-poll instead of guessing.
         refreshSelfPresence();
     });
+}
+
+void Session::setPresenceMode(PresenceMode mode) {
+    _backend->setPresenceMode(mode);
+}
+
+void Session::noteUserActivity() {
+    _backend->noteUserActivity();
+}
+
+rpl::producer<PresenceLinkState> Session::presenceLink() const {
+    return _presenceLink.value();
+}
+
+PresenceLinkState Session::currentPresenceLink() const {
+    return _presenceLink.current();
 }
 
 void Session::setStatus(const QString &emoji, const QString &text, qint64 expirationTs) {

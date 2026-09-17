@@ -319,6 +319,15 @@ public:
         if (done)
             done(false, QStringLiteral("not_supported"));
     }
+    // --- Presence link (Capabilities::presenceLink) ---
+    // Hold (or drop) the connection that makes the service show this user
+    // "active" without an official client — see PresenceMode. Reports its state
+    // through EvPresenceLinkChanged. Default: nothing to hold.
+    virtual void setPresenceMode(PresenceMode /*mode*/) {}
+    // Real user input happened in the app (throttled by the caller). Drives the
+    // WhileUsing idle clock and the service's own activity signal (Slack: tickle).
+    virtual void noteUserActivity() {}
+
     // Pause notifications for `minutes` (dnd.setSnooze); minutes <= 0 resumes
     // them (dnd.endSnooze).
     virtual void

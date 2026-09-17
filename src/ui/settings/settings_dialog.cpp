@@ -18,6 +18,7 @@
 #include "llm/llm_provider.h"
 #include "llm/llm_wire.h"
 #include "cache/cache_evictor.h"
+#include "util/presence_settings.h"
 #include "util/time_format.h"
 #include "util/process_stats.h"
 #include "util/sound_player.h"
@@ -874,6 +875,66 @@ void SettingsDialog::buildPanel() {
 
     sylay->addWidget(winBox);
 #endif
+
+    // ── Presence section ──────────────────────────────────────────────
+    // Slack shows a user "active" only while one of its clients holds a socket, so
+    // a msga-only user was away to everyone (GitHub issue #69). The session can
+    // hold that socket itself (PresenceMode); this is the global preference for it.
+    auto *presHeading = new QLabel(tr("Presence"), sysPage);
+    presHeading->setObjectName("sectionHeading");
+    sylay->addWidget(presHeading);
+
+    auto *presBox = new QGroupBox(sysPage);
+    presBox->setObjectName("updBox"); // same borderless styling as the update box
+    auto *presLayout = new QVBoxLayout(presBox);
+    presLayout->setSpacing(sp.md);
+    presLayout->setContentsMargins(0, 0, 0, 0);
+
+    _presRunning = new QRadioButton(tr("Show me as active while MSGA is running"), presBox);
+    _presUsing   = new QRadioButton(
+        tr("Show me as active while I use MSGA (away after 30 minutes without input)"), presBox
+    );
+    _presNative     = new QRadioButton(tr("Leave my presence to the official Slack apps"), presBox);
+    auto *presGroup = new QButtonGroup(this);
+    presGroup->addButton(_presRunning);
+    presGroup->addButton(_presUsing);
+    presGroup->addButton(_presNative);
+    presLayout->addWidget(_presRunning);
+    presLayout->addWidget(_presUsing);
+    presLayout->addWidget(_presNative);
+
+    auto *presDesc = new QLabel(
+        tr("Slack only shows you as active while a Slack app is connected. MSGA can hold "
+           "that connection itself, so you no longer need the official app open to look "
+           "online. The Hide button still makes you appear away. Works for workspaces added "
+           "with a Slack session."),
+        presBox
+    );
+    presDesc->setObjectName("autoUpdDesc"); // same caption styling
+    presDesc->setWordWrap(true);
+    presLayout->addWidget(presDesc);
+    sylay->addWidget(presBox);
+
+    switch (PresenceSettings::mode()) {
+    case PresenceMode::Native:
+        _presNative->setChecked(true);
+        break;
+    case PresenceMode::WhileUsing:
+        _presUsing->setChecked(true);
+        break;
+    case PresenceMode::WhileRunning:
+        _presRunning->setChecked(true);
+        break;
+    }
+    connect(presGroup, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *b, bool on) {
+        if (!on)
+            return; // one toggled-off + one toggled-on per change; act once
+        const PresenceMode m = b == _presNative  ? PresenceMode::Native
+                               : b == _presUsing ? PresenceMode::WhileUsing
+                                                 : PresenceMode::WhileRunning;
+        PresenceSettings::setMode(m);
+        emit presenceModeChanged(m);
+    });
 
     // ── Slack connection section ──────────────────────────────────────
     // Global either/or switch: connect with the user's own Slack session (cookie)
@@ -1967,6 +2028,9 @@ void SettingsDialog::applyTheme() {
         _modeSession->setStyleSheet(radioQss);
     if (_modeAppKeys)
         _modeAppKeys->setStyleSheet(radioQss);
+    for (auto *r : {_presRunning, _presUsing, _presNative})
+        if (r)
+            r->setStyleSheet(radioQss);
     _notifHuddles->setStyleSheet(checkQss);
     _notifSound->setStyleSheet(checkQss);
     // (Save button self-themes — StyledButton)

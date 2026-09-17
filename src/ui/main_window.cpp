@@ -58,6 +58,7 @@
 #include "util/mac_app_badge.h"
 #endif
 
+#include <QDateTime>
 #include <QDialog>
 #include <QEvent>
 #include <QCloseEvent>
@@ -100,9 +101,13 @@ static constexpr int kResizeBorder = 6;
 static constexpr QSize kDefaultWindowSize{1200, 800};
 static constexpr QSize kPreferredMinSize{800, 600};
 
-static constexpr int kConvMinWidth  = 160;
-static constexpr int kConvMaxWidth  = 400;
-static constexpr int kConvInitWidth = 240;
+static constexpr int    kConvMinWidth      = 160;
+static constexpr int    kConvMaxWidth      = 400;
+static constexpr int    kConvInitWidth     = 240;
+// Min spacing between input notifications to the sessions' presence links
+// (MainWindow::eventFilter → Session::noteUserActivity). Coarse on purpose: the
+// WhileUsing idle timeout is 30 min and the links throttle tickles themselves.
+static constexpr qint64 kActivityNoteGapMs = 20'000;
 
 // The workspace identifier flowing through MainWindow (_sessions key,
 // _activeTeamId, switcher ids, NavHistory) is the composite WorkspaceKey handle
@@ -594,6 +599,13 @@ QWidget *MainWindow::buildMainPage() {
         this,
         &MainWindow::showSampleNotification
     );
+    // The presence preference is global: re-apply it to every live session (a
+    // session created later reads it in Session::start()).
+    connect(_settingsDialog, &SettingsDialog::presenceModeChanged, this, [this](PresenceMode m) {
+        for (auto &[teamId, ws] : _sessions)
+            if (ws.session)
+                ws.session->setPresenceMode(m);
+    });
     connect(_settingsDialog, &SettingsDialog::restartRequested, this, &MainWindow::restartApp);
     connect(
         _settingsDialog,
@@ -2079,6 +2091,14 @@ void MainWindow::connectToSession() {
             _uiLifetime
         );
 
+    _session->presenceLink() | rpl::on_next(
+                                   [this](PresenceLinkState link) {
+                                       if (_convFooter)
+                                           _convFooter->setPresenceLink(link);
+                                   },
+                                   _uiLifetime
+                               );
+
     _session->selfPresence() |
         rpl::on_next(
             [this](SelfPresence sp) {
@@ -3321,6 +3341,25 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
     // show/hide). Non-consuming — fall through to the rest of the filter.
     if (obj == _rightArea && (e->type() == QEvent::Move || e->type() == QEvent::Resize) && _frame)
         _frame->update();
+    // Real input anywhere in the app feeds the presence links (idle clock +
+    // Slack's activity signal). Throttled here so the hot path stays a compare;
+    // the links throttle their own tickles further.
+    switch (e->type()) {
+    case QEvent::MouseButtonPress:
+    case QEvent::KeyPress:
+    case QEvent::Wheel: {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - _lastActivityNoteMs >= kActivityNoteGapMs) {
+            _lastActivityNoteMs = now;
+            for (auto &[teamId, ws] : _sessions)
+                if (ws.session)
+                    ws.session->noteUserActivity();
+        }
+        break;
+    }
+    default:
+        break;
+    }
     // Mouse side buttons anywhere in this window navigate chat history.
     if (e->type() == QEvent::MouseButtonPress) {
         auto *me = static_cast<QMouseEvent *>(e);

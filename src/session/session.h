@@ -119,7 +119,15 @@ public:
     // without waiting for a poll.
     // Force away (true) or return to automatic presence detection (false);
     // also refreshes selfPresence().
-    void setPresence(bool away);
+    void                             setPresence(bool away);
+    // The presence-holding link (PresenceMode, Capabilities::presenceLink):
+    // start() applies the global preference; MainWindow re-applies it on change
+    // and forwards real user input (throttled) so the WhileUsing idle clock and
+    // Slack's activity signal see it. presenceLink() replays the current state.
+    void                             setPresenceMode(PresenceMode mode);
+    void                             noteUserActivity();
+    rpl::producer<PresenceLinkState> presenceLink() const;
+    PresenceLinkState                currentPresenceLink() const;
     // Set — or clear, when both args are empty — the status. `emoji` uses the
     // API's ":name:" form. `expirationTs` is an absolute Unix timestamp (seconds)
     // after which Slack auto-clears the status; 0 means "Don't clear".
@@ -664,17 +672,19 @@ private:
     rpl::variable<std::vector<User>>         _users;
     rpl::variable<SelfPresence>              _selfPresence;
     QTimer                                   _selfPresenceTimer;
-    QTimer                                   _realtimeSafetyTimer; // 15 s; checkRealtimeHealth()
-    QTimer                                   _saveUnreadsTimer; // debounces scheduleSaveUnreads()
-    QTimer                               _saveDeadConvsTimer; // debounces scheduleSaveDeadConvIds()
-    QTimer                               _saveUsersTimer;     // debounces scheduleSaveUsers()
+    rpl::variable<PresenceLinkState>         _presenceLink;
+    QTimer _presenceLinkRefreshTimer; // single-shot; see EvPresenceLinkChanged
+    QTimer _realtimeSafetyTimer;      // 15 s; checkRealtimeHealth()
+    QTimer _saveUnreadsTimer;         // debounces scheduleSaveUnreads()
+    QTimer _saveDeadConvsTimer;       // debounces scheduleSaveDeadConvIds()
+    QTimer _saveUsersTimer;           // debounces scheduleSaveUsers()
     // Conversation snapshots queued by cacheMessages(): the JSON serialization
     // + file write is deferred off the conversation-switch click path. Flushed
     // by the timer and the destructor; cachedMessages() reads the queue first
     // so an immediate switch-back never sees a stale file.
-    QHash<QString, std::vector<Message>> _pendingMsgWrites;
-    QTimer                               _saveMsgsTimer;
-    void                                 flushPendingMsgWrites();
+    QHash<QString, std::vector<Message>>                 _pendingMsgWrites;
+    QTimer                                               _saveMsgsTimer;
+    void                                                 flushPendingMsgWrites();
     // resyncUnreads replies batched: merging each conversations.info response
     // individually reassigned _conversations — one full conv-list rebuild per
     // DM in the sweep. Replies collect here and merge in one reassignment per

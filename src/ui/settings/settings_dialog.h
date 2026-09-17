@@ -5,6 +5,7 @@
 #pragma once
 
 #include "auth/token_store.h"
+#include "backend/domain.h"
 
 #include <QList>
 #include <QWidget>
@@ -89,6 +90,9 @@ signals:
     // Emitted when the "Test" button under Sample notifications is clicked; the
     // int is a SampleNotif value. MainWindow owns the actual delivery.
     void testNotificationRequested(int kind);
+    // Emitted when the Presence preference (System page) changes; MainWindow
+    // re-applies it to every live session. Persisted here already.
+    void presenceModeChanged(PresenceMode mode);
     // Emitted after the user saves personal Slack app credentials — they only
     // take effect on a fresh start, so MainWindow performs a clean restart.
     void restartRequested();
@@ -233,6 +237,11 @@ private:
     StyledButton  *_checkBtn       = nullptr;
     QLabel        *_ramLabel       = nullptr;
     QTimer        *_ramTimer       = nullptr;
+
+    // Presence preference (System page) — see PresenceMode.
+    QRadioButton *_presRunning = nullptr;
+    QRadioButton *_presUsing   = nullptr;
+    QRadioButton *_presNative  = nullptr;
 
     // Slack connection mode switch (System page): session (cookie) vs app keys (OAuth).
     QRadioButton *_modeSession        = nullptr;

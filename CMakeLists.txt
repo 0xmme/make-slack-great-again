@@ -152,6 +152,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/backend/slack/json_mappers.cpp
     src/backend/slack/socket_mode_realtime.cpp
     src/backend/slack/session_realtime.cpp
+    src/backend/slack/rtm_presence.cpp
     src/backend/slack/slack_events.cpp
     src/backend/slack/web_api_client.cpp
     src/backend/slack/shared_realtime.cpp

@@ -174,6 +174,16 @@ void ConvFooterWidget::setSelfPresence(const SelfPresence &sp) {
     update();
 }
 
+void ConvFooterWidget::setPresenceLink(PresenceLinkState link) {
+    if (_link == link)
+        return;
+    _link = link;
+    if (_hot == Hot::Toggle) { // re-word a tooltip that is showing right now
+        const QRect r = toggleRect();
+        _tooltip->showAbove(presenceTooltip(), QRect(mapToGlobal(r.topLeft()), r.size()));
+    }
+}
+
 void ConvFooterWidget::setPresenceSupported(bool supported) {
     if (_presenceSupported == supported)
         return;
@@ -192,6 +202,7 @@ void ConvFooterWidget::clear() {
     _avatar             = {};
     _sp                 = {};
     _state              = {};
+    _link               = PresenceLinkState::Off;
     _state.showPresence = _presenceSupported; // survive the reset to {} default of true
     _animTimer.stop();
     _confirmTimer.stop();
@@ -230,11 +241,36 @@ void ConvFooterWidget::loadAvatar() {
 QString ConvFooterWidget::presenceTooltip() const {
     if (_displayHidden)
         return tr("Hidden — you appear away to everyone. Click to use automatic presence.");
-    if (_sp.phantomAway())
+    if (_sp.phantomAway()) {
+        // Away only because no client connection exists — say why the link that
+        // would fix it isn't (yet) doing so.
+        switch (_link) {
+        case PresenceLinkState::Idle:
+            return tr(
+                "Away — you haven't used MSGA for a while. Any click or keystroke "
+                "makes you active again (Settings → System → Presence)."
+            );
+        case PresenceLinkState::Connecting:
+        case PresenceLinkState::Active: // Slack registers the socket a beat later
+            return tr(
+                "Visible — connecting so you appear active without the official "
+                "Slack app…"
+            );
+        case PresenceLinkState::Unavailable:
+            return tr(
+                "Visible — but you appear away while no official Slack app is "
+                "connected. MSGA can't hold your presence on this workspace."
+            );
+        case PresenceLinkState::Off:
+            break;
+        }
         return tr(
-            "Visible — but you appear away if no official Slack client is connected. "
-            "Click to hide."
+            "Visible — but you appear away while no official Slack app is "
+            "connected. MSGA can keep you active: Settings → System → Presence."
         );
+    }
+    if (_link == PresenceLinkState::Active)
+        return tr("Visible — MSGA keeps you active. Click to appear hidden.");
     return tr("Visible — using automatic presence. Click to appear hidden.");
 }
 

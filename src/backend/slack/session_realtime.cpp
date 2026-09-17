@@ -101,8 +101,8 @@ void SessionRealtime::openAndConnect() {
         return;
     _connecting = true;
 
-    // rtm.connect returns a one-use, pre-authenticated wss URL (the URL itself
-    // carries auth, so the WebSocket open needs no cookie/bearer).
+    // rtm.connect returns a one-use wss URL. It carries no auth itself — the
+    // socket handshake must repeat the `d` cookie (see connectWs).
     QNetworkRequest req{_rtmConnectUrl};
     req.setRawHeader("Authorization", QByteArray("Bearer ") + _token.toUtf8());
     req.setTransferTimeout(20'000); // `d` cookie supplied by the jar
@@ -144,7 +144,13 @@ void SessionRealtime::connectWs(const QUrl &url) {
         if (_ws && _ws->state() != QAbstractSocket::ConnectedState)
             onDisconnected();
     });
-    _ws->open(url);
+    // The wss URL carries NO auth of its own: without the `d` cookie on the
+    // handshake Slack answers an invalid_auth error frame and drops the socket
+    // ~5 s later — the drop that once made RTM look "unusable". (Same as
+    // RtmPresence, which is what actually runs today.)
+    QNetworkRequest wsReq(url);
+    wsReq.setRawHeader(QByteArrayLiteral("Cookie"), QByteArrayLiteral("d=") + _cookie.toUtf8());
+    _ws->open(wsReq);
 }
 
 void SessionRealtime::onConnected() {

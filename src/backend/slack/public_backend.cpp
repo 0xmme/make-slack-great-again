@@ -5,6 +5,7 @@
 #include "slack_auth.h"
 #include "socket_mode_realtime.h"
 #include "session_realtime.h"
+#include "rtm_presence.h"
 #include "auth/token_store.h"
 #include "backend/common_commands.h"
 #include "network/form_urlencode.h"
@@ -107,17 +108,27 @@ PublicBackend::PublicBackend(
         // Realtime for session workspaces is delivered by Session's fast poll
         // (foregroundPollGapMs() == 5 s for the open chat, plus the client.counts
         // activity snapshot in loadUnreadCounts() that tells it which OTHER
-        // conversations to poll), NOT the classic RTM WebSocket: Slack
-        // closes the deprecated rtm.connect ("LEGACY_BOT") socket after a fixed
-        // ~5 s regardless of pings, and rtm.connect is Tier-1 rate-limited, so
-        // reconnecting just churns into a ratelimit. True push would need Slack's
-        // modern (undocumented) "flannel" WSS — a separate effort. SessionRealtime
-        // is kept for that future work but is intentionally NOT started here.
+        // conversations to poll), NOT the classic RTM WebSocket. RTM itself DOES
+        // work for a session token — the "~5 s LEGACY_BOT close" that shelved it
+        // was an unauthenticated handshake (the wss URL carries no auth; the `d`
+        // cookie must ride the handshake, see RtmPresence) — but switching
+        // delivery over to it is a separate effort with its own dedup/backfill
+        // implications. SessionRealtime is kept for that future work and is
+        // intentionally NOT started here.
         // _sessionRealtime = std::make_unique<SessionRealtime>(creds.xoxp, creds.cookie, &_events);
         // Pin every call to this workspace's own host (see apiBaseFor). Only
         // session auth: an OAuth token is workspace-scoped by construction, so
         // the shared slack.com base already resolves it unambiguously.
         applyApiBase(apiBaseFor(creds.workspaceUrl));
+        // The presence link (PresenceMode): an RTM socket held only so Slack counts
+        // us as a connected client. Idle until Session applies the preference via
+        // setPresenceMode(). Its rtm.connect rides _api (token, cookie, host).
+        _rtmPresence = std::make_unique<RtmPresence>(_api, creds.cookie);
+        QObject::connect(
+            _rtmPresence.get(), &RtmPresence::stateChanged, [this](PresenceLinkState st) {
+                _events.fire_copy(Event{EvPresenceLinkChanged{st}});
+            }
+        );
     }
     // Pace the background lane on the info client: a reconnect enqueues one
     // conversations.info per DM/MPDM (100+ on a busy workspace), and that method
@@ -320,6 +331,9 @@ PublicBackend::~PublicBackend() {
     // shared socket.
     if (_sharedRealtime)
         _sharedRealtime->removeSink(&_events);
+    // Before _api goes: its in-flight rtm.connect callbacks guard on a QPointer
+    // to this, and the socket must not outlive the backend that counts as online.
+    _rtmPresence.reset();
     delete _infoApi;
     delete _historyApi;
     delete _api;
@@ -371,6 +385,9 @@ Capabilities PublicBackend::capabilities() const {
     c.messageReminders = _sessionAuth;
     // users.prefs.get (the stored sidebar theme) is session-token only as well.
     c.sidebarTheme     = _sessionAuth;
+    // The presence link is an RTM socket, and rtm.connect refuses a granular
+    // OAuth token (not_allowed_token_type) — session tokens only.
+    c.presenceLink     = _sessionAuth;
     return c;
 }
 
@@ -423,6 +440,10 @@ void PublicBackend::connectRealtime() {
 }
 
 void PublicBackend::disconnectRealtime() {
+    // Going offline on purpose (logout, workspace drop): stop counting as a
+    // connected client too.
+    if (_rtmPresence)
+        _rtmPresence->setMode(PresenceMode::Native);
     if (_sessionRealtime) {
         _sessionRealtime->stop();
         return;
@@ -1143,6 +1164,16 @@ void PublicBackend::setPresence(bool away, std::function<void(bool, QString)> do
                 done(false, e);
         }
     );
+}
+
+void PublicBackend::setPresenceMode(PresenceMode mode) {
+    if (_rtmPresence)
+        _rtmPresence->setMode(mode);
+}
+
+void PublicBackend::noteUserActivity() {
+    if (_rtmPresence)
+        _rtmPresence->noteActivity();
 }
 
 void PublicBackend::setStatus(
