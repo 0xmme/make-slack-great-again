@@ -292,92 +292,92 @@ Set MSGA_TEAMS_CLIENT_ID in credentials.cmake and rebuild.</translation>
         </translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1804"/>
+        <location filename="../src/session/session.cpp" line="1809"/>
         <source>Unknown user</source>
         <translation>Unknown user</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1942"/>
+        <location filename="../src/session/session.cpp" line="1947"/>
         <source>Moved from the channel · originally posted by %1 on %2 at %3</source>
         <translation>Moved from the channel · originally posted by %1 on %2 at %3</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1977"/>
+        <location filename="../src/session/session.cpp" line="1982"/>
         <source>Couldn't move the message — the original is still in place.</source>
         <translation>Couldn't move the message — the original is still in place.</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2056"/>
+        <location filename="../src/session/session.cpp" line="2061"/>
         <source>No such user: %1</source>
         <translation>No such user: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2107"/>
+        <location filename="../src/session/session.cpp" line="2112"/>
         <source>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</source>
         <translation>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2123"/>
+        <location filename="../src/session/session.cpp" line="2128"/>
         <source>Command /%1 failed: %2</source>
         <translation>Command /%1 failed: %2</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2158"/>
+        <location filename="../src/session/session.cpp" line="2163"/>
         <source>Could not change presence: %1</source>
         <translation>Could not change presence: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2192"/>
+        <location filename="../src/session/session.cpp" line="2197"/>
         <source>Could not set status: %1</source>
         <translation>Could not set status: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2213"/>
+        <location filename="../src/session/session.cpp" line="2218"/>
         <source>Could not update notifications: %1</source>
         <translation>Could not update notifications: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2239"/>
+        <location filename="../src/session/session.cpp" line="2244"/>
         <source>Could not update profile: %1</source>
         <translation>Could not update profile: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2260"/>
+        <location filename="../src/session/session.cpp" line="2265"/>
         <source>Could not update avatar: %1</source>
         <translation>Could not update avatar: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2340"/>
+        <location filename="../src/session/session.cpp" line="2345"/>
         <source>Upload failed: %1</source>
         <translation>Upload failed: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2383"/>
+        <location filename="../src/session/session.cpp" line="2388"/>
         <source>Could not load canvas: %1</source>
         <translation>Could not load canvas: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2414"/>
+        <location filename="../src/session/session.cpp" line="2419"/>
         <source>Could not create canvas: %1</source>
         <translation>Could not create canvas: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2430"/>
+        <location filename="../src/session/session.cpp" line="2435"/>
         <source>Canvas edit failed: %1</source>
         <translation>Canvas edit failed: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2448"/>
+        <location filename="../src/session/session.cpp" line="2453"/>
         <source>Canvas deletion failed: %1</source>
         <translation>Canvas deletion failed: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="3019"/>
+        <location filename="../src/session/session.cpp" line="3046"/>
         <source>Couldn't set the reminder: %1</source>
         <translation>Couldn't set the reminder: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="3048"/>
+        <location filename="../src/session/session.cpp" line="3075"/>
         <source>Couldn't remove the reminder: %1</source>
         <translation>Couldn't remove the reminder: %1</translation>
     </message>
@@ -2059,32 +2059,22 @@ Create a free one — it takes a minute — then paste it below. You can change 
 <context>
     <name>MsgRender</name>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="196"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="211"/>
         <source>Today</source>
         <translation>Today</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="198"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="213"/>
         <source>Yesterday</source>
         <translation>Yesterday</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="214"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="229"/>
         <source>today at %1</source>
         <translation>today at %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="216"/>
-        <source>yesterday at %1</source>
-        <translation>yesterday at %1</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="217"/>
-        <source>%1 at %2</source>
-        <translation>%1 at %2</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="229"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="231"/>
         <source>yesterday at %1</source>
         <translation>yesterday at %1</translation>
     </message>
@@ -2094,52 +2084,62 @@ Create a free one — it takes a minute — then paste it below. You can change 
         <translation>%1 at %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="234"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="244"/>
+        <source>yesterday at %1</source>
+        <translation>yesterday at %1</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_render.cpp" line="247"/>
         <source>%1 at %2</source>
         <translation>%1 at %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="279"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="249"/>
+        <source>%1 at %2</source>
+        <translation>%1 at %2</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_render.cpp" line="294"/>
         <source>group message</source>
         <translation>group message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="293"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="308"/>
         <source>%1 in %2</source>
         <translation>%1 in %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="299"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="314"/>
         <source>message</source>
         <translation>message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="598"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="613"/>
         <source>GIF</source>
         <translation>GIF</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="1506"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="1521"/>
         <source>Show less</source>
         <translation>Show less</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="1507"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="1522"/>
         <source>Show more</source>
         <translation>Show more</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="1855"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="1870"/>
         <source>Loading…</source>
         <translation>Loading…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="1952"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="1967"/>
         <source>View transcript</source>
         <translation>View transcript</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="2006"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="2021"/>
         <source>View transcript</source>
         <translation>View transcript</translation>
     </message>
