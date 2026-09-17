@@ -944,8 +944,13 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground, Ts
                 // 15 s poll force a reconnect, each spawning a conversations.list
                 // reload — exactly the 429 storm we're avoiding. Re-establish at
                 // most once per window; the poll itself keeps recovering messages
-                // meanwhile.
-                if (missed) {
+                // meanwhile. Only where a push transport exists: on a poll-only
+                // (session-auth) workspace THIS poll is the delivery path, so
+                // every ordinary message it injects is not a miss but the design
+                // working — reporting it as one logged a bogus "re-establishing
+                // socket" warning once a minute (the reconnect itself was a no-op,
+                // there being no socket).
+                if (missed && _backend->hasRealtimePush()) {
                     const qint64 now = QDateTime::currentMSecsSinceEpoch();
                     if (now - _lastReestablishMs >= kReestablishGapMs) {
                         _lastReestablishMs = now;
@@ -2545,20 +2550,42 @@ void Session::requestPresence(UserId userId, bool background) {
     //     partners, some app IMs) — findUser() is null for them.
     // We only ever render a presence dot for a known human member, so unless we
     // hold such a User record, skip the doomed call instead of spamming retries.
+    // Even a known human member can be presence-less as far as the API is
+    // concerned: users.getPresence answers user_not_found for a roster entry
+    // that isn't presence-visible to us (a Slack Connect partner merged in via
+    // users.info, a cross-workspace Grid member). The flags above can't tell
+    // those apart, so the first failed sweep probe records the user and later
+    // sweeps skip them — otherwise every round re-asked and re-logged the same
+    // error for the same handful of users forever. Interactive probes (opening
+    // the DM, the hover card) still go out, and a success re-enables the sweep.
     const User *u = findUser(userId);
     if (!u || u->isBot || u->isDeactivated || _backend->isSyntheticUser(userId))
         return;
+    if (background && _presenceUnavailable.contains(userId.value))
+        return;
     auto presence =
         background ? _backend->loadPresenceBackground(userId) : _backend->loadPresence(userId);
+    auto answered = std::make_shared<bool>(false);
     std::move(presence) |
-        rpl::on_next(
-            [this, userId](bool active) {
+        rpl::on_next_done(
+            [this, userId, answered](bool active) {
+                *answered = true;
+                _presenceUnavailable.remove(userId.value);
                 // Patch the cached user silently; the event is
                 // how listeners learn the new state.
                 if (const User *cur = findUser(userId); cur && cur->isActive == active)
                     return; // unchanged — spare the UI a no-op repaint per sweep
                 patchUserSilently(userId, [active](User &u) { u.isActive = active; });
                 _eventHub.fire(EvPresenceChanged{userId, active});
+            },
+            [this, userId, answered, background] {
+                // Completed without a value = the API refused (transport failures
+                // are retried inside the client and never reach here as a bare
+                // done). Only a sweep probe blacklists: an interactive one is a
+                // single user-driven call, and a wrong negative from it would
+                // silence the sweep for a user whose dot does work.
+                if (!*answered && background)
+                    _presenceUnavailable.insert(userId.value);
             },
             _lifetime
         );

@@ -128,10 +128,16 @@ struct StubBackend : Backend {
     int                 loadPresenceCalls = 0; // times loadPresence was actually invoked
     UserId              lastPresenceUser;      // user id of the most recent loadPresence call
     std::vector<UserId> presenceUsers;         // every user id queried, in order
+    QSet<QString>       presenceErrorUsers; // ids whose probe completes with no value (API error)
     rpl::producer<bool> loadPresence(UserId id) override {
         ++loadPresenceCalls;
         lastPresenceUser = id;
         presenceUsers.push_back(id);
+        if (presenceErrorUsers.contains(id.value))
+            return [](auto consumer) {
+                consumer.put_done();
+                return rpl::lifetime();
+            };
         return rpl::variable<bool>(presenceResult).value();
     }
     SelfPresence                selfPresenceResult;                 // returned by loadSelfPresence
@@ -2909,6 +2915,42 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE_METHOD(
+    SessionFixture, "presence sweep stops re-probing a user the API refuses", "[session]"
+) {
+    // users.getPresence answers user_not_found for a roster member with no visible
+    // presence (Slack Connect partner merged in via users.info). One failed sweep
+    // probe must silence later sweeps for that user, while a probe that answers
+    // re-enables them and an interactive probe always goes out.
+    stub->caps.presence = true;
+    stub->_users        = std::vector<User>{kAlice, kBob};
+    stub->_convs        = std::vector<Conversation>{
+        Conversation{
+                   .id       = ConversationId{"D1"},
+                   .kind     = ConvKind::Im,
+                   .isMember = true,
+                   .dmUser   = UserId{"U2"}
+        },
+    };
+    QCoreApplication::processEvents();
+    stub->presenceErrorUsers.insert("U2");
+    stub->loadPresenceCalls = 0;
+
+    session->pollDmPresenceForTest();
+    CHECK(stub->loadPresenceCalls == 1); // first sweep asks…
+    session->pollDmPresenceForTest();
+    CHECK(stub->loadPresenceCalls == 1); // …and the refusal is remembered
+
+    session->requestPresence(UserId{"U2"}); // interactive: still allowed
+    CHECK(stub->loadPresenceCalls == 2);
+
+    stub->presenceErrorUsers.clear();
+    session->requestPresence(UserId{"U2"}); // answers now → sweep re-enabled
+    CHECK(stub->loadPresenceCalls == 3);
+    session->pollDmPresenceForTest();
+    CHECK(stub->loadPresenceCalls == 4);
+}
+
+TEST_CASE_METHOD(
     SessionFixture, "presence sweep updates the cached dot and fires only on change", "[session]"
 ) {
     stub->caps.presence = true;
@@ -3780,6 +3822,34 @@ TEST_CASE_METHOD(
     stub->historyPage = {m1, m2, m3};
     session->runRealtimeHealthCheckForTest();
     CHECK(stub->reestablishRealtimeCalls == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "safety poll on a poll-only backend delivers without re-establishing a socket",
+    "[session][events]"
+) {
+    // Session-auth workspaces have no realtime socket: the poll IS delivery, so a
+    // message it injects is not a "miss". It used to log "realtime missed
+    // messages — re-establishing socket" once a minute for ordinary traffic.
+    stub->pushEnabled = false;
+    const ConversationId conv{"C1"};
+    const Message        m1 = pollMsg("1000.000001");
+    const Message        m2 = pollMsg("1000.000002");
+
+    session->setReading(conv);
+    stub->fireEvent(EvMessageNew{conv, m1}); // baseline
+
+    stub->historyPage = {m1, m2};
+    auto [events, lt] = collectEvents();
+    session->runRealtimeHealthCheckForTest();
+
+    bool delivered = false;
+    for (const auto &e : events)
+        if (auto *n = std::get_if<EvMessageNew>(&e); n && n->conv == conv && n->msg.ts == m2.ts)
+            delivered = true;
+    CHECK(delivered);                           // the poll still delivers
+    CHECK(stub->reestablishRealtimeCalls == 0); // …but nothing to re-establish
 }
 
 TEST_CASE_METHOD(

@@ -907,14 +907,18 @@ private:
     static constexpr int       kPresenceRotateCount   = 8;
     qint64                     _lastPresencePollMs    = 0;
     int                        _presencePollIdx       = 0;
+    // Users whose sweep probe the API refused (user_not_found for a roster
+    // member with no visible presence). Skipped by later sweeps; cleared by any
+    // probe that does answer. See requestPresence.
+    QSet<QString>              _presenceUnavailable;
     // Poll-only backends (session auth): cadence for reloading the conversation
     // roster to discover new chats + refresh latestTs baselines. Push backends
     // get this via reconnect events instead. Kept slow (60 s): conversations.list
     // is Tier 2 (as low as ~1/min for a session token), and the open chat streams
     // via the 5 s foreground poll regardless, so this only paces new-chat/badge
     // discovery — a tighter cadence just 429s the endpoint.
-    static constexpr qint64    kRosterReloadGapMs     = 60'000;
-    qint64                     _lastRosterReloadMs    = 0;
+    static constexpr qint64    kRosterReloadGapMs  = 60'000;
+    qint64                     _lastRosterReloadMs = 0;
     // Per-conversation poll baseline: the newest ts of the last head page THIS
     // SESSION's poll actually scanned. Keyed by ConversationId string.
     //
