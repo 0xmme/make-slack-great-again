@@ -112,9 +112,14 @@ static QString emojiHtml(const EmojiResolved &er, int px) {
     if (!er.resolved)
         return er.unicode.toHtmlEscaped();
     const QString s = QString::number(px);
+    // vertical-align:bottom sits the image on the line's descent line, the
+    // same footprint the emoji-font glyph below occupies (Slack draws both one
+    // line-height tall, flush with the line box). Qt's default parks an inline
+    // image's BOTTOM on the baseline, which lifted custom emoji a descender
+    // above the built-in ones and grew the line by the same amount.
     if (!er.imageUrl.isEmpty())
         return "<img src='" + er.imageUrl.toHtmlEscaped() + "' width='" + s + "' height='" + s +
-               "'>";
+               "' style='vertical-align:bottom'>";
     return "<span style='font-family:" + emojiFontFamily() + ";font-size:" + s + "px'>" +
            er.unicode.toHtmlEscaped() + "</span>";
 }
@@ -165,6 +170,16 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
             addFrom(b.text);
             addBlockImage(b);
         }
+        // buildAttachHtml's last resort is the fallback string, parsed as
+        // mrkdwn — so its emoji become <img> tags too. Mirror that condition
+        // (nothing else produced a body) rather than scanning it always: a
+        // fallback normally duplicates the body, and its emoji would just
+        // trigger downloads for images no document shows.
+        const bool bodyless = att.text.text.isEmpty() && att.fields.empty() && att.blocks.empty() &&
+                              att.title.isEmpty() && att.pretext.isEmpty() &&
+                              att.authorName.isEmpty() && att.buttons.empty();
+        if (bodyless && !att.fallback.isEmpty())
+            addFrom(MrkdwnParser::parse(att.fallback));
         // A message unfurl's card paints the quoted author's avatar. It's not an
         // <img> in the document, but it's fetched from the same cache — listing it
         // here is what kicks off the download and repaints the row once it

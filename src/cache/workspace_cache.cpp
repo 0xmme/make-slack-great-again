@@ -222,6 +222,19 @@ static QJsonObject toJson(const Attachment &a) {
     }
     if (!a.buttons.empty())
         o["bt"] = buttonsToJson(a.buttons);
+    // Classic bot "fields" rows. Jenkins-style bots put their whole body here
+    // (text empty, fallback = the same string): dropping them demoted every
+    // cached copy to the fallback rendering.
+    if (!a.fields.empty()) {
+        QJsonArray arr;
+        for (const auto &f : a.fields) {
+            QJsonObject fo;
+            fo["t"] = f.title;
+            fo["v"] = toJson(f.value);
+            arr.append(fo);
+        }
+        o["fd"] = arr;
+    }
     if (a.isMsgUnfurl) {
         o["mu"] = true;
         o["ai"] = a.authorIcon;
@@ -255,7 +268,16 @@ static Attachment attachmentFromJson(const QJsonObject &o) {
     a.thumbHeight = o["tg"].toInt();
     for (const auto &v : o["bl"].toArray())
         a.blocks.push_back(blockFromJson(v.toObject()));
-    a.buttons     = buttonsFromJson(o["bt"].toArray());
+    a.buttons = buttonsFromJson(o["bt"].toArray());
+    for (const auto &v : o["fd"].toArray()) {
+        const auto fo = v.toObject();
+        a.fields.push_back(
+            AttachmentField{
+                .title = fo["t"].toString(),
+                .value = tweFromJson(fo["v"].toObject()),
+            }
+        );
+    }
     a.isMsgUnfurl = o["mu"].toBool();
     if (a.isMsgUnfurl) {
         a.authorIcon    = o["ai"].toString();

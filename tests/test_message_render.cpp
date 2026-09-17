@@ -771,6 +771,7 @@ struct RenderStubBackend : Backend {
     rpl::variable<UserId>                    _me;
     rpl::variable<std::vector<Conversation>> _convs;
     rpl::variable<std::vector<User>>         _users;
+    rpl::variable<QHash<QString, QString>>   _emoji;
     rpl::event_stream<Event>                 _events;
 
     rpl::producer<AuthState>                 authState() const override { return _auth.value(); }
@@ -797,24 +798,23 @@ struct RenderStubBackend : Backend {
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override {
         return rpl::variable<std::vector<SearchResult>>({}).value();
     }
-    rpl::producer<QHash<QString, QString>> loadEmojiList() override {
-        return rpl::variable<QHash<QString, QString>>({}).value();
-    }
-    void uploadFiles(
-        ConversationId,
-        const QStringList &,
-        const QString &,
-        std::optional<Ts>                  = std::nullopt,
-        std::function<void(bool, QString)> = {}
-    ) override {}
+    rpl::producer<QHash<QString, QString>> loadEmojiList() override { return _emoji.value(); }
+    void                                   uploadFiles(
+                                          ConversationId,
+                                          const QStringList &,
+                                          const QString &,
+                                          std::optional<Ts>                  = std::nullopt,
+                                          std::function<void(bool, QString)> = {}
+                                      ) override {}
     void downloadFile(
         const QString &, std::function<void(QByteArray)>, std::function<void(QString)>
     ) override {}
     rpl::producer<Event> events() const override { return _events.events(); }
 };
 
-static Session *renderSession() {
-    auto        *stub = new RenderStubBackend;
+static Session *renderSession(const QHash<QString, QString> &emoji = {}) {
+    auto *stub   = new RenderStubBackend;
+    stub->_emoji = emoji;
     Conversation c;
     c.id         = ConversationId{"C1"};
     c.name       = "general";
@@ -848,6 +848,65 @@ TEST_CASE("toHtml resolves a bare channel link via the session", "[render][chann
     const QString html    = MsgRender::toHtml(MrkdwnParser::parse("see <#C1>"), session);
     CHECK(html.contains("#general"));
     CHECK(!html.contains("#C1"));
+    delete session;
+}
+
+// ── Custom emoji in attachments ───────────────────────────────────────────────
+
+// A Jenkins-style poll: attachment `text` empty, body only in `fields`, and
+// `fallback` carrying the same string. Both the fields body and the fallback
+// (what a fields-less copy renders) emit <img> tags, so both must be collected
+// — a document whose images were never registered paints Qt's blank-sheet
+// placeholder for every custom emoji.
+static Message pollMessage(bool withFields) {
+    Message m;
+    m.ts = "1.000";
+    Attachment att;
+    att.fallback = "Lunch? :no-lunch: | :hamburger:";
+    if (withFields)
+        att.fields = {AttachmentField{.title = "", .value = MrkdwnParser::parse(att.fallback)}};
+    m.attachments = {att};
+    return m;
+}
+
+TEST_CASE("collectEmojiImageUrls scans attachment fields", "[render][emoji][attach]") {
+    auto      *session = renderSession(kMap);
+    const auto urls    = MsgRender::collectEmojiImageUrls(pollMessage(true), session);
+    CHECK(urls == QStringList{kMap["no-lunch"]});
+    delete session;
+}
+
+TEST_CASE(
+    "collectEmojiImageUrls scans the fallback of a bodyless attachment", "[render][emoji][attach]"
+) {
+    auto         *session = renderSession(kMap);
+    const auto    msg     = pollMessage(false);
+    // The renderer really does emit the emoji image from the fallback…
+    const QString html    = MsgRender::buildAttachHtml(msg.attachments[0], session, nullptr);
+    CHECK(html.contains("<img src='" + kMap["no-lunch"] + "'"));
+    // …so the collector must hand that url to the document.
+    CHECK(MsgRender::collectEmojiImageUrls(msg, session) == QStringList{kMap["no-lunch"]});
+    delete session;
+}
+
+TEST_CASE(
+    "collectEmojiImageUrls ignores the fallback when a body renders", "[render][emoji][attach]"
+) {
+    auto   *session       = renderSession(kMap);
+    Message m             = pollMessage(false);
+    m.attachments[0].text = MrkdwnParser::parse("plain body");
+    CHECK(MsgRender::collectEmojiImageUrls(m, session).isEmpty());
+    delete session;
+}
+
+TEST_CASE("custom emoji image sits on the line bottom like a glyph", "[render][emoji]") {
+    // Qt's default puts an inline image's bottom on the baseline: the image
+    // then floats a descender above the built-in emoji glyphs and grows the
+    // line. Slack draws every emoji flush with the line box.
+    auto         *session = renderSession(kMap);
+    const QString html    = MsgRender::toHtml(MrkdwnParser::parse(":no-lunch:"), session);
+    CHECK(html.contains("<img src='" + kMap["no-lunch"] + "'"));
+    CHECK(html.contains("vertical-align:bottom"));
     delete session;
 }
 

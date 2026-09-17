@@ -200,6 +200,19 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
         .imageHeight = 630,
         .thumbWidth  = 360,
         .thumbHeight = 189,
+        // Classic bot "fields" rows — a Jenkins poll's whole body lives here.
+        // They were once not serialized at all, so every cached copy fell
+        // back to the plain `fallback` string (and lost its emoji images).
+        .fields      = {
+            AttachmentField{
+                     .title = "Lunch",
+                     .value =
+                    TextWithEntities{
+                        "pick :no-lunch:", {TextEntity{EntityType::Emoji, 5, 10, "no-lunch"}}
+                    },
+            },
+            AttachmentField{.title = "", .value = TextWithEntities{"untitled", {}}}
+        },
     }};
 
     ConversationId conv{"C1"};
