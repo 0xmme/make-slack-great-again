@@ -6,13 +6,38 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSettings>
 
 namespace teams {
 
+namespace {
+constexpr auto kClientIdKey = "credentials/teamsClientId";
+} // namespace
+
+QString personalClientId() {
+    // A public identifier (no secret in the PKCE flow) — plain settings.
+    QSettings s("msga", "msga");
+    return s.value(QString::fromLatin1(kClientIdKey)).toString();
+}
+
+void setPersonalClientId(const QString &clientId) {
+    QSettings     s("msga", "msga");
+    // Store trimmed; blank falls back to the compiled-in build credential and is
+    // removed rather than stored empty.
+    const QString v = clientId.trimmed();
+    if (v.isEmpty())
+        s.remove(QString::fromLatin1(kClientIdKey));
+    else
+        s.setValue(QString::fromLatin1(kClientIdKey), v);
+}
+
 AppConfig appConfig() {
-    return {
-        QString::fromLatin1(AppCredentials::teamsClientId),
-    };
+    AppConfig     cfg{QString::fromLatin1(AppCredentials::teamsClientId)};
+    // The personal client ID overrides the build default.
+    const QString personal = personalClientId();
+    if (!personal.isEmpty())
+        cfg.clientId = personal;
+    return cfg;
 }
 
 TokenStore::WorkspaceRecord toRecord(const Credentials &creds) {

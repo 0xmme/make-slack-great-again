@@ -49,11 +49,16 @@ QString OAuthFlow::scopes() {
 
 void OAuthFlow::start() {
     if (_app.clientId.isEmpty()) {
+        // The client ID can be pasted at runtime (Settings → System → "Microsoft
+        // Teams"), so lead with that — editing credentials.cmake only applies to
+        // your own build.
         emit failed(
             QCoreApplication::translate(
                 "teams::OAuthFlow",
-                "Microsoft Teams app credentials are not configured.\n\n"
-                "Set MSGA_TEAMS_CLIENT_ID in credentials.cmake and rebuild."
+                "No Microsoft Teams app is set up yet.\n\n"
+                "Open Settings → System, find “Microsoft Teams”, and paste your Entra app's "
+                "client ID. Building msga yourself? Put it in credentials.cmake as "
+                "MSGA_TEAMS_CLIENT_ID instead and rebuild."
             )
         );
         return;

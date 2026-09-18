@@ -152,9 +152,12 @@ private:
     QListWidget *_tabs  = nullptr;
 
     // GIF picker (System page): per-user GIPHY key override
-    StyledLineEdit *_giphyKey    = nullptr;
-    QLabel         *_giphyStatus = nullptr;
-    QStackedWidget *_stack       = nullptr;
+    StyledLineEdit *_giphyKey      = nullptr;
+    QLabel         *_giphyStatus   = nullptr;
+    // Microsoft Teams (System page): per-user Entra app client ID override
+    StyledLineEdit *_teamsClientId = nullptr;
+    QLabel         *_teamsStatus   = nullptr;
+    QStackedWidget *_stack         = nullptr;
 
     // Notification controls
     QCheckBox    *_notifEnabled          = nullptr;

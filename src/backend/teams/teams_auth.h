@@ -31,8 +31,16 @@ struct AppConfig {
     QString clientId;
 };
 
-// Reads the compiled-in Teams app credentials.
+// Reads the effective Teams app credentials: the client ID the user saved in
+// Settings → System (persisted in QSettings) takes precedence over the value
+// compiled in via credentials.cmake. Lets prebuilt-app users connect Teams with
+// their own Entra app registration without rebuilding.
 AppConfig appConfig();
+
+// Personal Teams client ID saved in Settings → System. Empty falls through to
+// the compiled-in build credential in appConfig().
+QString personalClientId();
+void    setPersonalClientId(const QString &clientId);
 
 // Encode/decode the Teams credentials to/from the neutral registry record.
 // Auth-blob JSON shape: {accessToken, refreshToken, expiresAt, userId}.

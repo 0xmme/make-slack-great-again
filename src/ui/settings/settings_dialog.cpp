@@ -23,6 +23,7 @@
 #include "util/process_stats.h"
 #include "util/sound_player.h"
 #include "backend/slack/slack_auth.h"
+#include "backend/teams/teams_auth.h"
 #include "ui/session_import_dialog/session_import_dialog.h"
 
 #include <QPainter>
@@ -1126,6 +1127,78 @@ void SettingsDialog::buildPanel() {
         updateSlackModeUi();
     });
     loadAppCredentials();
+
+    // ── Microsoft Teams section ───────────────────────────────────────
+    // Teams signs in through the user's own Entra app registration (public
+    // client + PKCE, no secret). A build can bake the client ID in
+    // (MSGA_TEAMS_CLIENT_ID); this field is the per-user override, and the only
+    // option for a plain prebuilt binary. Read per sign-in (teams::appConfig()),
+    // so it takes effect the next time a Teams workspace is added — no restart.
+    auto *teamsHeading = new QLabel(tr("Microsoft Teams"), sysPage);
+    teamsHeading->setObjectName("sectionHeading");
+    sylay->addWidget(teamsHeading);
+
+    auto *teamsDesc = new QLabel(
+        tr("Connecting a Teams workspace needs the client ID of an Entra app registration. "
+           "No secret is required."),
+        sysPage
+    );
+    teamsDesc->setObjectName("credDesc");
+    teamsDesc->setWordWrap(true);
+    sylay->addWidget(teamsDesc);
+
+    auto *teamsLink = new StyledButton(
+        tr("How to register your Teams app…"), StyledButton::Variant::Link, sysPage
+    );
+    connect(teamsLink, &QPushButton::clicked, this, [] {
+        QDesktopServices::openUrl(QUrl(QStringLiteral(
+            "https://github.com/punarinta/make-slack-great-again/blob/master/docs/SETUP_TEAMS.md"
+        )));
+    });
+    auto *teamsLinkRow = new QHBoxLayout;
+    teamsLinkRow->addWidget(teamsLink);
+    teamsLinkRow->addStretch();
+    sylay->addLayout(teamsLinkRow);
+
+    // One field, so it sits directly on the page like the GIF picker key.
+    auto *teamsFields = new QVBoxLayout;
+    teamsFields->setSpacing(sp.sm);
+    teamsFields->setContentsMargins(0, 0, 0, 0);
+
+    teamsFields->addWidget(new QLabel(tr("Client ID"), sysPage));
+    _teamsClientId = new StyledLineEdit(sysPage);
+    _teamsClientId->setSize(StyledLineEdit::Size::Small);
+    // A baked-in ID is a working default, so say so rather than leaving an
+    // empty box that looks unconfigured.
+    _teamsClientId->setPlaceholderText(
+        QString(AppCredentials::teamsClientId).isEmpty()
+            ? tr("e.g. 12345678-1234-1234-1234-123456789abc")
+            : tr("Using this build's client ID — paste one here to override it")
+    );
+    _teamsClientId->setText(teams::personalClientId());
+    teamsFields->addWidget(_teamsClientId);
+
+    _teamsStatus = new QLabel(sysPage);
+    _teamsStatus->setObjectName("credStatus");
+    _teamsStatus->setWordWrap(true);
+    _teamsStatus->hide(); // an empty label would still take a line
+    teamsFields->addWidget(_teamsStatus);
+
+    auto *teamsSaveRow = new QHBoxLayout;
+    auto *teamsSaveBtn = new StyledButton(tr("Save"), StyledButton::Variant::Primary, sysPage);
+    teamsSaveBtn->setSize(StyledButton::Size::Small);
+    connect(teamsSaveBtn, &QPushButton::clicked, this, [this] {
+        const QString id = _teamsClientId->text().trimmed();
+        teams::setPersonalClientId(id);
+        _teamsStatus->setText(id.isEmpty() ? tr("Client ID cleared.") : tr("Client ID saved."));
+        _teamsStatus->show();
+    });
+    teamsSaveRow->addWidget(teamsSaveBtn);
+    teamsSaveRow->addStretch();
+    teamsFields->addSpacing(sp.md); // set the button off from the field
+    teamsFields->addLayout(teamsSaveRow);
+
+    sylay->addLayout(teamsFields);
 
     // ── GIF picker section ────────────────────────────────────────────
     // The composer's GIF button talks to GIPHY, which needs a key. A build can

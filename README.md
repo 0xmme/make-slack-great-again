@@ -32,7 +32,7 @@ Both are covered step by step in the **[Slack setup guide](docs/SETUP_SLACK.md)*
 
 ## Or build your own version
 
-If you'd rather build msga yourself (or you want to bake your own app keys into the binary), you register each service you want to connect and configure it before the client will connect. This is a one-time setup. Note that **Slack session sign-in needs none of this** — it works with a plain prebuilt binary.
+If you'd rather build msga yourself (or you want to bake your own app keys into the binary), you register each service you want to connect and configure it before the client will connect. This is a one-time setup. Note that **Slack session sign-in needs none of this** — it works with a plain prebuilt binary. Microsoft Teams also works with the prebuilt binary: register an Entra app per the [Teams setup guide](docs/SETUP_TEAMS.md) and paste its client ID in **Settings → System**.
 
 ### Step 1. Set up a messaging backend
 
