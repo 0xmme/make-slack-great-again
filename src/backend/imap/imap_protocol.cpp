@@ -99,6 +99,46 @@ QList<QByteArray> tokenize(const QByteArray &line) {
     return out;
 }
 
+QString decodeMailboxName(const QString &wire) {
+    if (!wire.contains(QLatin1Char('&')))
+        return wire;
+    QString out;
+    out.reserve(wire.size());
+    int       i = 0;
+    const int n = wire.size();
+    while (i < n) {
+        const QChar c = wire.at(i);
+        if (c != QLatin1Char('&')) {
+            out += c;
+            ++i;
+            continue;
+        }
+        const int end = wire.indexOf(QLatin1Char('-'), i + 1);
+        if (end < 0)
+            return wire;    // unterminated shift sequence: not modified UTF-7
+        if (end == i + 1) { // "&-" is a literal ampersand
+            out += QLatin1Char('&');
+            i = end + 1;
+            continue;
+        }
+        // Modified base64: ',' stands in for '/' so '/' can stay a delimiter.
+        QByteArray b64 = wire.mid(i + 1, end - i - 1).toLatin1();
+        b64.replace(',', '/');
+        while (b64.size() % 4)
+            b64 += '=';
+        const auto dec = QByteArray::fromBase64Encoding(
+            b64, QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors
+        );
+        if (!dec || dec.decoded.isEmpty() || dec.decoded.size() % 2)
+            return wire; // not valid UTF-16BE payload
+        const QByteArray &raw = dec.decoded;
+        for (int k = 0; k + 1 < raw.size(); k += 2)
+            out += QChar(ushort((uchar(raw[k]) << 8) | uchar(raw[k + 1])));
+        i = end + 1;
+    }
+    return out;
+}
+
 QList<Mailbox> parseList(const QList<QByteArray> &untagged) {
     QList<Mailbox> out;
     for (const QByteArray &u : untagged) {

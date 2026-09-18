@@ -78,9 +78,12 @@ bool isUserFolder(const Mailbox &m) {
     return true;
 }
 
+// Display label for a folder channel: the last path segment, decoded from
+// modified UTF-7 ("&BBsEOARHBD0ESwQ1-" → "Личные"). Splitting on the wire form
+// is safe: the modified base64 alphabet never contains the '/' or '.' delimiters.
 QString folderLabel(const Mailbox &m) {
     const QString seg = m.name.section(m.delimiter, -1);
-    return seg.isEmpty() ? m.name : seg;
+    return Proto::decodeMailboxName(seg.isEmpty() ? m.name : seg);
 }
 
 QString msgKeyOf(const MsgRef &m) {

@@ -102,6 +102,21 @@ TEST_CASE("parseList: special-use flags, delimiter, quoted names", "[imap][list]
     CHECK(m[4].hasFlag("\\All"));
 }
 
+TEST_CASE("decodeMailboxName: modified UTF-7 folder names", "[imap][list][utf7]") {
+    // Cyrillic "Личные" as Yandex/Mail.ru servers list it.
+    CHECK(Proto::decodeMailboxName("&BBsEOARHBD0ESwQ1-") == QString::fromUtf8("Личные"));
+    // Mixed ASCII + shifted run, and a literal ampersand.
+    CHECK(Proto::decodeMailboxName("Work/&BBsEOARHBD0ESwQ1-") == QString::fromUtf8("Work/Личные"));
+    CHECK(Proto::decodeMailboxName("R&-D") == "R&D");
+    // ',' stands in for '/' in the modified base64 alphabet (e.g. "日本語").
+    CHECK(Proto::decodeMailboxName("&ZeVnLIqe-") == QString::fromUtf8("日本語"));
+    // Plain names and malformed shifts pass through untouched.
+    CHECK(Proto::decodeMailboxName("INBOX") == "INBOX");
+    CHECK(Proto::decodeMailboxName("[Gmail]/All Mail") == "[Gmail]/All Mail");
+    CHECK(Proto::decodeMailboxName("&unterminated") == "&unterminated");
+    CHECK(Proto::decodeMailboxName("&*bad*-") == "&*bad*-");
+}
+
 // ── SEARCH ─────────────────────────────────────────────────────────────────────
 
 TEST_CASE("parseSearch: UID list", "[imap][search]") {

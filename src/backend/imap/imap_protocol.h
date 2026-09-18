@@ -72,6 +72,13 @@ namespace Proto {
 // Quote an IMAP astring (mailbox name / LOGIN arg), escaping " and \.
 QByteArray quote(const QByteArray &s);
 
+// Decode a mailbox name from IMAP modified UTF-7 (RFC 3501 §5.1.3) for display:
+// "&BBsEOARHBD0ESwQ1-" → "Личные", "&-" → "&". Mailbox::name is kept in the wire
+// form because SELECT/APPEND and the "folder:<name>" conversation ids need it;
+// only labels shown to the user go through this. Malformed input is returned
+// unchanged rather than dropped.
+QString decodeMailboxName(const QString &wire);
+
 // Light response parsers over the untagged lines (and status, for SELECT).
 QList<Mailbox> parseList(const QList<QByteArray> &untagged);
 QList<quint32> parseSearch(const QList<QByteArray> &untagged);
