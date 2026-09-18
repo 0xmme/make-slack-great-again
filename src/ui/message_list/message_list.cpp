@@ -3651,7 +3651,7 @@ QString MessageListWidget::selectedText() const {
         if (!item.textDoc)
             continue;
         const int from = (i == aRow) ? aOff : 0;
-        const int to   = (i == fRow) ? fOff : item.textDoc->characterCount();
+        const int to   = (i == fRow) ? fOff : item.textDoc->characterCount() - 1;
         if (from >= to)
             continue;
         QTextCursor cur(item.textDoc.get());

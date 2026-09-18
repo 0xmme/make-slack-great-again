@@ -364,13 +364,13 @@ void MessageListWidget::paintRow(
                 selTo   = fOff;
             } else if (index == aRow) {
                 selFrom = aOff;
-                selTo   = item.textDoc->characterCount();
+                selTo   = item.textDoc->characterCount() - 1;
             } else if (index == fRow) {
                 selFrom = 0;
                 selTo   = fOff;
             } else if (index > aRow && index < fRow) {
                 selFrom = 0;
-                selTo   = item.textDoc->characterCount();
+                selTo   = item.textDoc->characterCount() - 1;
             }
             if (selFrom >= 0 && selTo > selFrom) {
                 QAbstractTextDocumentLayout::Selection sel;

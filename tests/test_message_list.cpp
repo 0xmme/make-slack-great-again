@@ -16,6 +16,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <QApplication>
+#include <QClipboard>
+#include <QKeyEvent>
 #include <QDir>
 #include <QEventLoop>
 #include <QMouseEvent>
@@ -701,4 +703,67 @@ TEST_CASE(
     CHECK(st->phase == MsgRender::AudioChipState::Phase::Loading);
     CHECK(st->durationMs == 5000);
     player.stop();
+}
+
+// ── Text selection ────────────────────────────────────────────────────────────
+// A selection spanning several messages used to set the end of every fully
+// covered row to characterCount(), one past the last valid cursor position.
+// QTextCursor rejected it ("Position 'N' out of range"), left the cursor at 0,
+// and the row painted no highlight and copied as nothing — only the last row of
+// a multi-message selection ever reached the clipboard.
+
+static int  g_outOfRangeWarnings = 0;
+static void countOutOfRange(QtMsgType, const QMessageLogContext &, const QString &msg) {
+    if (msg.contains("out of range"))
+        ++g_outOfRangeWarnings;
+}
+
+static void sendMouse(QWidget *w, QEvent::Type type, const QPointF &p, Qt::MouseButton btn) {
+    const Qt::MouseButtons held =
+        (type == QEvent::MouseButtonRelease) ? Qt::NoButton : Qt::LeftButton;
+    QMouseEvent ev(type, p, p, w->mapToGlobal(p), btn, held, Qt::NoModifier);
+    QApplication::sendEvent(w, &ev);
+}
+
+TEST_CASE("a selection across messages copies and paints every row", "[message_list][selection]") {
+    Fixture f;
+    f.stub->_historyPage = {
+        makeMessage("1000.000001", "first alpha"),
+        makeMessage("1000.000002", "second bravo"),
+        makeMessage("1000.000003", "third charlie"),
+    };
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.resize(500, 300);
+    list.openConversation(kConv.id);
+    spin(50);
+
+    QWidget  *vp = list.viewport();
+    const int w = vp->width(), h = vp->height();
+
+    // Press on the first text band from the top (x=0 clamps to the start of the
+    // line), then sweep the pointer down the right edge: moves off text are
+    // ignored, so the focus ends at the end of the last line of the last message.
+    QApplication::clipboard()->setText("sentinel");
+    for (int ay = 0; ay < h && QApplication::clipboard()->text() == "sentinel"; ay += 2) {
+        sendMouse(vp, QEvent::MouseButtonPress, QPointF(0, ay), Qt::LeftButton);
+        for (int fy = 0; fy < h; fy += 2)
+            sendMouse(vp, QEvent::MouseMove, QPointF(w - 1, fy), Qt::NoButton);
+        sendMouse(vp, QEvent::MouseButtonRelease, QPointF(w - 1, h - 1), Qt::LeftButton);
+        QKeyEvent copy(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier, "c");
+        QApplication::sendEvent(&list, &copy);
+    }
+
+    const QString copied = QApplication::clipboard()->text();
+    REQUIRE(copied != "sentinel");
+    CHECK(copied.contains("first alpha"));
+    CHECK(copied.contains("second bravo"));
+    CHECK(copied.contains("third charlie"));
+
+    // Painting the highlighted rows must not trip QTextCursor either.
+    g_outOfRangeWarnings = 0;
+    auto *prev           = qInstallMessageHandler(countOutOfRange);
+    (void)list.grab();
+    qInstallMessageHandler(prev);
+    CHECK(g_outOfRangeWarnings == 0);
 }
