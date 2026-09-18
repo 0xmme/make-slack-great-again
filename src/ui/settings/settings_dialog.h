@@ -157,16 +157,17 @@ private:
     QStackedWidget *_stack       = nullptr;
 
     // Notification controls
-    QCheckBox    *_notifEnabled      = nullptr;
-    QRadioButton *_notifAll          = nullptr;
-    QRadioButton *_notifMentions     = nullptr;
-    QCheckBox    *_notifHuddles      = nullptr;
-    QCheckBox    *_notifSound        = nullptr;
-    QWidget      *_notifSoundRow     = nullptr;
-    Dropdown     *_notifSoundChoice  = nullptr;
-    StyledButton *_notifSoundPreview = nullptr;
-    Dropdown     *_sampleNotifChoice = nullptr;
-    StyledButton *_sampleNotifTest   = nullptr;
+    QCheckBox    *_notifEnabled          = nullptr;
+    QRadioButton *_notifAll              = nullptr;
+    QRadioButton *_notifMentions         = nullptr;
+    QCheckBox    *_notifHuddles          = nullptr;
+    QCheckBox    *_notifSound            = nullptr;
+    QCheckBox    *_notifBoldMentionsOnly = nullptr;
+    QWidget      *_notifSoundRow         = nullptr;
+    Dropdown     *_notifSoundChoice      = nullptr;
+    StyledButton *_notifSoundPreview     = nullptr;
+    Dropdown     *_sampleNotifChoice     = nullptr;
+    StyledButton *_sampleNotifTest       = nullptr;
 
     // Appearance controls
     QSpinBox                 *_relevantDays     = nullptr;

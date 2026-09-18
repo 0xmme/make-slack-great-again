@@ -137,6 +137,13 @@ public:
     // Global default notification level applied to conversations whose own level
     // is NotificationLevel::Default. Drives which unread badges (and colors) show.
     void setDefaultNotifyLevel(NotificationLevel level);
+    // Settings → Notifications "Highlight mentions-only channels for any new
+    // message" (default on). On: a "Just mentions" channel paints bold for any
+    // unread, even though only @mentions badge it. Off: it paints bold only
+    // while it holds an @mention — i.e. exactly when it shows a badge — so a
+    // channel the user opted out of stays quiet in every way. DMs and "All new
+    // posts" channels are unaffected (their unreads always badge).
+    void setHighlightMentionsOnlyUnreads(bool on);
 
 signals:
     void conversationSelected(int row);
@@ -354,8 +361,15 @@ protected:
         kIconSize + 6; // child-row indent (aligns with section label)
     int _relevantDays =
         14; // configurable via setRelevantDays(); default matches kDefaultRelevantDays
-    static constexpr int kDefaultRelevantDays = 14;
+    static constexpr int kDefaultRelevantDays   = 14;
     // Global default for conversations with NotificationLevel::Default. Mirrors
     // the Settings "Notify me about" radio (default: All new posts).
-    NotificationLevel    _defaultNotify       = NotificationLevel::All;
+    NotificationLevel    _defaultNotify         = NotificationLevel::All;
+    // See setHighlightMentionsOnlyUnreads().
+    bool                 _highlightMentionsOnly = true;
+
+    // The single "does this row paint as unread" rule — bold/bright emphasis in
+    // paintRow and the unreads-only filter share it, so the filter never hides a
+    // bold row or lists a dim one.
+    bool paintsUnread(const Conversation &c) const;
 };

@@ -596,6 +596,13 @@ void SettingsDialog::buildPanel() {
     _notifHuddles = new QCheckBox(tr("Notify me when a huddle starts"), notifPage);
     nlay->addWidget(_notifHuddles);
 
+    // Chat-list emphasis for "Just mentions" channels: bold on any unread (on,
+    // the default) or only while an @mention badge shows (off). Independent of
+    // the desktop-notification master toggle — it shapes the list, not alerts.
+    _notifBoldMentionsOnly =
+        new QCheckBox(tr("Highlight mentions-only channels for any new message"), notifPage);
+    nlay->addWidget(_notifBoldMentionsOnly);
+
     _notifSound = new QCheckBox(tr("Play a sound for notifications"), notifPage);
     nlay->addWidget(_notifSound);
 
@@ -2032,6 +2039,7 @@ void SettingsDialog::applyTheme() {
         if (r)
             r->setStyleSheet(radioQss);
     _notifHuddles->setStyleSheet(checkQss);
+    _notifBoldMentionsOnly->setStyleSheet(checkQss);
     _notifSound->setStyleSheet(checkQss);
     // (Save button self-themes — StyledButton)
 
@@ -2142,6 +2150,7 @@ void SettingsDialog::loadNotifications() {
     QSettings s("msga", "msga");
     _notifEnabled->setChecked(s.value("notifications/enabled", true).toBool());
     _notifHuddles->setChecked(s.value("notifications/huddles", true).toBool());
+    _notifBoldMentionsOnly->setChecked(s.value("notifications/boldMentionsOnly", true).toBool());
     _notifSound->setChecked(s.value("notifications/sound", true).toBool());
     const int level = s.value("notifications/level", 0).toInt();
     (level == 0 ? _notifAll : _notifMentions)->setChecked(true);
@@ -2176,6 +2185,7 @@ void SettingsDialog::saveNotifications() {
     QSettings s("msga", "msga");
     s.setValue("notifications/enabled", _notifEnabled->isChecked());
     s.setValue("notifications/huddles", _notifHuddles->isChecked());
+    s.setValue("notifications/boldMentionsOnly", _notifBoldMentionsOnly->isChecked());
     s.setValue("notifications/sound", _notifSound->isChecked());
     s.setValue("notifications/level", _notifAll->isChecked() ? 0 : 1);
     if (_notifSoundChoice->currentIndex() >= 0)

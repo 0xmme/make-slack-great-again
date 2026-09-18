@@ -406,6 +406,50 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "unreads-only follows the mentions-only highlight setting for \"Just mentions\" channels",
+    "[unreads-only][mentions-only]"
+) {
+    // Settings → Notifications "Highlight mentions-only channels for any new
+    // message". The filter shares paintRow's paintsUnread() rule, so it is the
+    // observable proxy for the bold emphasis.
+    ConvListWidget list(nullptr);
+    list.setUnreadsOnly(true);
+    Conversation quiet  = unread(channel("C_QUIET", "announcements"), 4);
+    quiet.notifLevel    = NotificationLevel::Mentions; // unreads, none @mention me
+    Conversation pinged = unread(channel("C_PING", "ops"), 2);
+    pinged.notifLevel   = NotificationLevel::Mentions;
+    pinged.mentionCount = 1;
+    auto dm             = hiddenDm("D1", "U9");
+    dm.unread           = 1;
+    dm.notifLevel       = NotificationLevel::Mentions;
+    list.setConversations({unread(channel("C_ALL", "general")), quiet, pinged, dm});
+
+    // Default (on): any unread makes a mentions-only channel bold, so it lists.
+    REQUIRE(list.rowForId(ConversationId{"C_QUIET"}) >= 0);
+    REQUIRE(list.rowForId(ConversationId{"C_PING"}) >= 0);
+
+    // Off: only an @mention (the badge) earns the emphasis. DMs and "All new
+    // posts" channels badge every unread, so they are untouched.
+    list.setHighlightMentionsOnlyUnreads(false);
+    REQUIRE(list.rowForId(ConversationId{"C_QUIET"}) < 0);
+    REQUIRE(list.rowForId(ConversationId{"C_PING"}) >= 0);
+    REQUIRE(list.rowForId(ConversationId{"C_ALL"}) >= 0);
+    REQUIRE(list.rowForId(ConversationId{"D1"}) >= 0);
+
+    // The global default level counts too: a channel on Default under a
+    // "Direct messages and mentions only" default is mentions-only.
+    Conversation deflt = unread(channel("C_DEF", "misc"), 3);
+    list.setConversations({deflt});
+    REQUIRE(list.rowForId(ConversationId{"C_DEF"}) >= 0);
+    list.setDefaultNotifyLevel(NotificationLevel::Mentions);
+    REQUIRE(list.rowForId(ConversationId{"C_DEF"}) < 0);
+
+    // Back on: it lists again.
+    list.setHighlightMentionsOnlyUnreads(true);
+    REQUIRE(list.rowForId(ConversationId{"C_DEF"}) >= 0);
+}
+
+TEST_CASE(
     "the Threads entry stays listed under unreads-only and tracks its unread state",
     "[unreads-only]"
 ) {

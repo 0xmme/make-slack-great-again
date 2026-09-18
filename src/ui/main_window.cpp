@@ -135,6 +135,14 @@ static NotificationLevel globalDefaultNotifLevel() {
                : NotificationLevel::All;
 }
 
+// Settings → Notifications "Highlight mentions-only channels for any new
+// message" (default on): whether a "Just mentions" channel paints bold in the
+// chat list for unreads that don't @mention me (see
+// ConvListWidget::setHighlightMentionsOnlyUnreads).
+static bool highlightMentionsOnlyUnreads() {
+    return QSettings("msga", "msga").value("notifications/boldMentionsOnly", true).toBool();
+}
+
 // Thin drag handle between the conv panel and the message area.
 class ConvResizeHandle final : public QWidget {
 public:
@@ -587,8 +595,10 @@ QWidget *MainWindow::buildMainPage() {
     // The global default notification level decides what unconfigured channels
     // notify/badge about; apply it now and re-resolve everything when it changes.
     _convList->setDefaultNotifyLevel(globalDefaultNotifLevel());
+    _convList->setHighlightMentionsOnlyUnreads(highlightMentionsOnlyUnreads());
     connect(_settingsDialog, &SettingsDialog::notificationsChanged, this, [this] {
         _convList->setDefaultNotifyLevel(globalDefaultNotifLevel());
+        _convList->setHighlightMentionsOnlyUnreads(highlightMentionsOnlyUnreads());
         for (auto &[teamId, ws] : _sessions)
             if (ws.session)
                 updateUnreadBadges(teamId, ws.session->currentConversations());

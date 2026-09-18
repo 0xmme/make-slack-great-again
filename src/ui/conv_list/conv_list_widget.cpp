@@ -205,6 +205,38 @@ void ConvListWidget::setDefaultNotifyLevel(NotificationLevel level) {
         viewport()->update(); // badge visibility/color for Default-level convs may change
 }
 
+void ConvListWidget::setHighlightMentionsOnlyUnreads(bool on) {
+    if (_highlightMentionsOnly == on)
+        return;
+    _highlightMentionsOnly = on;
+    // Changes what counts as unread, so under the unreads-only filter it changes
+    // which rows exist.
+    if (_unreadsOnly)
+        rebuildRows();
+    else
+        viewport()->update();
+}
+
+bool ConvListWidget::paintsUnread(const Conversation &c) const {
+    if (c.unread <= 0)
+        return false;
+    // A muted conversation reads as fully silent — no bold/bright "unread"
+    // emphasis even when it holds an @mention.
+    const NotificationLevel lvl = effectiveNotifLevel(c, _defaultNotify);
+    if (lvl == NotificationLevel::Mute)
+        return false;
+    // A "Just mentions" channel only badges its @mentions; whether plain unreads
+    // still earn the bold emphasis is the user's call (see
+    // setHighlightMentionsOnlyUnreads). DMs badge every unread, so they are
+    // never "mentions-only" in this sense.
+    if (lvl == NotificationLevel::Mentions && !_highlightMentionsOnly) {
+        const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
+        if (!isDm && c.mentionCount <= 0)
+            return false;
+    }
+    return true;
+}
+
 void ConvListWidget::resetVisitedAt() {
     _visitedAt.clear();
     // rebuildRows() will auto-seed from current API data (latestTs / unread),
@@ -447,15 +479,16 @@ void ConvListWidget::rebuildRows() {
         return c.kind != ConvKind::Im && c.kind != ConvKind::Mpim;
     };
     // "Show only unread conversations": on top of relevance, a row must paint
-    // as unread (same test as paintRow's bold emphasis — a muted chat with
-    // unreads is silent, so it hides too) unless it is the open conversation,
-    // which stays listed until the selection moves on. Not applied to Starred.
+    // as unread (the same paintsUnread() rule as paintRow's bold emphasis — a
+    // muted chat with unreads is silent, so it hides too) unless it is the open
+    // conversation, which stays listed until the selection moves on. Not applied
+    // to Starred.
     auto isListed = [&](const Conversation &c) -> bool {
         if (!_unreadsOnly)
             return true;
         if (c.id == _selectedId || c.id == _unreadsOnlyReveal)
             return true;
-        return c.unread > 0 && effectiveNotifLevel(c, _defaultNotify) != NotificationLevel::Mute;
+        return paintsUnread(c);
     };
 
     std::vector<int> starred, visCh, hidCh, visDm, hidDm, apps;
@@ -1379,10 +1412,10 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     }
 
     QFont                   font       = QApplication::font();
-    // A muted conversation reads as fully silent — no bold/bright "unread"
-    // emphasis even when it holds an @mention.
     const NotificationLevel lvl        = effectiveNotifLevel(conv, _defaultNotify);
-    const bool              isUnread   = conv.unread > 0 && lvl != NotificationLevel::Mute;
+    // Bold/bright emphasis (muted = silent, mentions-only = per setting); the
+    // badges below have their own, stricter rules.
+    const bool              isUnread   = paintsUnread(conv);
     const bool              isSelected = (row == _selected);
     font.setWeight(isUnread ? QFont::DemiBold : QFont::Normal);
     p.setFont(font);
