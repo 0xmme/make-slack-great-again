@@ -62,10 +62,11 @@ EmojiResolved resolveEmojiRich(const QString &name, const QHash<QString, QString
     const QString unicode = Emoji::fromName(name);
     if (unicode != ":" + name + ":")
         return {unicode, {}};
-    // `name` isn't a known shortcode. If it's already a raw emoji glyph, render it
-    // directly instead of the ":name:" placeholder — MS Teams returns a reaction's
-    // reactionType as the Unicode emoji itself (e.g. "👍"), not a shortcode.
-    // Shortcodes are ASCII; any non-ASCII codepoint means `name` is the glyph.
+    // `name` isn't a known shortcode. If it's already a raw emoji glyph, render
+    // it directly instead of the ":name:" placeholder — MS Teams returns a
+    // reaction's reactionType as the Unicode emoji itself (e.g. "👍"), not a
+    // shortcode. Shortcodes are ASCII; any non-ASCII codepoint means `name` is
+    // the glyph.
     for (const QChar &ch : name)
         if (ch.unicode() > 0x7F)
             return {name, {}};
@@ -103,8 +104,8 @@ int inlineEmojiPx() {
 }
 
 // HTML for one resolved emoji at `px` logical pixels: custom emoji as an <img>
-// (the image resource is registered on the QTextDocument by the caller), built-in
-// emoji as a span in the platform color-emoji font.
+// (the image resource is registered on the QTextDocument by the caller),
+// built-in emoji as a span in the platform color-emoji font.
 static QString emojiHtml(const EmojiResolved &er, int px) {
     // Unknown name: it's text, not emoji. Keep it in the body font — the emoji
     // font at line-height size turned a plain "14:43:34" into a giant spaced-out
@@ -133,7 +134,8 @@ QString docStyleSheet() {
     return QString("p { line-height: %1%; margin: 0; }").arg(pct);
 }
 
-QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
+QStringList
+collectEmojiImageUrls(const Message &msg, const Session *session, bool showLinkPreviews) {
     QStringList   out;
     QSet<QString> seen;
     auto          addFrom = [&](const TextWithEntities &twe) {
@@ -159,6 +161,8 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
         addBlockImage(b);
     }
     for (const auto &att : msg.attachments) {
+        if (!showLinkPreviews && att.isLinkPreview)
+            continue;
         if (!att.pretext.isEmpty()) // pretext is parsed as mrkdwn at render time
             addFrom(MrkdwnParser::parse(att.pretext));
         if (!att.title.isEmpty()) // title is token-resolved at render time
@@ -240,8 +244,8 @@ QString formatDateLabel(qint64 dateMicros) {
 }
 
 // Takes the reply ts directly: latestReply has no dedicated date field like
-// Message::date (Option A added one only for the message itself), so this is the
-// one display site that still derives time from a ts string.
+// Message::date (Option A added one only for the message itself), so this is
+// the one display site that still derives time from a ts string.
 QString lastReplyLabel(const Ts &ts) {
     bool   ok   = false;
     double secs = ts.toDouble(&ok);
@@ -523,15 +527,15 @@ static QString escapeAndBr(const QString &s) {
 // entities (bold, links, quotes…) recurse into their children, so nested
 // spans like *<url|label>* render as a link inside <b>.
 // Beyond this many nested blockquote levels we stop emitting the nested <table>
-// wrapper and render the content inline. QTextDocumentLayout lays tables out with
-// recursive frame layout whose cost is ~exponential in nesting depth: a quoted
-// email reply chain (the IMAP backend builds one Blockquote entity per '>' level)
-// measured ~16x per +4 levels — depth 16 took ~7.7 s in a plain Debug build (far
-// worse and effectively forever under ASan) and froze the whole UI inside
-// QTextDocument::size(), caught by the hang watchdog. Capping at 4 levels (≤5
-// nested tables) keeps that same message at ~60 ms. A handful of quote bars is all
-// that's ever readable anyway; deeper levels keep their text, just without another
-// bar.
+// wrapper and render the content inline. QTextDocumentLayout lays tables out
+// with recursive frame layout whose cost is ~exponential in nesting depth: a
+// quoted email reply chain (the IMAP backend builds one Blockquote entity per
+// '>' level) measured ~16x per +4 levels — depth 16 took ~7.7 s in a plain
+// Debug build (far worse and effectively forever under ASan) and froze the
+// whole UI inside QTextDocument::size(), caught by the hang watchdog. Capping
+// at 4 levels (≤5 nested tables) keeps that same message at ~60 ms. A handful
+// of quote bars is all that's ever readable anyway; deeper levels keep their
+// text, just without another bar.
 static constexpr int kMaxQuoteRenderDepth = 4;
 
 static QString renderRange(
@@ -551,24 +555,24 @@ static QString renderRange(
         const auto &e = ents[idx];
         if (e.offset > pos)
             html += escapeAndBr(text.mid(pos, e.offset - pos));
-        const auto rawInner  = text.mid(e.offset, e.length);
-        const bool container = e.type == EntityType::Bold || e.type == EntityType::Italic ||
-                               e.type == EntityType::Underline || e.type == EntityType::Strike ||
-                               e.type == EntityType::Link || e.type == EntityType::Blockquote;
+        const auto    rawInner  = text.mid(e.offset, e.length);
+        const bool    container = e.type == EntityType::Bold || e.type == EntityType::Italic ||
+                                  e.type == EntityType::Underline || e.type == EntityType::Strike ||
+                                  e.type == EntityType::Link || e.type == EntityType::Blockquote;
         // Only blockquotes deepen the table-nesting budget (other containers are
         // cheap inline spans/anchors).
         const int     childQuoteDepth = quoteDepth + (e.type == EntityType::Blockquote ? 1 : 0);
         const QString inner           = container ? renderRange(
-                                              text,
-                                              e.offset,
-                                              e.offset + e.length,
-                                              kids[idx],
-                                              ents,
-                                              kids,
-                                              session,
-                                              style,
-                                              childQuoteDepth
-                                          )
+                                                        text,
+                                                        e.offset,
+                                                        e.offset + e.length,
+                                                        kids[idx],
+                                                        ents,
+                                                        kids,
+                                                        session,
+                                                        style,
+                                                        childQuoteDepth
+                                                    )
                                                   : rawInner.toHtmlEscaped();
         switch (e.type) {
         case EntityType::Bold:
@@ -586,7 +590,8 @@ static QString renderRange(
         case EntityType::Code:
             html += "<span style='background:" + Th::qss(Th::c().message.codeBlockBg) +
                     ";color:" + Th::qss(Th::c().danger.text) +
-                    ";font-family:monospace;font-size:0.88em;padding:1px 3px;border-radius:3px'>" +
+                    ";font-family:monospace;font-size:0.88em;padding:1px "
+                    "3px;border-radius:3px'>" +
                     inner + "</span>";
             break;
         case EntityType::Pre: {
@@ -602,28 +607,31 @@ static QString renderRange(
                 code.chop(1);
             html += "<table width='100%' cellspacing='0' cellpadding='0' "
                     "style='margin:4px 0'>"
-                    "<tr><td style='padding:6px 10px;font-family:monospace;font-size:0.88em;"
+                    "<tr><td style='padding:6px "
+                    "10px;font-family:monospace;font-size:0.88em;"
                     "white-space:pre-wrap;color:" +
                     Th::qss(Th::c().message.codeText) + "'>" + code + "</td></tr></table>";
             break;
         }
         case EntityType::Blockquote:
-            // Past the nesting cap, drop the <table> wrapper (see kMaxQuoteRenderDepth)
-            // and render the content inline so a deep email reply chain can't make
-            // QTextDocument layout hang. quoteDepth is this quote's own level (its
-            // inner content was already rendered at quoteDepth+1).
+            // Past the nesting cap, drop the <table> wrapper (see
+            // kMaxQuoteRenderDepth) and render the content inline so a deep email
+            // reply chain can't make QTextDocument layout hang. quoteDepth is this
+            // quote's own level (its inner content was already rendered at
+            // quoteDepth+1).
             if (quoteDepth > kMaxQuoteRenderDepth) {
                 html += inner;
             } else {
-                // Use a table so the gray left bar renders reliably in Qt's HTML subset.
-                html +=
-                    "<table cellspacing='0' cellpadding='0' style='border-spacing:0;margin:4px 0'>"
-                    "<tr>"
-                    "<td width='3' bgcolor='" +
-                    Th::c().message.codeBlockBorder.name() +
-                    "' style='padding:0;border-radius:2px'></td>"
-                    "<td style='padding:2px 0 2px 10px;color:" +
-                    Th::qss(Th::c().message.codeText) + "'>" + inner + "</td></tr></table>";
+                // Use a table so the gray left bar renders reliably in Qt's HTML
+                // subset.
+                html += "<table cellspacing='0' cellpadding='0' "
+                        "style='border-spacing:0;margin:4px 0'>"
+                        "<tr>"
+                        "<td width='3' bgcolor='" +
+                        Th::c().message.codeBlockBorder.name() +
+                        "' style='padding:0;border-radius:2px'></td>"
+                        "<td style='padding:2px 0 2px 10px;color:" +
+                        Th::qss(Th::c().message.codeText) + "'>" + inner + "</td></tr></table>";
             }
             break;
         case EntityType::Link: {
@@ -668,7 +676,8 @@ static QString renderRange(
             const User   *u     = session ? session->findUser(UserId{e.data}) : nullptr;
             const QString label = u ? ("@" + u->displayLabel()) : rawInner;
             const bool    isMe  = session && UserId{e.data} == session->meUserId();
-            // Anchor (not span) so the mention is hit-testable for the hover profile card.
+            // Anchor (not span) so the mention is hit-testable for the hover profile
+            // card.
             html += "<a href='" + (kUserAnchorPrefix + e.data).toHtmlEscaped() +
                     "' style='color:" + Th::qss(Th::c().message.mentionText) + ";background:" +
                     Th::qss(isMe ? Th::c().message.mentionSelfBg : Th::c().message.mentionBg) +
@@ -715,7 +724,8 @@ QString toHtml(const TextWithEntities &twe, const Session *session, const Inline
 
     // Parents before children: offset ascending, longer span first. The parser
     // pushes a wrapping entity before its nested ones, so a stable sort keeps
-    // the parent first even for equal ranges (e.g. a link spanning all of a bold).
+    // the parent first even for equal ranges (e.g. a link spanning all of a
+    // bold).
     auto sorted = twe.entities;
     std::stable_sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
         return a.offset != b.offset ? a.offset < b.offset : a.length > b.length;
@@ -793,11 +803,12 @@ void paintCodeBlockChrome(QPainter &p, const QTextDocument *doc) {
     p.restore();
 }
 
-// Wrap inline HTML in <p> (so the doc stylesheet's line-height applies), keeping any
-// <table> elements (blockquotes) OUTSIDE the paragraphs. A table inside/after a <p>
-// gets an implicit separator block that inherits the paragraph's line-height, which
-// makes the gap above the table larger than the gap below (controlled only by the
-// table's own bottom margin). Splitting at table boundaries keeps the gaps symmetric.
+// Wrap inline HTML in <p> (so the doc stylesheet's line-height applies),
+// keeping any <table> elements (blockquotes) OUTSIDE the paragraphs. A table
+// inside/after a <p> gets an implicit separator block that inherits the
+// paragraph's line-height, which makes the gap above the table larger than the
+// gap below (controlled only by the table's own bottom margin). Splitting at
+// table boundaries keeps the gaps symmetric.
 static QString wrapParagraph(const QString &inner, const QString &pStyle) {
     if (inner.isEmpty())
         return {};
@@ -815,9 +826,9 @@ static QString wrapParagraph(const QString &inner, const QString &pStyle) {
                 result += "<p style='" + pStyle + ";margin-top:0'>" + tail + "</p>";
             break;
         }
-        // Text segment before the table — strip trailing <br> (the \n the parser appends
-        // after a blockquote turns into a leading <br> for the following segment), and
-        // leave it UNwrapped (see above).
+        // Text segment before the table — strip trailing <br> (the \n the parser
+        // appends after a blockquote turns into a leading <br> for the following
+        // segment), and leave it UNwrapped (see above).
         if (tableStart > pos) {
             QString seg = inner.mid(pos, tableStart - pos);
             while (seg.endsWith(QLatin1String("<br>")))
@@ -838,10 +849,11 @@ static QString wrapParagraph(const QString &inner, const QString &pStyle) {
 }
 
 // HTML for one Block Kit image block (Slack GIF picker / Giphy / app images).
-// With a GifRenderContext: a "GIF ▾" title line (collapse-toggle anchor, when the
-// block has a title) followed by the real <img> sized to the kBlockImg cap; the
-// doc owner registers the image resource and animates it by swapping in QMovie
-// frames. Without one (preview dialogs): the alt text as italic placeholder.
+// With a GifRenderContext: a "GIF ▾" title line (collapse-toggle anchor, when
+// the block has a title) followed by the real <img> sized to the kBlockImg cap;
+// the doc owner registers the image resource and animates it by swapping in
+// QMovie frames. Without one (preview dialogs): the alt text as italic
+// placeholder.
 static QString imageBlockHtml(
     const Block &blk, const Session *session, const GifRenderContext *gif, int blockIdx
 ) {
@@ -975,7 +987,8 @@ void paintBotButtonChrome(QPainter &p, const QTextDocument *doc) {
 }
 
 // Shared Block Kit block → HTML dispatch for buildMsgHtml/buildAttachHtml.
-// Returns true when the block embedded a real image (caller skips text fallbacks).
+// Returns true when the block embedded a real image (caller skips text
+// fallbacks).
 static bool blockHtml(
     QString                &html,
     const Block            &blk,
@@ -1023,7 +1036,8 @@ QString tableBlockHtml(const Block &blk, const Session *session, int maxRows) {
         rows += "</tr>";
     }
     return "<table cellspacing='0' cellpadding='0' style='margin:4px 0;"
-           "border-collapse:collapse;border-width:1px;border-style:solid;border-color:" +
+           "border-collapse:collapse;border-width:1px;border-style:solid;border-"
+           "color:" +
            Th::qss(Th::c().message.fileChipBorder) + "'>" + rows + "</table>";
 }
 
@@ -1141,8 +1155,9 @@ QVector<QRectF> dataTableRects(const QTextDocument *doc) {
 }
 
 // True for a code point that anchors an emoji grapheme (the pictographic blocks
-// plus the symbol ranges that are predominantly emoji). Deliberately conservative
-// so a lone CJK character or letter is never mistaken for an emoji.
+// plus the symbol ranges that are predominantly emoji). Deliberately
+// conservative so a lone CJK character or letter is never mistaken for an
+// emoji.
 static bool cpIsEmojiBase(char32_t c) {
     return (c >= 0x1F000 && c <= 0x1FAFF) || // emoticons, pictographs, transport, symbols, flags
            (c >= 0x2600 && c <= 0x27BF) ||   // misc symbols + dingbats
@@ -1155,8 +1170,9 @@ static bool cpIsEmojiBase(char32_t c) {
            c == 0x303D || c == 0x3297 || c == 0x3299;
 }
 
-// True for a code point that only ever continues an emoji grapheme (never starts
-// one): joiners, variation selectors, skin-tone modifiers, keycap, flag tags.
+// True for a code point that only ever continues an emoji grapheme (never
+// starts one): joiners, variation selectors, skin-tone modifiers, keycap, flag
+// tags.
 static bool cpIsEmojiMod(char32_t c) {
     return c == 0x200D || c == 0xFE0F || c == 0xFE0E || c == 0x20E3 ||
            (c >= 0x1F3FB && c <= 0x1F3FF) || (c >= 0xE0020 && c <= 0xE007F);
@@ -1203,7 +1219,8 @@ static std::optional<EmojiResolved> soleEmoji(const TextWithEntities &twe, const
             return std::nullopt; // ":unknown:" is text — don't jumbo it
         }
     }
-    // A raw unicode emoji typed directly (the mrkdwn parser leaves it as plain text).
+    // A raw unicode emoji typed directly (the mrkdwn parser leaves it as plain
+    // text).
     if (twe.entities.empty()) {
         const QString t = twe.text.trimmed();
         if (isSingleEmoji(t))
@@ -1212,13 +1229,13 @@ static std::optional<EmojiResolved> soleEmoji(const TextWithEntities &twe, const
     return std::nullopt;
 }
 
-// Build the full HTML for a message's main text doc (blocks preferred over text field).
-// Offset where a reply's collapsible trailer (quoted history + a trailing
-// signature) begins, or -1 if there's nothing to collapse. Heuristic, tuned on
-// real mail: the trailer starts at the earliest of (a) a top-level blockquote
-// that dominates the tail — longer than 40% of the text and ending past the 55%
-// mark, i.e. quoted history rather than a short inline quote — and (b) an
-// RFC-3676 "-- " signature delimiter on its own line in the second half.
+// Build the full HTML for a message's main text doc (blocks preferred over text
+// field). Offset where a reply's collapsible trailer (quoted history + a
+// trailing signature) begins, or -1 if there's nothing to collapse. Heuristic,
+// tuned on real mail: the trailer starts at the earliest of (a) a top-level
+// blockquote that dominates the tail — longer than 40% of the text and ending
+// past the 55% mark, i.e. quoted history rather than a short inline quote — and
+// (b) an RFC-3676 "-- " signature delimiter on its own line in the second half.
 static int quotedTrailerCut(const TextWithEntities &twe) {
     const QString &t = twe.text;
     const int      n = t.size();
@@ -1244,10 +1261,11 @@ static int quotedTrailerCut(const TextWithEntities &twe) {
     }
 
     // (b) signature delimiter on its own line: RFC-3676 "-- " plus the common
-    // non-standard all-dashes variants ("---", "—"). Everything from there down is
-    // the signature (and any quote beneath it). Take the earliest such line, but
-    // never the very first line of the message. No latter-half restriction — a big
-    // quote below the signature can push it into the first half of the text.
+    // non-standard all-dashes variants ("---", "—"). Everything from there down
+    // is the signature (and any quote beneath it). Take the earliest such line,
+    // but never the very first line of the message. No latter-half restriction —
+    // a big quote below the signature can push it into the first half of the
+    // text.
     {
         int ls = 0;
         for (int i = 0; i <= n; ++i)
@@ -1266,9 +1284,9 @@ static int quotedTrailerCut(const TextWithEntities &twe) {
     }
 
     // (c) plain-text quoted block: a text/plain email body carries no Blockquote
-    // entities — its quoted history is literal '>'-prefixed lines. Walk lines from
-    // the end (skipping blanks) and take the topmost contiguous quoted line as the
-    // cut; the unquoted "On … wrote:" attribution above it stays visible.
+    // entities — its quoted history is literal '>'-prefixed lines. Walk lines
+    // from the end (skipping blanks) and take the topmost contiguous quoted line
+    // as the cut; the unquoted "On … wrote:" attribution above it stays visible.
     {
         std::vector<int> starts{0};
         for (int i = 0; i < n; ++i)
@@ -1305,9 +1323,10 @@ static int quotedTrailerCut(const TextWithEntities &twe) {
         // (d) forwarded/replied header block (Outlook & localized clients): the
         // quoted original is introduced by a run of "From:/Sent:/To:/Subject:"
         // lines — there's no blockquote or '>' marking. Rather than match the
-        // many localized labels ("From", "De", "Von", "发件人", "差出人", …), detect
-        // it structurally and locale-independently: ≥3 consecutive "Label: value"
-        // lines with at least one email address among them. Cut at the run start.
+        // many localized labels ("From", "De", "Von", "发件人", "差出人", …),
+        // detect it structurally and locale-independently: ≥3 consecutive "Label:
+        // value" lines with at least one email address among them. Cut at the run
+        // start.
         auto headerLine = [&](int li) {
             int j = starts[li], e = end(li);
             while (j < e && (t[j] == ' ' || t[j] == '\t'))
@@ -1379,9 +1398,10 @@ static int quotedTrailerCut(const TextWithEntities &twe) {
     return cut;
 }
 
-// A sub-range of a TextWithEntities: substring [from,to) with each entity clipped
-// to the window (offsets rebased to 0). Container entities that straddle the
-// boundary are clipped too, so the body slice never carries a half-open table.
+// A sub-range of a TextWithEntities: substring [from,to) with each entity
+// clipped to the window (offsets rebased to 0). Container entities that
+// straddle the boundary are clipped too, so the body slice never carries a
+// half-open table.
 static TextWithEntities sliceEntities(const TextWithEntities &src, int from, int to) {
     const int n = src.text.size();
     from        = std::max(0, std::min(from, n));
@@ -1477,9 +1497,11 @@ static QString emojiOnlyHtml(const TextWithEntities &twe, const Session *session
     return out;
 }
 
-// ── Shared-message unfurl card ────────────────────────────────────────────────
+// ── Shared-message unfurl card
+// ────────────────────────────────────────────────
 
-// Index to cut `text` at so it stays inside the char/line budget; -1 when it fits.
+// Index to cut `text` at so it stays inside the char/line budget; -1 when it
+// fits.
 static int previewCut(const QString &text, int maxChars, int maxLines) {
     int lines = 1;
     for (int i = 0; i < text.size(); ++i) {
@@ -1529,8 +1551,8 @@ msgUnfurlHtml(const Attachment &att, const Session *session, const GifRenderCont
             // Section/rich_text/header text goes through the budget; images,
             // tables and button rows render whole (they're one visual unit).
             const bool   plainText = blk.typeStr != QLatin1String("image") &&
-                                   blk.typeStr != QLatin1String("table") && blk.buttons.empty() &&
-                                   !blk.text.text.isEmpty();
+                                     blk.typeStr != QLatin1String("table") && blk.buttons.empty() &&
+                                     !blk.text.text.isEmpty();
             if (plainText)
                 addText(blk.text);
             else
@@ -1947,8 +1969,8 @@ void paintAudioCard(QPainter &p, const File &f, const QRect &rect, const AudioCh
     // Slider: track, played part, knob
     const qint64 dur  = audio->durationMs > 0 ? audio->durationMs : f.durationMs;
     const bool   live = audio->phase == Phase::Playing || audio->phase == Phase::Paused ||
-                      audio->phase == Phase::Ended || audio->scrubMs >= 0;
-    qint64 pos = audio->scrubMs >= 0 ? audio->scrubMs : audio->positionMs;
+                        audio->phase == Phase::Ended || audio->scrubMs >= 0;
+    qint64       pos  = audio->scrubMs >= 0 ? audio->scrubMs : audio->positionMs;
     if (audio->phase == Phase::Ended && audio->scrubMs < 0)
         pos = dur;
     if (!live)
@@ -2146,8 +2168,8 @@ void configurePreviewBrowser(QTextBrowser *browser) {
     );
 
     // Asymmetric text padding via the root frame (documentMargin is symmetric and
-    // can't do this): left sp.lg so the text lines up with the card header, right 0
-    // so the content reaches the edge with only the thin scrollbar beside it.
+    // can't do this): left sp.lg so the text lines up with the card header, right
+    // 0 so the content reaches the edge with only the thin scrollbar beside it.
     browser->document()->setDocumentMargin(0);
     QTextFrameFormat fmt = browser->document()->rootFrame()->frameFormat();
     fmt.setLeftMargin(sp.lg);

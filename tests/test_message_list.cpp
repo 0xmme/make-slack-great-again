@@ -2,14 +2,15 @@
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 //
 // Regression tests for MessageListWidget scroll-position persistence across
-// conversation and workspace switches. Requires QApplication (QWidget subclass).
+// conversation and workspace switches. Requires QApplication (QWidget
+// subclass).
 //
-// The decisive bug these guard against: switching workspaces leaves the chat via
-// setSession(), which used to clear the list WITHOUT snapshotting the loaded
-// messages. When the user had scrolled up, the view held paginated *older*
-// messages that aren't in the plain (no-cursor) history page, so on return the
-// saved scroll anchor couldn't be found and the list fell back to the bottom.
-// setSession() must cache the loaded messages first, exactly like
+// The decisive bug these guard against: switching workspaces leaves the chat
+// via setSession(), which used to clear the list WITHOUT snapshotting the
+// loaded messages. When the user had scrolled up, the view held paginated
+// *older* messages that aren't in the plain (no-cursor) history page, so on
+// return the saved scroll anchor couldn't be found and the list fell back to
+// the bottom. setSession() must cache the loaded messages first, exactly like
 // openConversation() does — so the anchor message survives the round-trip.
 
 #include <catch2/catch_session.hpp>
@@ -18,6 +19,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QKeyEvent>
+#include <QBuffer>
 #include <QDir>
 #include <QEventLoop>
 #include <QMouseEvent>
@@ -34,8 +36,9 @@
 #include "session/session.h"
 #include "backend/backend.h"
 #include "backend/domain.h"
-#include "rpl/variable.h"
 #include "rpl/event_stream.h"
+#include "rpl/variable.h"
+#include "ui/image_cache.h"
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
@@ -44,8 +47,9 @@ int main(int argc, char **argv) {
     return Catch::Session().run(argc, argv);
 }
 
-// ── StubBackend ───────────────────────────────────────────────────────────────
-// Minimal controllable backend. loadHistory returns _historyPage synchronously
+// ── StubBackend
+// ─────────────────────────────────────────────────────────────── Minimal
+// controllable backend. loadHistory returns _historyPage synchronously
 // (rpl::variable fires on subscription), modelling the no-cursor history fetch.
 
 struct StubBackend : Backend {
@@ -57,6 +61,7 @@ struct StubBackend : Backend {
 
     // The page returned by a no-cursor loadHistory (the recent tail).
     std::vector<Message>   _historyPage;
+    std::vector<Message>   _threadPage;
     std::optional<QString> _olderCursor;
 
     rpl::producer<AuthState> authState() const override { return _authState.value(); }
@@ -71,7 +76,8 @@ struct StubBackend : Backend {
 
     // When set, a no-cursor loadHistory answers nothing until deliverHistory()
     // is called — the "conversation opened, its first page still in flight"
-    // window that a plain rpl::variable (which fires on subscription) can't model.
+    // window that a plain rpl::variable (which fires on subscription) can't
+    // model.
     bool                           _deferHistory = false;
     rpl::event_stream<MessagePage> _historyStream;
 
@@ -86,7 +92,7 @@ struct StubBackend : Backend {
     }
     void deliverHistory() { _historyStream.fire(MessagePage{_historyPage, _olderCursor}); }
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
-        return rpl::variable<MessagePage>({}).value();
+        return rpl::variable<MessagePage>(MessagePage{_threadPage, std::nullopt}).value();
     }
 
     void sendMessage(ConversationId, OutgoingMessage, std::function<void(bool, QString)>) override {
@@ -171,10 +177,12 @@ struct Fixture {
     }
 };
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Tests
+// ─────────────────────────────────────────────────────────────────────
 
 TEST_CASE(
-    "setSession snapshots scrolled-up older messages so the anchor survives a workspace switch",
+    "setSession snapshots scrolled-up older messages so the anchor "
+    "survives a workspace switch",
     "[message_list][scroll]"
 ) {
     Fixture f;
@@ -242,7 +250,8 @@ TEST_CASE("threadRoots lists only loaded roots, newest first", "[message_list][m
 }
 
 // Snapshot the live view back through the cache: setSession(nullptr) writes
-// _items to the cache, so what comes back is exactly what the widget is showing.
+// _items to the cache, so what comes back is exactly what the widget is
+// showing.
 static std::vector<Message>
 liveView(MessageListWidget &list, Session *session, const ConversationId &conv) {
     list.setSession(nullptr);
@@ -349,7 +358,8 @@ TEST_CASE(
     const auto view = liveView(list, f.session.get(), kConv.id);
     REQUIRE(view.size() == 1);
     CHECK(view[0].text.text == "new text");
-    CHECK(view[0].blocks.empty()); // stale rich_text dropped → doc renders the new text
+    CHECK(view[0].blocks.empty()); // stale rich_text dropped → doc renders the
+                                   // new text
     CHECK(view[0].edited);
     REQUIRE(view[0].reactions.size() == 1); // merge keeps the row's reactions
     CHECK(view[0].reactions[0].name == "thumbsup");
@@ -370,8 +380,8 @@ TEST_CASE(
     MessageListWidget list(f.session.get(), nullptr);
     list.openConversation(kConv.id);
 
-    // The socket delivers message_deleted for the newest message; it flows through
-    // the session to the list and the row must vanish immediately.
+    // The socket delivers message_deleted for the newest message; it flows
+    // through the session to the list and the row must vanish immediately.
     f.stub->_events.fire(Event{EvMessageDeleted{kConv.id, "1000.000003", std::nullopt}});
 
     const auto view = liveView(list, f.session.get(), kConv.id);
@@ -444,7 +454,8 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "duplicate reaction_removed echo does not double-decrement others' reactions",
+    "duplicate reaction_removed echo does not double-decrement others' "
+    "reactions",
     "[message_list][reactions]"
 ) {
     Fixture f;
@@ -490,7 +501,8 @@ TEST_CASE(
     CHECK(r->count == 2);
 }
 
-// ── Message links ─────────────────────────────────────────────────────────────
+// ── Message links
+// ─────────────────────────────────────────────────────────────
 
 // Permalink to the message posted at `ts` in the fixture's channel.
 static QString permalinkTo(const QString &ts) {
@@ -766,4 +778,95 @@ TEST_CASE("a selection across messages copies and paints every row", "[message_l
     (void)list.grab();
     qInstallMessageHandler(prev);
     CHECK(g_outOfRangeWarnings == 0);
+}
+
+TEST_CASE(
+    "disabled link previews skip image loading and restore live", "[message_list][previews]"
+) {
+    Fixture     f;
+    QStringList requested;
+    QImage      image(40, 30, QImage::Format_ARGB32);
+    image.fill(Qt::blue);
+    QByteArray png;
+    QBuffer    buffer(&png);
+    REQUIRE(buffer.open(QIODevice::WriteOnly));
+    REQUIRE(image.save(&buffer, "PNG"));
+    ImageCache cache;
+    // All cache fetches, including sizeOf() during layout, consult this loader
+    // before the network. Supply bytes so this test needs no external service.
+    cache.setDiskCache(
+        [&](const QString &url) {
+            requested.append(url);
+            return png;
+        },
+        {}
+    );
+
+    auto message        = makeMrkdwnMessage("1000.000001", "<https://example.com/article|Article>");
+    message.attachments = {
+        Attachment{
+            .title      = "Web preview",
+            .titleLink  = "https://example.com/article",
+            .text       = TextWithEntities{QString("Preview details\n").repeated(12), {}},
+            .imageUrl   = "https://example.com/preview.png",
+            .faviconUrl = "https://example.com/favicon.png",
+            .footerIcon = "https://example.com/footer.png",
+            .blocks     = {Block{.typeStr = "image", .imageUrl = "https://example.com/block.png"}},
+            .isLinkPreview = true,
+        },
+        Attachment{.title = "Bot content", .imageUrl = "https://example.com/bot.png"},
+        Attachment{
+            .text        = TextWithEntities{"Shared Slack message", {}},
+            .isMsgUnfurl = true,
+            .authorIcon  = "https://example.com/author.png",
+        },
+    };
+    message.files        = {File{.name = "notes.txt", .mimeType = "text/plain"}};
+    f.stub->_historyPage = {message};
+    f.stub->_threadPage  = {message};
+
+    MessageListWidget list(f.session.get(), &cache);
+    list.resize(500, 160);
+    list.setLinkPreviewsEnabled(false);
+    SECTION("conversation") {
+        list.openConversation(kConv.id);
+    }
+    SECTION("standalone thread") {
+        list.openThread(kConv.id, message.ts);
+    }
+    list.show();
+    spin(300);
+    list.viewport()->grab();
+
+    const auto checkNoPreviews = [&] {
+        CHECK_FALSE(requested.contains("https://example.com/preview.png"));
+        CHECK_FALSE(requested.contains("https://example.com/favicon.png"));
+        CHECK_FALSE(requested.contains("https://example.com/footer.png"));
+        CHECK_FALSE(requested.contains("https://example.com/block.png"));
+    };
+    checkNoPreviews();
+    CHECK(requested.contains("https://example.com/bot.png"));
+    CHECK(requested.contains("https://example.com/author.png"));
+    const int hiddenHeight = list.verticalScrollBar()->maximum();
+    list.setLinkPreviewsEnabled(true);
+    spin(300);
+    list.verticalScrollBar()->setValue(0);
+    list.viewport()->grab();
+    CHECK(requested.contains("https://example.com/preview.png"));
+    CHECK(requested.contains("https://example.com/favicon.png"));
+    CHECK(requested.contains("https://example.com/footer.png"));
+    CHECK(requested.contains("https://example.com/block.png"));
+    CHECK(list.verticalScrollBar()->maximum() > hiddenHeight);
+
+    list.setLinkPreviewsEnabled(false);
+    spin(300);
+    list.viewport()->grab();
+    CHECK(list.verticalScrollBar()->maximum() == hiddenHeight);
+    // Hiding previews must never strip them or uploaded files from the message
+    // model: re-enabling works without fetching history again.
+    const auto stored = list.lastOwnMessage(UserId{"U1"});
+    REQUIRE(stored.has_value());
+    CHECK(stored->attachments == message.attachments);
+    CHECK(stored->files == message.files);
+    CHECK(stored->text == message.text);
 }

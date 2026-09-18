@@ -605,6 +605,22 @@ QWidget *MainWindow::buildMainPage() {
         _messageList,
         &MessageListWidget::setThreadsInline
     );
+    const bool showLinkPreviews =
+        QSettings("msga", "msga").value("appearance/showLinkPreviews", true).toBool();
+    _messageList->setLinkPreviewsEnabled(showLinkPreviews);
+    _threadPanel->setLinkPreviewsEnabled(showLinkPreviews);
+    connect(
+        _settingsDialog,
+        &SettingsDialog::linkPreviewsChanged,
+        _messageList,
+        &MessageListWidget::setLinkPreviewsEnabled
+    );
+    connect(
+        _settingsDialog,
+        &SettingsDialog::linkPreviewsChanged,
+        _threadPanel,
+        &ThreadPanel::setLinkPreviewsEnabled
+    );
     // Enter vs Ctrl+Enter: the composers read the registry per keypress; only
     // the welcome screen's shortcut panel holds built rows to refresh.
     connect(

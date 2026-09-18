@@ -7,15 +7,14 @@
 #include "auth/token_store.h"
 #include "backend/domain.h"
 
+#include <QHideEvent>
 #include <QList>
 #include <QWidget>
 
 #include <functional>
 #include <QPoint>
 #include <QRect>
-#include <QList>
 #include <QTimer>
-#include <QHideEvent>
 
 class QFrame;
 class QLabel;
@@ -67,22 +66,26 @@ public:
     enum class SampleNotif { Dm = 0, Channel = 1, Huddle = 2 };
 
 signals:
-    // Emitted when appearance settings are saved; carries the new relevantDays value.
+    // Emitted when appearance settings are saved; carries the new relevantDays
+    // value.
     void appearanceChanged(int relevantDays);
     // Emitted when the 12h/24h preference (or language, which affects date
     // patterns) is saved, so timestamp-painting views can repaint.
     void timeFormatChanged();
     // Emitted when the threads display mode is saved (true = inline, false =
-    // standalone panel), so the message list can switch how "View thread" behaves.
+    // standalone panel), so the message list can switch how "View thread"
+    // behaves.
     void threadDisplayChanged(bool inlineThreads);
     // Emitted when the "Show the Agents & apps section" toggle is saved.
     void agentsAppsVisibilityChanged(bool visible);
     // Emitted when the "Show only unread conversations" toggle is saved.
     void unreadsOnlyChanged(bool on);
+    void linkPreviewsChanged(bool on);
     // Emitted when the composer's send key (Enter vs Ctrl+Enter) is saved with
     // a new value; the welcome screen's shortcut panel re-reads the registry.
     void sendKeyChanged();
-    // Emitted after conv/visitedAt is wiped so the conv list can re-seed from API data.
+    // Emitted after conv/visitedAt is wiped so the conv list can re-seed from API
+    // data.
     void stateCleared();
     // Emitted when notification settings (incl. the global default level) are
     // saved, so the conv list and unread badges can re-resolve effective levels.
@@ -119,7 +122,8 @@ private:
     QWidget               *buildAiPage();
     void                   refreshAiProviders(); // rebuild the provider rows from LlmService
     void                   applyAiTheme();       // rows are created on the fly → styled on demand
-    // Inline provider editor. providerId empty → add a new OpenAI-compatible server.
+    // Inline provider editor. providerId empty → add a new OpenAI-compatible
+    // server.
     void                   showAiEditor(const QString &providerId);
     void                   hideAiEditor();
     void                   saveAiEditor();
@@ -190,6 +194,7 @@ private:
     QCheckBox                *_showAgentsApps   = nullptr;
     QCheckBox                *_unreadsOnly      = nullptr;
     QCheckBox                *_ctrlEnterSends   = nullptr;
+    QCheckBox                *_showLinkPreviews = nullptr;
     QList<ThemePreviewCard *> _themeCards; // every preset + custom: light row then dark row
     QWidget                  *_customSection = nullptr; // heading + editor; shown when custom
     CustomThemeEditor        *_customEditor  = nullptr;

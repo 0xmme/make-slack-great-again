@@ -49,8 +49,8 @@ using Ts = QString;
 // backfills it for legacy cached messages that predate the field, so both paths
 // agree to the microsecond. Transitional: once `ts` is treated as fully opaque
 // (the planned Ts→MessageId step), backends produce `date` directly and the
-// cache simply stores/loads it. Integer-parsed (not toDouble) to avoid precision
-// loss on the 16-significant-digit value.
+// cache simply stores/loads it. Integer-parsed (not toDouble) to avoid
+// precision loss on the 16-significant-digit value.
 inline qint64 decimalTsToMicros(const QString &ts) {
     const int dot = ts.indexOf(QLatin1Char('.'));
     if (dot < 0)
@@ -137,9 +137,9 @@ enum class NotificationLevel { Default, All, Mentions, Mute };
 
 // What a backend supports. EVERY flag defaults false: a feature is opt-in, so a
 // backend that forgets to set a flag silently *hides* the feature rather than
-// claiming one it can't honor. The UI gates Slack-only affordances on these (see
-// the canvas tab and huddle call sites) so a future Telegram/Teams backend that
-// lacks them shows a clean surface with no dead controls.
+// claiming one it can't honor. The UI gates Slack-only affordances on these
+// (see the canvas tab and huddle call sites) so a future Telegram/Teams backend
+// that lacks them shows a clean surface with no dead controls.
 struct Capabilities {
     bool typing        = false; // live "user is typing" events (internal path only)
     bool presence      = false; // service has any user presence (online/away dots at all).
@@ -298,7 +298,8 @@ struct Conversation {
     bool           isMember    = false;
     int            memberCount = 0; // num_members from conversations.list; 0 for DMs
     Ts             lastRead;
-    Ts             latestTs; // ts of most recent message (from conversations.list "latest.ts")
+    Ts             latestTs; // ts of most recent message (from conversations.list
+                             // "latest.ts")
     int            unread       = 0;
     int            mentionCount = 0; // @mentions in channels; for DMs treat all unread as mentions
     std::optional<UserId> dmUser;    // set for Im conversations
@@ -308,8 +309,9 @@ struct Conversation {
     // Purely local "mute this person" switch (DM context menu). Unlike isMuted /
     // NotificationLevel::Mute it does NOT silence the chat in the list — the
     // conversation still shows its bold "unread" emphasis. It only suppresses the
-    // outward signals: no OS notification, no tray ball, no workspace ball, and no
-    // red unread counter. No backend supports it, so it lives only in our cache.
+    // outward signals: no OS notification, no tray ball, no workspace ball, and
+    // no red unread counter. No backend supports it, so it lives only in our
+    // cache.
     bool                  locallyMuted = false;
     // A name the user gave this group DM in msga ("Name conversation…" in the
     // chats-list menu). Purely local: shown instead of the member list on every
@@ -317,35 +319,35 @@ struct Conversation {
     // any backend and on OAuth workspaces alike. Lives only in our cache.
     QString               localName;
     NotificationLevel     notifLevel = NotificationLevel::Default;
-    QString canvasFileId; // channel canvas file id (conversations.info "properties.canvas"); empty
-                          // = none
-    bool    canvasIsEmpty = false;
+    QString               canvasFileId; // channel canvas file id (conversations.info
+                                        // "properties.canvas"); empty = none
+    bool                  canvasIsEmpty = false;
     // A Slack huddle is currently live in this conversation. Derived from the
     // conversations.info `room` object — the only ToS-clean, channel-attached
     // huddle signal our token can see (huddles aren't in the public API; the
     // RTM user_huddle_changed event isn't delivered over Socket Mode and is
     // user-keyed, not channel-keyed).
-    bool    huddleActive  = false;
+    bool                  huddleActive  = false;
     // Preferred join URL straight from the room (`huddle_link`), e.g.
     // https://app.slack.com/huddle/<team>/<channel>; empty falls back to a
     // constructed link.
-    QString huddleLink;
+    QString               huddleLink;
     // People to show on the huddle indicator: current participants, or the host
     // (`created_by`) alone for a freshly-started "prewarmed" huddle that nobody
     // has connected to yet.
-    std::vector<UserId> huddleParticipants;
+    std::vector<UserId>   huddleParticipants;
     // Email backends only: the subject a reply into this thread should use
     // ("Re: <latest subject>"), so the composer can prefill it. Empty for chat
     // services and for brand-new conversations with no thread yet.
-    QString             replySubject;
+    QString               replySubject;
     // Transient wire-signal, never cached/persisted: set by loadConversationInfo
     // when conversations.info answers `channel_not_found` (the conversation does
     // not exist for this workspace — another workspace's conv off the shared
     // socket, or a dead DM). Lets Session tell a definitive "gone" from a
     // transient failure and stop re-fetching it, without confusing it for a real
     // conversation. Only ever true on that sentinel result; a real conv is false.
-    bool                notFound                               = false;
-    bool                operator==(const Conversation &) const = default;
+    bool                  notFound                               = false;
+    bool                  operator==(const Conversation &) const = default;
 };
 
 // The name to title a group DM with before falling back to its member list:
@@ -439,12 +441,12 @@ inline bool shouldNotifyHuddleStart(
 // One conversation's server-side activity/badge state, as reported by a single
 // whole-workspace snapshot call (Slack's `client.counts`). This is the cheap
 // signal a poll-only backend needs: without a push transport, the ONLY way a
-// message in a conversation the user hasn't opened can ever surface is for us to
-// notice the conversation moved and then fetch its history. One request answers
-// that for every conversation at once — vastly cheaper than a per-conversation
-// info sweep, and unlike conversations.list it also reports channels.
-// Fields absent from a given backend's response stay empty/zero; the consumer
-// diffs whatever it does get (see Session::applyActivitySnapshot).
+// message in a conversation the user hasn't opened can ever surface is for us
+// to notice the conversation moved and then fetch its history. One request
+// answers that for every conversation at once — vastly cheaper than a
+// per-conversation info sweep, and unlike conversations.list it also reports
+// channels. Fields absent from a given backend's response stay empty/zero; the
+// consumer diffs whatever it does get (see Session::applyActivitySnapshot).
 struct ConvCounts {
     ConversationId id;
     Ts             latestTs; // ts of the newest message the server knows
@@ -457,12 +459,14 @@ struct ConvCounts {
 // Click-target of an OS notification, round-tripped through the notifier (and,
 // on Windows, an msga:// protocol activation) as a 0x1f-separated token:
 // "teamId\x1fconvId", or "teamId\x1fconvId\x1frootTs" when the notified message
-// is a thread reply. The root matters because conversations.history omits thread
-// replies, so opening the channel alone lands on a timeline the reply isn't in
-// ("notification, but nothing there") — the root routes the click to the thread.
-// A reminder notification appends a fourth field, the reminded message's own ts
-// ("teamId\x1fconvId\x1frootTs\x1fmsgTs", rootTs left empty for a non-reply), so
-// the click can scroll to the exact message rather than just open the chat.
+// is a thread reply. The root matters because conversations.history omits
+// thread replies, so opening the channel alone lands on a timeline the reply
+// isn't in
+// ("notification, but nothing there") — the root routes the click to the
+// thread. A reminder notification appends a fourth field, the reminded
+// message's own ts
+// ("teamId\x1fconvId\x1frootTs\x1fmsgTs", rootTs left empty for a non-reply),
+// so the click can scroll to the exact message rather than just open the chat.
 // Encapsulated + unit-tested because the field splitting is easy to get subtly
 // wrong (e.g. a naive indexOf swallowing the root into the conv id).
 struct NotifTarget {
@@ -497,12 +501,13 @@ inline std::optional<NotifTarget> decodeNotifToken(const QString &token) {
 }
 
 // Click-target of the "session expired" notification (raised when a workspace's
-// credentials are rejected for good while the window is tucked away in the tray,
-// so the user learns they have to sign in again). Distinct from a conversation
-// token: there is no chat to open, only a workspace to bring back to the login
-// screen. The "relogin" prefix can never collide with a real team id (Slack ids
-// are uppercase alphanumerics), and the 0x1f separator matches the codec above
-// so the Windows msga://notif round trip treats both tokens the same way.
+// credentials are rejected for good while the window is tucked away in the
+// tray, so the user learns they have to sign in again). Distinct from a
+// conversation token: there is no chat to open, only a workspace to bring back
+// to the login screen. The "relogin" prefix can never collide with a real team
+// id (Slack ids are uppercase alphanumerics), and the 0x1f separator matches
+// the codec above so the Windows msga://notif round trip treats both tokens the
+// same way.
 inline QString encodeReloginNotifToken(const QString &teamId) {
     return QStringLiteral("relogin") + QChar(0x1f) + teamId;
 }
@@ -517,13 +522,13 @@ inline std::optional<QString> decodeReloginNotifToken(const QString &token) {
 
 // A per-message reminder (Slack's "Save for Later" item with a due date; see
 // Backend::loadMessageReminders). The backend fills conv/ts/dueAt from the
-// server; threadRoot/snippet/author/bot* /fired are local enrichment the Session
-// captures at set time (the server item doesn't carry them) and persists so the
-// reminder's notification can route to the thread, show a preview, and show who
-// wrote the message. `fired` marks a reminder whose notification was already
-// raised, so a restart doesn't re-announce it; the item itself stays (blue tint,
-// "remove reminder") until the user removes it — matching the official client's
-// overdue behaviour.
+// server; threadRoot/snippet/author/bot* /fired are local enrichment the
+// Session captures at set time (the server item doesn't carry them) and
+// persists so the reminder's notification can route to the thread, show a
+// preview, and show who wrote the message. `fired` marks a reminder whose
+// notification was already raised, so a restart doesn't re-announce it; the
+// item itself stays (blue tint, "remove reminder") until the user removes it —
+// matching the official client's overdue behaviour.
 struct MessageReminder {
     ConversationId conv;
     Ts             ts;
@@ -653,10 +658,12 @@ struct TextWithEntities {
 
 // --- Phase 3: Files, Blocks, Attachments ---
 
-// One entry of a Slack file's prerendered thumbnail ladder (thumb_64 … thumb_1024).
+// One entry of a Slack file's prerendered thumbnail ladder (thumb_64 …
+// thumb_1024).
 struct FileThumb {
-    int width = 0; // actual pixel width (thumb_N_w; N is the long side, so width < N for portraits)
-    int height = 0;
+    int     width  = 0; // actual pixel width (thumb_N_w; N is the long side, so width
+                        // < N for portraits)
+    int     height = 0;
     QString url; // auth required
     bool    operator==(const FileThumb &) const = default;
 };
@@ -738,8 +745,9 @@ struct File {
     bool isCsv() const {
         return mimeType == "text/csv" || name.endsWith(QLatin1String(".csv"), Qt::CaseInsensitive);
     }
-    // True when Slack provides a prerendered preview image: the image itself, or the
-    // server-rendered first page of a PDF (thumb_pdf) — no client-side rendering needed.
+    // True when Slack provides a prerendered preview image: the image itself, or
+    // the server-rendered first page of a PDF (thumb_pdf) — no client-side
+    // rendering needed.
     bool hasPreview() const { return isImage() || (isPdf() && !thumbUrl.isEmpty()); }
     bool operator==(const File &) const = default;
 };
@@ -801,6 +809,9 @@ struct Attachment {
     std::vector<AttachmentField> fields;  // bold-titled key/value rows (classic bot format)
     std::vector<Block>           blocks;  // Block Kit blocks embedded in this attachment
     std::vector<BotButton>       buttons; // legacy "actions" buttons (classic bot format)
+
+    // A web-link preview, distinct from bot content and shared Slack messages.
+    bool isLinkPreview = false;
 
     // --- Shared-message unfurl (Slack's `is_msg_unfurl`) ---
     // A message quoted into another conversation by pasting its permalink. The
@@ -952,8 +963,8 @@ inline bool canHostThread(const Message &m) {
     return !isSystemEvent(m) && !isMutedMessage(m);
 }
 
-// The thread `m` belongs to, identified by the root's ts: `m` itself when it's a
-// thread root with replies, or its threadRoot when it's a reply. nullopt when
+// The thread `m` belongs to, identified by the root's ts: `m` itself when it's
+// a thread root with replies, or its threadRoot when it's a reply. nullopt when
 // `m` isn't part of any thread (so no thread-mute affordance should be shown).
 inline std::optional<Ts> threadRootOf(const Message &m) {
     if (m.threadRoot)
@@ -998,8 +1009,9 @@ struct OutgoingMessage {
     // Anchors the duplicate-check window when a send must be reconciled after
     // a connection loss (server-assigned, so immune to local clock skew).
     Ts                sinceTs;
-    // Per-message subject (email backends, gated by Capabilities::messageSubjects;
-    // empty for chat services). On a reply the backend inherits the thread subject.
+    // Per-message subject (email backends, gated by
+    // Capabilities::messageSubjects; empty for chat services). On a reply the
+    // backend inherits the thread subject.
     QString           subject;
 };
 
@@ -1026,15 +1038,16 @@ struct EvMessageDeleted {
     std::optional<Ts> threadRoot;
 };
 // The realtime safety poll re-fetched the open conversation's head page. Unlike
-// EvMessageNew — which the poll fires only for messages NEWER than the latest ts
-// we already hold — this carries the WHOLE head page so the open MessageList can
-// merge it. That fills a *middle* gap: a run of messages the shared socket's
-// round-robin steal dropped, which then got buried under a later message that
-// arrived normally. Once a newer message exists, the "newer than latest" filter
-// can never recover the buried run, so nothing did — the gap sat forever. The
-// merge (mergeNetworkMessages, fromHeadPage) inserts them in order and also
-// reconciles edits/deletions on the head. Open conversation only; the poll fires
-// it foreground-only, where a MessageList is actually showing these rows.
+// EvMessageNew — which the poll fires only for messages NEWER than the latest
+// ts we already hold — this carries the WHOLE head page so the open MessageList
+// can merge it. That fills a *middle* gap: a run of messages the shared
+// socket's round-robin steal dropped, which then got buried under a later
+// message that arrived normally. Once a newer message exists, the "newer than
+// latest" filter can never recover the buried run, so nothing did — the gap sat
+// forever. The merge (mergeNetworkMessages, fromHeadPage) inserts them in order
+// and also reconciles edits/deletions on the head. Open conversation only; the
+// poll fires it foreground-only, where a MessageList is actually showing these
+// rows.
 struct EvHeadRefresh {
     ConversationId       conv;
     std::vector<Message> messages;
@@ -1125,11 +1138,12 @@ struct EvRealtimeReconnected {};
 // explicit too-many-connections disconnect. Both mean another client is sharing
 // this app's ≤10-connection pool — Socket Mode connections are keyed by the
 // app-level xapp token, which is compiled into every msga build, so a second
-// instance anywhere (another device, a coworker, a dev/release build) churns the
-// same pool and Slack round-robins us out. The result is a reconnect storm rather
-// than a transport failure. App-level (the socket is shared by all workspaces),
-// so it carries no conv; surfaced so the UI can name the cause instead of the
-// user seeing an unexplained flapping connection. See socket_mode_realtime.h.
+// instance anywhere (another device, a coworker, a dev/release build) churns
+// the same pool and Slack round-robins us out. The result is a reconnect storm
+// rather than a transport failure. App-level (the socket is shared by all
+// workspaces), so it carries no conv; surfaced so the UI can name the cause
+// instead of the user seeing an unexplained flapping connection. See
+// socket_mode_realtime.h.
 //
 // `otherConnections` is how many connections in the app's pool are NOT ours,
 // read straight from the `hello` frame's num_connections (0 when the count is
@@ -1187,8 +1201,8 @@ struct SearchResult {
 
 // --- Slash commands ---
 
-// A slash command available in the workspace ("/remind", an app's "/github", …).
-// Built-in Slack commands have an empty appId.
+// A slash command available in the workspace ("/remind", an app's "/github",
+// …). Built-in Slack commands have an empty appId.
 struct SlashCommand {
     QString name;    // without the leading slash, e.g. "remind"
     QString desc;    // human-readable description

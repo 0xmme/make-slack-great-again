@@ -10,15 +10,15 @@
 
 #include <QDeadlineTimer>
 #include <QElapsedTimer>
-#include <QVariantAnimation>
-#include <QSet>
 #include <QHash>
-#include <QStaticText>
 #include <QPixmap>
+#include <QSet>
+#include <QStaticText>
 #include <QStringList>
 #include <QTextDocument> // structs below hold unique_ptr<QTextDocument>; need the
-                         // complete type so their (implicit) destructors are
-                         // instantiable wherever this header is consumed.
+#include <QVariantAnimation>
+// complete type so their (implicit) destructors are
+// instantiable wherever this header is consumed.
 #include <QTimer>
 
 #include <map>
@@ -70,7 +70,8 @@ struct MessageItem {
     mutable int         stNameW = 0;
 };
 
-// Aggregates the constant viewport geometry computed at the start of every paint/hit-test.
+// Aggregates the constant viewport geometry computed at the start of every
+// paint/hit-test.
 struct PaintContext {
     int vw;        // viewport()->width()
     int scrollY;   // verticalScrollBar()->value()
@@ -79,7 +80,8 @@ struct PaintContext {
     int textWidth; // vw - textLeft - kPadH
 };
 
-// Character position inside a painted message (used for text-selection hit testing).
+// Character position inside a painted message (used for text-selection hit
+// testing).
 struct TextPos {
     int  row    = -1; // index into _items (-1 = invalid)
     int  offset = 0;  // character offset within that message's QTextDocument
@@ -102,7 +104,8 @@ public:
     // it read — when set, the list opens scrolled to the first message after it
     // (the first unread); when empty, it opens scrolled to the bottom.
     void openConversation(ConversationId conv, const Ts &lastReadTs = {});
-    // Open a thread view: loads conversations.replies and filters events accordingly.
+    // Open a thread view: loads conversations.replies and filters events
+    // accordingly.
     void openThread(ConversationId conv, Ts rootTs);
     void clear();
     void setSession(Session *session);
@@ -111,6 +114,7 @@ public:
     // reply bar expands the replies underneath the message instead of opening
     // the standalone panel. Switching modes collapses any inline expansions.
     void setThreadsInline(bool on);
+    void setLinkPreviewsEnabled(bool on);
     // The thread root currently shown in the standalone panel ({} when none).
     // Drives the reply-bar "Close thread" copy in standalone mode. Pass {} when
     // the panel is closed — this only clears the open-root, it never collapses an
@@ -125,7 +129,8 @@ public:
     void saveScrollAnchor();
 
     // Show/hide a full-area loading spinner independent of conversation state.
-    // Used while the conversation list itself is loading (before any conv can be opened).
+    // Used while the conversation list itself is loading (before any conv can be
+    // opened).
     void setWaiting(bool waiting);
 
     // Returns the most recent non-system message authored by `me`, or nullopt.
@@ -160,13 +165,16 @@ signals:
     // ready to display — immediately if loaded from cache, otherwise when the
     // first network response arrives.
     void initialPageLoaded();
-    // Emitted in channel mode when user clicks the "N replies" bar on a thread root.
+    // Emitted in channel mode when user clicks the "N replies" bar on a thread
+    // root.
     void threadClicked(ConversationId conv, Ts rootTs);
     // Emitted when the user closes a thread from the message list — either by
     // clicking "Close thread" on an open reply bar (standalone) or by collapsing
-    // an inline expansion whose panel is also open. The host should hide the panel.
+    // an inline expansion whose panel is also open. The host should hide the
+    // panel.
     void threadCloseRequested();
-    // Emitted when "Edit message" is chosen; caller should call composer->enterEditMode().
+    // Emitted when "Edit message" is chosen; caller should call
+    // composer->enterEditMode().
     void editMessageRequested(Ts ts, QString rawText, std::vector<File> files);
     // Emitted when "Forward message" is chosen.
     void forwardMessageRequested(Message msg);
@@ -247,8 +255,8 @@ private:
     // report appears in a SummaryDialog when ready.
     void         startSummarizeDown(const Ts &fromTs);
     void         downloadFileToUser(const File &file);
-    // Copy the full-resolution image (not the preview thumbnail) to the clipboard,
-    // fetching it from disk / cache / network as needed.
+    // Copy the full-resolution image (not the preview thumbnail) to the
+    // clipboard, fetching it from disk / cache / network as needed.
     void         copyFullImageToClipboard(const File &file);
     void         showFileContextMenu(const File &file, const Message &msg, const QPoint &globalPos);
     // "Preview" on a CSV file chip: download the file, parse it into a table
@@ -283,8 +291,8 @@ private:
     // doesn't replay them). Driven by EvRealtimeReconnected.
     void backfillAfterReconnect();
     // Merge an already-fetched page into the open conversation/thread, caching it
-    // and preserving scroll. Shared by backfillAfterReconnect() (which fetches the
-    // page itself) and the EvHeadRefresh path (where the safety poll already
+    // and preserving scroll. Shared by backfillAfterReconnect() (which fetches
+    // the page itself) and the EvHeadRefresh path (where the safety poll already
     // fetched it — reused so no extra conversations.history call is made). No-ops
     // unless `conv` is the open conversation. `authoritative` forwards to
     // mergeNetworkMessages' fromHeadPage: true only when `messages` really is the
@@ -294,8 +302,9 @@ private:
     );
     // Thread-mode counterpart of the EvHeadRefresh merge. The safety poll fetches
     // conversations.history, which NEVER contains thread replies, so that page
-    // can't refresh an open thread — but the thread root in it can tell us whether
-    // the thread moved, and we re-fetch conversations.replies when it did.
+    // can't refresh an open thread — but the thread root in it can tell us
+    // whether the thread moved, and we re-fetch conversations.replies when it
+    // did.
     void refreshOpenThread(const ConversationId &conv, const std::vector<Message> &headPage);
     // Newest ts among confirmed (non-pending) rows, or empty when there are none.
     Ts   newestConfirmedTs() const;
@@ -338,7 +347,8 @@ private:
     int  firstVisibleRow(int docY) const;
     // Lazy layout: the expensive QTextDocument::size() runs only for rows that
     // become visible; off-screen rows use a cheap text-length estimate until a
-    // background pass measures them. rowMeasured() == laid out at the current width.
+    // background pass measures them. rowMeasured() == laid out at the current
+    // width.
     bool rowMeasured(const MessageItem &item) const;
     int  estimatedTextHeight(const QString &text) const;
     int  estimatedDocHeight(const MessageItem &item) const;
@@ -380,7 +390,8 @@ private:
     bool isSystemRow(int index) const { return isSystemEvent(_items[index].msg); }
     void paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const;
     // Draw the name + APP badge + timestamp header line at the given text column
-    // left and content top. Shared by full message rows and inline thread replies.
+    // left and content top. Shared by full message rows and inline thread
+    // replies.
     void paintMessageHeader(QPainter &p, const MessageItem &item, int textLeft, int contTop) const;
     void paintReactions(
         QPainter &p, const MessageItem &item, const PaintContext &ctx, int top, int index
@@ -473,7 +484,8 @@ private:
     // Attachment height helpers
     int
     attachImageH(const Attachment &att) const; // preview image height (includes kImgGap), 0 if none
-    int attachTotalH(const MessageItem &item, int ai) const; // whole attachment box
+    int attachTotalH(const MessageItem &item,
+                     int                ai) const; // whole attachment box
 
     // Layout of one attachment box. A shared-message unfurl is a card: the frame,
     // the quoted author's header and its file chips are painted around a document
@@ -483,7 +495,8 @@ private:
     // they cannot drift apart.
     QPoint attachDocOffset(const Attachment &att) const;
     int    attachDocWidth(const Attachment &att, int columnW) const;
-    // Height of the quoted message's file chips painted under the body (0 if none).
+    // Height of the quoted message's file chips painted under the body (0 if
+    // none).
     int    attachFilesH(const Attachment &att) const;
     // Chip #fileIdx of a quoted message, laid out under `docRect` (the document's
     // rect in the same coordinate space the caller wants the chip in).
@@ -547,11 +560,13 @@ private:
     // Rect of toolbar button i for the given row top/height, in viewport coords.
     QRect   toolbarButtonRect(int btn, int rowTop, int rowH) const;
 
-    // Returns {msgIdx, reactionIdx} of the reaction chip under viewportPos, else {-1,-1}.
-    // When a chip is hit and outChipRect is non-null, it receives the chip's viewport rect.
+    // Returns {msgIdx, reactionIdx} of the reaction chip under viewportPos, else
+    // {-1,-1}. When a chip is hit and outChipRect is non-null, it receives the
+    // chip's viewport rect.
     std::pair<int, int> reactionAt(const QPoint &viewportPos, QRect *outChipRect = nullptr) const;
 
-    // Shows the hover preview (emoji + reactor names) for reaction `ri` on row `mi`.
+    // Shows the hover preview (emoji + reactor names) for reaction `ri` on row
+    // `mi`.
     void showReactionTooltip(int mi, int ri, const QRect &chipVpRect);
 
     // ── Animated images (GIF / animated WebP) ──
@@ -613,13 +628,17 @@ private:
     QString selectedText() const;
 
     // Dismiss button for link-preview attachments.
-    // Returns {msgIdx, attachIdx} if pos is on a dismiss "×" button, else {-1,-1}.
+    // Returns {msgIdx, attachIdx} if pos is on a dismiss "×" button, else
+    // {-1,-1}.
     std::pair<int, int> dismissButtonAt(const QPoint &viewportPos) const;
-    // Returns the viewport rect of dismiss button (msgIdx, attachIdx), or null rect.
+    // Returns the viewport rect of dismiss button (msgIdx, attachIdx), or null
+    // rect.
     QRect               dismissButtonVpRect(int msgIdx, int attachIdx) const;
-    bool                isDismissed(const Ts &ts, int ai) const {
-        return _dismissedAttachments.contains(ts + "/" + QString::number(ai));
+    bool                isAttachmentHidden(const Message &msg, int ai) const {
+        return (!_showLinkPreviews && msg.attachments[ai].isLinkPreview) ||
+               _dismissedAttachments.contains(msg.ts + "/" + QString::number(ai));
     }
+    bool hasVisibleAttachments(const Message &msg) const;
 
     // Layout constants (all in logical pixels)
     static constexpr int kPadH            = 16; // horizontal margin on both sides
@@ -652,8 +671,9 @@ private:
     static constexpr int kImgMaxH         = 300; // max inline image height
     static constexpr int kImgGap          = 6;   // gap above each inline image
     static constexpr int kImgNameH        = 14;  // height of the filename label above each image
-    // Multi-image gallery (2+ inline previews): equal cover-cropped tiles laid out
-    // in wrapping rows, like the official Slack client. No per-image filename label.
+    // Multi-image gallery (2+ inline previews): equal cover-cropped tiles laid
+    // out in wrapping rows, like the official Slack client. No per-image filename
+    // label.
     static constexpr int kGalleryTileH    = 180; // fixed tile height (the "max height")
     static constexpr int kGalleryGap      = 8;   // gap between gallery tiles (h & v)
     static constexpr int kGalleryMaxW     = 520; // max gallery width (wider than single-image cap)
@@ -692,12 +712,13 @@ private:
     ConversationId          _currentConv;
     bool                    _isThreadMode = false;
     Ts                      _threadRootTs;
-    // Rate-gate for backfillAfterReconnect(): each EvRealtimeReconnected triggers a
-    // head-history (conversations.history) fetch, and a flapping socket fires that
-    // event repeatedly. conversations.history is Slack's tightest budget (~1 req/min
-    // for non-Marketplace apps), so collapse a burst of reconnects into one backfill
-    // per window; a genuine reconnect still refetches, and Session's periodic history
-    // poll covers anything skipped. Wall-clock (matches Session's reconnect gates).
+    // Rate-gate for backfillAfterReconnect(): each EvRealtimeReconnected triggers
+    // a head-history (conversations.history) fetch, and a flapping socket fires
+    // that event repeatedly. conversations.history is Slack's tightest budget (~1
+    // req/min for non-Marketplace apps), so collapse a burst of reconnects into
+    // one backfill per window; a genuine reconnect still refetches, and Session's
+    // periodic history poll covers anything skipped. Wall-clock (matches
+    // Session's reconnect gates).
     qint64                  _lastReconnectBackfillMs = 0;
     static constexpr qint64 kReconnectBackfillGapMs  = 30'000;
 
@@ -727,12 +748,14 @@ private:
     QVariantAnimation _scrollAnim;
     void              smoothScrollTo(int target);
 
-    // Public-URL images (avatars, attachment previews, favicons) — owned by the caller,
-    // shared across widgets. Emits loaded() when a download completes.
+    // Public-URL images (avatars, attachment previews, favicons) — owned by the
+    // caller, shared across widgets. Emits loaded() when a download completes.
     ImageCache                     *_imgCache = nullptr;
-    // Auth-required file image downloads (Slack CDN, private URLs via session token).
+    // Auth-required file image downloads (Slack CDN, private URLs via session
+    // token).
     mutable QHash<QString, QPixmap> _fileImages;
-    // Preview pixmaps pre-scaled to physical pixels for the current DPR (see scaledPreview).
+    // Preview pixmaps pre-scaled to physical pixels for the current DPR (see
+    // scaledPreview).
     mutable QHash<QString, QPixmap> _scaledPreviews;
     // DPR the visible previews were requested for; a change (window moved to a
     // screen with a different density) re-triggers downloads at the new density.
@@ -741,7 +764,8 @@ private:
     // fileImgBaseH memo (a loaded pixmap can change a preview's size).
     mutable quint32                 _fileImagesGen = 0;
 
-    // New-message highlight: ts → elapsed ms since arrival (driven by _highlightTimer)
+    // New-message highlight: ts → elapsed ms since arrival (driven by
+    // _highlightTimer)
     QSet<QString>     _newMsgTs;
     QVariantAnimation _highlightAnim;
 
@@ -769,7 +793,8 @@ private:
     // conv.value → saved reading position. An entry is written for every chat the
     // user leaves, so returning to it always restores where they were — including
     // "at the bottom" (atBottom), which is sticky and overrides the first-unread
-    // placement. Survives conversation and workspace switches (clear() leaves it).
+    // placement. Survives conversation and workspace switches (clear() leaves
+    // it).
     struct SavedAnchor {
         bool atBottom = false; // left at the bottom — restore to the bottom
         Ts   ts;               // otherwise anchor to this message ts...
@@ -781,14 +806,15 @@ private:
     TextPos       _selAnchor;              // where the drag started
     TextPos       _selFocus;               // current drag end
     bool          _selDragging    = false; // true while LMB is held and dragging a selection
-    // Triple-click detection: Qt delivers the third click as a plain press after the
-    // double-click, so we track the last double-click to recognise it.
+    // Triple-click detection: Qt delivers the third click as a plain press after
+    // the double-click, so we track the last double-click to recognise it.
     unsigned long _lastDblClickTs = 0;
     QPoint        _lastDblClickPos;
 
     int                 _hoveredRow     = -1; // index of the row the mouse is over, or -1
     int                 _hoveredToolBtn = -1; // 0=emoji, 1=forward, 2=more; -1=none
-    // {msgIdx, attachIdx} of the attachment preview the cursor is over, else {-1,-1}
+    // {msgIdx, attachIdx} of the attachment preview the cursor is over, else
+    // {-1,-1}
     std::pair<int, int> _hoveredAttach  = {-1, -1};
     // {msgIdx, fileIdx} of the file chip/image the cursor is over, else {-1,-1}
     std::pair<int, int> _hoveredFile    = {-1, -1};
@@ -813,6 +839,7 @@ private:
 
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;
+    bool          _showLinkPreviews = true;
 
     // Image blocks the user collapsed via their "GIF ▾" title line.
     // Key: ts [+ "/a" + attachIndex] + "/b" + blockIndex (see GifRenderContext).

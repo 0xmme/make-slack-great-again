@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "thread_panel.h"
-#include "ui/message_list/message_list.h"
+#include "session/session.h"
 #include "ui/composer/composer_widget.h"
 #include "ui/file_dialog_utils.h"
 #include "ui/icon_button/icon_button.h"
 #include "ui/icon_utils.h"
+#include "ui/message_list/message_list.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "ui/thread_panel/thread_export_job.h"
-#include "session/session.h"
 
 #include <QDateTime>
 #include <QDir>
-#include <QLabel>
+#include <QHBoxLayout>
 #include <QHideEvent>
+#include <QLabel>
 #include <QLinearGradient>
 #include <QMoveEvent>
 #include <QPainter>
+#include <QPushButton>
 #include <QResizeEvent>
 #include <QShowEvent>
 #include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QPushButton>
 
 namespace {
 
@@ -275,6 +275,10 @@ void ThreadPanel::refreshMuteButton() {
 
 void ThreadPanel::refreshTimestamps() {
     _msgList->viewport()->update();
+}
+
+void ThreadPanel::setLinkPreviewsEnabled(bool on) {
+    _msgList->setLinkPreviewsEnabled(on);
 }
 
 void ThreadPanel::pauseGifPlayback() {

@@ -12,8 +12,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
+#include <algorithm>
 
-// ── JSON serialization helpers ────────────────────────────────────────────────
+// ── JSON serialization helpers
+// ────────────────────────────────────────────────
 
 static QJsonObject toJson(const TextEntity &e) {
     QJsonObject o;
@@ -210,6 +212,7 @@ static QJsonObject toJson(const Attachment &a) {
         o["fc"] = a.footerIcon;
     if (a.msgDate > 0)
         o["md"] = QString::number(a.msgDate); // epoch micros; string-encoded like Message::date
+    o["lp"] = a.isLinkPreview;
     if (a.imageWidth > 0)
         o["iw"] = a.imageWidth;
     if (a.imageHeight > 0)
@@ -255,22 +258,23 @@ static QJsonObject toJson(const Attachment &a) {
 }
 static Attachment attachmentFromJson(const QJsonObject &o) {
     Attachment a;
-    a.fallback    = o["fb"].toString();
-    a.color       = o["co"].toString();
-    a.pretext     = o["pt"].toString();
-    a.authorName  = o["an"].toString();
-    a.title       = o["ti"].toString();
-    a.titleLink   = o["tl"].toString();
-    a.text        = tweFromJson(o["tx"].toObject());
-    a.imageUrl    = o["iu"].toString();
-    a.thumbUrl    = o["tu"].toString();
-    a.footer      = o["fo"].toString();
-    a.footerIcon  = o["fc"].toString();
-    a.msgDate     = o["md"].toString().toLongLong();
-    a.imageWidth  = o["iw"].toInt();
-    a.imageHeight = o["ih"].toInt();
-    a.thumbWidth  = o["tw"].toInt();
-    a.thumbHeight = o["tg"].toInt();
+    a.fallback      = o["fb"].toString();
+    a.color         = o["co"].toString();
+    a.pretext       = o["pt"].toString();
+    a.authorName    = o["an"].toString();
+    a.title         = o["ti"].toString();
+    a.titleLink     = o["tl"].toString();
+    a.text          = tweFromJson(o["tx"].toObject());
+    a.imageUrl      = o["iu"].toString();
+    a.thumbUrl      = o["tu"].toString();
+    a.footer        = o["fo"].toString();
+    a.footerIcon    = o["fc"].toString();
+    a.msgDate       = o["md"].toString().toLongLong();
+    a.imageWidth    = o["iw"].toInt();
+    a.imageHeight   = o["ih"].toInt();
+    a.thumbWidth    = o["tw"].toInt();
+    a.thumbHeight   = o["tg"].toInt();
+    a.isLinkPreview = o["lp"].toBool();
     for (const auto &v : o["bl"].toArray())
         a.blocks.push_back(blockFromJson(v.toObject()));
     a.buttons = buttonsFromJson(o["bt"].toArray());
@@ -356,8 +360,27 @@ static Message messageFromJson(const QJsonObject &o) {
         m.files.push_back(fileFromJson(v.toObject()));
     for (const auto &v : o["bl"].toArray())
         m.blocks.push_back(blockFromJson(v.toObject()));
-    for (const auto &v : o["at"].toArray())
-        m.attachments.push_back(attachmentFromJson(v.toObject()));
+    for (const auto &v : o["at"].toArray()) {
+        const auto obj = v.toObject();
+        auto       att = attachmentFromJson(obj);
+        // Older caches discarded Slack's unfurl metadata. Only infer a preview
+        // when its target is also a link in the message body; a bot attachment
+        // with a linked title alone is not enough.
+        if (!obj.contains("lp") && !att.isMsgUnfurl && m.botName.isEmpty() &&
+            (!m.subtype || *m.subtype != QLatin1String("bot_message"))) {
+            const auto linksTo = [&](const QString &url) {
+                return !url.isEmpty() && std::any_of(
+                                             m.text.entities.begin(),
+                                             m.text.entities.end(),
+                                             [&](const TextEntity &e) {
+                                                 return e.type == EntityType::Link && e.data == url;
+                                             }
+                                         );
+            };
+            att.isLinkPreview = linksTo(att.titleLink) || linksTo(att.imageUrl);
+        }
+        m.attachments.push_back(std::move(att));
+    }
     // Re-derive the synthesized huddle label on every load — it must follow
     // the current locale, and rows cached before the transform existed have
     // empty text.
@@ -457,7 +480,8 @@ static Conversation convFromJson(const QJsonObject &o) {
     return c;
 }
 
-// ── WorkspaceCache ────────────────────────────────────────────────────────────
+// ── WorkspaceCache
+// ────────────────────────────────────────────────────────────
 
 WorkspaceCache::WorkspaceCache(const QString &handle) {
     const QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);

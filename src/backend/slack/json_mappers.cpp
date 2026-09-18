@@ -13,10 +13,11 @@ namespace JsonMappers {
 
 User toUser(const QJsonObject &o) {
     auto       profile     = o.value("profile").toObject();
-    // display_name / real_name are often "" (empty string, not null) → must check after toString()
-    // Prefer real_name: enterprise workspaces often auto-provision display_name from
-    // AD/LDAP as a username slug (e.g. "john.doe.dept") while real_name holds the
-    // human-readable full name ("John Doe").
+    // display_name / real_name are often "" (empty string, not null) → must check
+    // after toString() Prefer real_name: enterprise workspaces often
+    // auto-provision display_name from AD/LDAP as a username slug (e.g.
+    // "john.doe.dept") while real_name holds the human-readable full name ("John
+    // Doe").
     const auto rn          = profile.value("real_name").toString().trimmed();
     const auto dn          = profile.value("display_name").toString().trimmed();
     const auto displayName = !rn.isEmpty() ? rn : !dn.isEmpty() ? dn : o.value("name").toString();
@@ -99,15 +100,17 @@ Conversation toConversation(const QJsonObject &o) {
         return {};
     }();
 
-    // unread_count is not always populated by the API (often 0 for public channels).
-    // latestTs > lastRead is a reliable fallback: Slack timestamps are zero-padded
-    // fixed-width strings so lexicographic comparison is identical to numeric.
+    // unread_count is not always populated by the API (often 0 for public
+    // channels). latestTs > lastRead is a reliable fallback: Slack timestamps are
+    // zero-padded fixed-width strings so lexicographic comparison is identical to
+    // numeric.
     const int rawUnread = o.value("unread_count").toInt();
     const int unread    = rawUnread > 0 ? rawUnread
                           : (!latestTs.isEmpty() && !lastRead.isEmpty() && latestTs > lastRead) ? 1
                                                                                                 : 0;
 
-    // Channel canvas (conversations.info; conversations.list may omit "properties").
+    // Channel canvas (conversations.info; conversations.list may omit
+    // "properties").
     const auto [canvasFileId, canvasIsEmpty] = channelCanvas(o);
 
     // Huddle state: a live huddle attaches a `room` object to the channel.
@@ -456,7 +459,8 @@ File toFile(const QJsonObject &o) {
             }
         );
     }
-    // PDFs: Slack prerenders the first page server-side (thumb_pdf + thumb_pdf_w/h).
+    // PDFs: Slack prerenders the first page server-side (thumb_pdf +
+    // thumb_pdf_w/h).
     if (f.thumbUrl.isEmpty() && o.contains("thumb_pdf")) {
         f.thumbUrl    = o.value("thumb_pdf").toString();
         f.imageWidth  = o.value("thumb_pdf_w").toInt(f.imageWidth);
@@ -508,8 +512,9 @@ Block toBlock(const QJsonObject &o) {
     } else if (b.typeStr == "header" || b.typeStr == "section") {
         if (o.contains("text"))
             b.text = parseTextObj(o.value("text").toObject());
-        // Section blocks may carry a "fields" array instead of (or alongside) "text";
-        // append each field as its own line, shifting entity offsets accordingly.
+        // Section blocks may carry a "fields" array instead of (or alongside)
+        // "text"; append each field as its own line, shifting entity offsets
+        // accordingly.
         for (const auto &fv : o.value("fields").toArray()) {
             const TextWithEntities ft = parseTextObj(fv.toObject());
             if (ft.text.isEmpty())
@@ -620,25 +625,29 @@ Attachment toAttachment(const QJsonObject &o) {
             files.push_back(toFile(fv.toObject()));
 
     return Attachment{
-        .fallback      = o.value("fallback").toString(),
-        .color         = o.value("color").toString(),
-        .pretext       = o.value("pretext").toString(),
-        .authorName    = o.value("author_name").toString(),
-        .title         = o.value("title").toString(),
-        .titleLink     = o.value("title_link").toString(),
-        .text          = MrkdwnParser::parse(o.value("text").toString()),
-        .imageUrl      = o.value("image_url").toString(),
-        .thumbUrl      = o.value("thumb_url").toString(),
-        .faviconUrl    = o.value("service_icon").toString(),
-        .footer        = o.value("footer").toString(),
-        .footerIcon    = o.value("footer_icon").toString(),
-        .imageWidth    = o.value("image_width").toInt(),
-        .imageHeight   = o.value("image_height").toInt(),
-        .thumbWidth    = o.value("thumb_width").toInt(),
-        .thumbHeight   = o.value("thumb_height").toInt(),
-        .fields        = std::move(fields),
-        .blocks        = std::move(blocks),
-        .buttons       = std::move(buttons),
+        .fallback    = o.value("fallback").toString(),
+        .color       = o.value("color").toString(),
+        .pretext     = o.value("pretext").toString(),
+        .authorName  = o.value("author_name").toString(),
+        .title       = o.value("title").toString(),
+        .titleLink   = o.value("title_link").toString(),
+        .text        = MrkdwnParser::parse(o.value("text").toString()),
+        .imageUrl    = o.value("image_url").toString(),
+        .thumbUrl    = o.value("thumb_url").toString(),
+        .faviconUrl  = o.value("service_icon").toString(),
+        .footer      = o.value("footer").toString(),
+        .footerIcon  = o.value("footer_icon").toString(),
+        .imageWidth  = o.value("image_width").toInt(),
+        .imageHeight = o.value("image_height").toInt(),
+        .thumbWidth  = o.value("thumb_width").toInt(),
+        .thumbHeight = o.value("thumb_height").toInt(),
+        .fields      = std::move(fields),
+        .blocks      = std::move(blocks),
+        .buttons     = std::move(buttons),
+        .isLinkPreview =
+            !isMsgUnfurl && (o.value("is_app_unfurl").toBool() || o.value("is_unfurl").toBool() ||
+                             !o.value("original_url").toString().isEmpty() ||
+                             !o.value("from_url").toString().isEmpty()),
         .isMsgUnfurl   = isMsgUnfurl,
         .authorIcon    = o.value("author_icon").toString(),
         .authorSubname = o.value("author_subname").toString(),
@@ -703,37 +712,37 @@ Message toMessage(const QJsonObject &o) {
 
     const QString ts = msg.value("ts").toString();
     Message       m{
-              .ts         = ts,
-              .date       = decimalTsToMicros(ts), // epoch micros for sort + display
-              .threadRoot = msg.contains("thread_ts") && msg.value("thread_ts") != msg.value("ts")
-                                ? std::optional<Ts>(msg.value("thread_ts").toString())
-                                : std::nullopt,
-              .replyCount = msg.value("reply_count").toInt(),
-              .replyUsers =
+        .ts         = ts,
+        .date       = decimalTsToMicros(ts), // epoch micros for sort + display
+        .threadRoot = msg.contains("thread_ts") && msg.value("thread_ts") != msg.value("ts")
+                          ? std::optional<Ts>(msg.value("thread_ts").toString())
+                          : std::nullopt,
+        .replyCount = msg.value("reply_count").toInt(),
+        .replyUsers =
             [&] {
                 std::vector<UserId> v;
                 for (const auto &u : msg.value("reply_users").toArray())
                     v.push_back(UserId{u.toString()});
                 return v;
             }(),
-              .latestReply  = msg.contains("latest_reply")
-                                  ? std::optional<Ts>(msg.value("latest_reply").toString())
-                                  : std::nullopt,
+        .latestReply  = msg.contains("latest_reply")
+                            ? std::optional<Ts>(msg.value("latest_reply").toString())
+                            : std::nullopt,
         // Author of the thread root, present on reply events; drives the
         // "reply to a thread I started" notification (isFollowedThreadReply).
-              .parentUserId = UserId{msg.value("parent_user_id").toString()},
-              .author       = UserId{msg.value("user").toString(msg.value("bot_id").toString())},
-              .botName      = botName,
-              .botAvatarUrl = botAvatarUrl,
-              .text         = MrkdwnParser::parse(msg.value("text").toString()),
-              .rawText      = msg.value("text").toString(),
-              .reactions    = parseReactions(msg.value("reactions").toArray()),
-              .edited       = msg.contains("edited"),
-              .subtype = msg.contains("subtype") ? std::optional<QString>(msg.value("subtype").toString())
-                                                 : std::nullopt,
-              .files       = std::move(files),
-              .blocks      = std::move(blocks),
-              .attachments = std::move(attachments),
+        .parentUserId = UserId{msg.value("parent_user_id").toString()},
+        .author       = UserId{msg.value("user").toString(msg.value("bot_id").toString())},
+        .botName      = botName,
+        .botAvatarUrl = botAvatarUrl,
+        .text         = MrkdwnParser::parse(msg.value("text").toString()),
+        .rawText      = msg.value("text").toString(),
+        .reactions    = parseReactions(msg.value("reactions").toArray()),
+        .edited       = msg.contains("edited"),
+        .subtype = msg.contains("subtype") ? std::optional<QString>(msg.value("subtype").toString())
+                                           : std::nullopt,
+        .files   = std::move(files),
+        .blocks  = std::move(blocks),
+        .attachments = std::move(attachments),
     };
     presentHuddleThread(m);
     return m;

@@ -4,13 +4,13 @@
 
 #include "backend/domain.h"
 #include "util/slack_links.h"
-#include <QString>
-#include <QStringList>
 #include <QColor>
 #include <QDate>
 #include <QHash>
 #include <QRectF>
 #include <QSet>
+#include <QString>
+#include <QStringList>
 #include <QUrl>
 #include <QVector>
 #include <vector>
@@ -21,8 +21,9 @@ class QTextBrowser;
 class QTextDocument;
 class Session;
 
-// Pure rendering helpers shared between message_list.cpp and message_list_paint.cpp.
-// No widget state — takes only domain types and an optional Session* for name lookups.
+// Pure rendering helpers shared between message_list.cpp and
+// message_list_paint.cpp. No widget state — takes only domain types and an
+// optional Session* for name lookups.
 namespace MsgRender {
 
 QString resolveEmoji(const QString &name);
@@ -52,7 +53,8 @@ QString docStyleSheet();
 // All image URLs a message's docs reference as <img>: custom emoji plus Block
 // Kit image-block urls (top-level and attachment-embedded), deduplicated.
 // Used to register QTextDocument image resources and trigger downloads.
-QStringList collectEmojiImageUrls(const Message &msg, const Session *session);
+QStringList
+collectEmojiImageUrls(const Message &msg, const Session *session, bool showLinkPreviews = true);
 
 // Context for rendering Block Kit "image" blocks inline (Slack GIF/Giphy
 // messages). When provided, image blocks emit a title line ("GIF ▾", a
@@ -96,15 +98,15 @@ QString toHtml(
     const TextWithEntities &twe, const Session *session = nullptr, const InlineStyle &style = {}
 );
 
-// The text shown inside a message-link chip: "#channel" for a channel, the peer's
-// name for a DM, and a neutral "message" when the conversation isn't one of this
-// workspace's (a link into another team).
+// The text shown inside a message-link chip: "#channel" for a channel, the
+// peer's name for a DM, and a neutral "message" when the conversation isn't one
+// of this workspace's (a link into another team).
 QString messageLinkLabel(const SlackLinks::MessageRef &ref, const Session *session);
 
-// True when the text renders at least one message-link chip — the doc owner uses
-// this to decide whether the chip's icon has to be registered as a resource. The
-// Message overload covers everything that ends up in its documents: the body,
-// Block Kit blocks and legacy attachments.
+// True when the text renders at least one message-link chip — the doc owner
+// uses this to decide whether the chip's icon has to be registered as a
+// resource. The Message overload covers everything that ends up in its
+// documents: the body, Block Kit blocks and legacy attachments.
 bool hasMessageLink(const TextWithEntities &twe);
 bool hasMessageLink(const Message &msg);
 
@@ -120,8 +122,8 @@ QString notificationText(const TextWithEntities &twe, const Session *session);
 // show their content in the OS toast instead of a bare "Bot:".
 QString notificationPreview(const Message &msg, const Session *session);
 
-// Geometry (doc coordinates, margins excluded) of every ``` code-block table in a
-// laid-out message document.
+// Geometry (doc coordinates, margins excluded) of every ``` code-block table in
+// a laid-out message document.
 QVector<QRectF> codeBlockRects(const QTextDocument *doc);
 // Rounded background + border behind ``` code blocks. Qt rich text has no
 // border-radius, so callers paint this under the document, with the painter
@@ -130,7 +132,8 @@ void            paintCodeBlockChrome(QPainter &p, const QTextDocument *doc);
 
 // Geometry of every bot-button cell in a laid-out message document, and the
 // rounded button face (background + border) painted underneath them — same
-// pattern as the code-block chrome. Call wherever paintCodeBlockChrome is called.
+// pattern as the code-block chrome. Call wherever paintCodeBlockChrome is
+// called.
 QVector<QRectF> botButtonRects(const QTextDocument *doc);
 void            paintBotButtonChrome(QPainter &p, const QTextDocument *doc);
 
@@ -160,26 +163,26 @@ Block csvToTableBlock(const QByteArray &bytes);
 // (code blocks / blockquotes / button rows never set it). Drives the hover
 // "Open full table" affordance.
 QVector<QRectF> dataTableRects(const QTextDocument *doc);
-// collapseQuotedReplies (email only — Capabilities::collapseQuotedReplies): strip
-// the trailing quoted history + signature so a reply shows only what the sender
-// added. Chat services pass false and keep their intentional quotes.
+// collapseQuotedReplies (email only — Capabilities::collapseQuotedReplies):
+// strip the trailing quoted history + signature so a reply shows only what the
+// sender added. Chat services pass false and keep their intentional quotes.
 QString         buildMsgHtml(
-            const Message          &msg,
-            const Session          *session,
-            const GifRenderContext *gif                   = nullptr,
-            bool                    collapseQuotedReplies = false
-        );
+    const Message          &msg,
+    const Session          *session,
+    const GifRenderContext *gif                   = nullptr,
+    bool                    collapseQuotedReplies = false
+);
 QString buildAttachHtml(
     const Attachment &att, const Session *session, const GifRenderContext *gif = nullptr
 );
 
-// Apply the shared "message preview" chrome to a read-only QTextBrowser (used by
-// the delete / forward dialogs): no frame, transparent background, the app's thin
-// rounded scrollbar (matching the chats list thumb), no focus stealing, and
-// asymmetric text padding — sp.lg on the left so the text lines up with the card
-// header, 0 on the right so it reaches the edge with only the scrollbar beside it.
-// Call AFTER the content (setHtml / setPlainText) is set: the root-frame margins
-// are applied to the populated document.
+// Apply the shared "message preview" chrome to a read-only QTextBrowser (used
+// by the delete / forward dialogs): no frame, transparent background, the app's
+// thin rounded scrollbar (matching the chats list thumb), no focus stealing,
+// and asymmetric text padding — sp.lg on the left so the text lines up with the
+// card header, 0 on the right so it reaches the edge with only the scrollbar
+// beside it. Call AFTER the content (setHtml / setPlainText) is set: the
+// root-frame margins are applied to the populated document.
 void configurePreviewBrowser(QTextBrowser *browser);
 
 // True when the attachment renders nothing but Block Kit image blocks (the
@@ -200,8 +203,9 @@ bool attachIsTableOnly(const Attachment &att);
 bool attachIsBarless(const Attachment &att);
 
 // Padding between a shared-message unfurl card's border and its content. Only
-// the quoted BODY is a document; the frame, the author header and the file chips
-// are painted by MessageListWidget with the same painters message rows use.
+// the quoted BODY is a document; the frame, the author header and the file
+// chips are painted by MessageListWidget with the same painters message rows
+// use.
 inline constexpr int kUnfurlCardPad      = 10;
 inline constexpr int kUnfurlCardRadius   = 8;
 // The quoted body renders capped at this much text, with the rest behind "Show
@@ -210,8 +214,8 @@ inline constexpr int kUnfurlCardRadius   = 8;
 inline constexpr int kUnfurlPreviewChars = 400;
 inline constexpr int kUnfurlPreviewLines = 6;
 
-// Where a conversation is, as shown to the user: "#general", the peer's name for
-// a DM, "group message" for an MPDM, and nothing when it isn't one this
+// Where a conversation is, as shown to the user: "#general", the peer's name
+// for a DM, "group message" for an MPDM, and nothing when it isn't one this
 // workspace can see. Cache-only, so it's safe on a paint path.
 QString convPlaceLabel(const QString &convId, const Session *session);
 
@@ -310,9 +314,9 @@ inline QString gifKeyFromAnchor(const QString &href) {
                                                    : QString();
 }
 
-// A shared-message unfurl's "Show more" / "Show less" line is an anchor with this
-// scheme; clicking it toggles the expand key that follows the prefix (the key is
-// the attachment's own "<ts>/a<idx>").
+// A shared-message unfurl's "Show more" / "Show less" line is an anchor with
+// this scheme; clicking it toggles the expand key that follows the prefix (the
+// key is the attachment's own "<ts>/a<idx>").
 inline const QString kUnfurlToggleAnchorPrefix = QStringLiteral("msga://unfurl/");
 
 // Returns the expand key when href is an unfurl "Show more" anchor, else "".
