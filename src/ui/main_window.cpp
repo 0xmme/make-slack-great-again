@@ -861,7 +861,10 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     actionsLayout->addWidget(_searchBtn);
     _msgHeader = msgHeader;
 #ifdef Q_OS_MACOS
+    // Settings covers the body, but the unified conversation header sits above
+    // that overlay. Block its actions while Settings is open.
     msgHeader->setEnabled(!_settingsDialog->isVisible());
+    connect(_settingsDialog, &SettingsDialog::visibilityChanged, msgHeader, &QWidget::setDisabled);
     _titleBar->setContent(msgHeader);
 #else
     rightLayout->addWidget(msgHeader);
@@ -3456,13 +3459,6 @@ static Qt::CursorShape cursorForEdges(Qt::Edges edges) {
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
-#ifdef Q_OS_MACOS
-    // Settings covers the body, but the unified conversation header sits above
-    // that overlay. Block its actions until Settings closes as well.
-    if (obj == _settingsDialog && _msgHeader &&
-        (e->type() == QEvent::Show || e->type() == QEvent::Hide))
-        _msgHeader->setEnabled(e->type() == QEvent::Hide);
-#endif
     // Keep the window backdrop's mirrored light region aligned with the content
     // panel when it moves/resizes independently of the window (conv-panel drag,
     // show/hide). Non-consuming — fall through to the rest of the filter.

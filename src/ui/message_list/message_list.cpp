@@ -748,22 +748,8 @@ void MessageListWidget::setLinkPreviewsEnabled(bool on) {
     _showLinkPreviews = on;
     _hoveredAttach    = {-1, -1};
     releaseGifMovies();
-    const auto invalidate = [](MessageItem &item) {
-        item.textDoc.reset();
-        item.attachDocs.clear();
-        item.docWidth = -1;
-        item.emojiUrls.clear();
-        item.emojiUrlsCollected  = false;
-        item.attachImgsRequested = false;
-    };
-    for (auto &item : _items)
-        invalidate(item);
-    for (auto &[root, thread] : _inlineThreads)
-        for (auto &reply : thread.replies)
-            invalidate(reply);
-    rebuildLayout();
+    invalidateAllDocs();
     triggerMissingDownloads();
-    viewport()->update();
 }
 
 bool MessageListWidget::hasVisibleAttachments(const Message &msg) const {
@@ -1071,14 +1057,20 @@ void MessageListWidget::onUserResolved(UserId id) {
 }
 
 void MessageListWidget::invalidateAllDocs() {
-    for (auto &item : _items) {
+    const auto invalidate = [](MessageItem &item) {
         item.textDoc.reset();
         item.attachDocs.clear();
         item.docWidth = -1;
         item.emojiUrls.clear();
-        item.emojiUrlsCollected = false;
-        item.fileImgBaseH       = -1;
-    }
+        item.emojiUrlsCollected  = false;
+        item.attachImgsRequested = false;
+        item.fileImgBaseH        = -1;
+    };
+    for (auto &item : _items)
+        invalidate(item);
+    for (auto &[root, thread] : _inlineThreads)
+        for (auto &reply : thread.replies)
+            invalidate(reply);
     rebuildLayout();
     viewport()->update();
 }
@@ -1264,10 +1256,12 @@ int MessageListWidget::rowHeight(int index) const {
     // Attachment heights (skip client-dismissed ones). Iterate msg.attachments
     // (not attachDocs, which only exist once measured) so the count is right for
     // estimated rows too; for measured rows the two are 1:1.
-    const int nAtt = (int)item.msg.attachments.size();
+    const int nAtt      = (int)item.msg.attachments.size();
+    bool      hasVisAtt = false;
     for (int ai = 0; ai < nAtt; ++ai) {
         if (isAttachmentHidden(item.msg, ai))
             continue;
+        hasVisAtt = true;
         const int ah =
             measured ? attachTotalH(item, ai) : estimatedAttachHeight(item.msg.attachments[ai]);
         extraH += kAttachGap + std::max(ah, 0);
@@ -1283,14 +1277,14 @@ int MessageListWidget::rowHeight(int index) const {
         item.fileImgBaseH = layoutFileImages(item, kImgMaxW, false).height;
         item.fileImgGen   = _fileImagesGen;
     }
-    const bool hasContentAboveImages = docH > 0 || hasVisibleAttachments(item.msg);
+    const bool hasContentAboveImages = docH > 0 || hasVisAtt;
     const int  imgRegionH            = (item.fileImgBaseH > 0 && hasContentAboveImages)
                                            ? item.fileImgBaseH + kImgGap
                                            : item.fileImgBaseH;
     extraH += imgRegionH;
 
     // File chips (files without a preview)
-    const bool hasAboveChips = docH > 0 || hasVisibleAttachments(item.msg) || imgRegionH > 0;
+    const bool hasAboveChips = docH > 0 || hasVisAtt || imgRegionH > 0;
     bool       firstChip     = true;
     for (const auto &f : item.msg.files) {
         if (f.hasPreview())

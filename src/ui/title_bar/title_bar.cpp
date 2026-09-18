@@ -240,7 +240,13 @@ void TitleBar::refreshHoverState() {
 
 void TitleBar::mouseDoubleClickEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton) {
+#ifdef Q_OS_MACOS
+        // AppKit owns the frame here: honour the system "Double-click a
+        // window's title bar to" preference instead of always zooming.
+        performMacTitleBarDoubleClick(window());
+#else
         window()->isMaximized() ? window()->showNormal() : window()->showMaximized();
+#endif
         e->accept();
         return;
     }
@@ -252,16 +258,21 @@ void TitleBar::showEvent(QShowEvent *e) {
 #ifdef Q_OS_MACOS
     configureMacTitleBar(window());
 #endif
-    if (auto *h = window()->windowHandle(); h && !_windowConnected) {
-        _windowConnected = true;
-        connect(h, &QWindow::windowStateChanged, this, [this](Qt::WindowState) {
-#ifdef Q_OS_MACOS
-            configureMacTitleBar(window());
-#endif
-            updateMaxButton();
-        });
-    }
+    connectWindowHandle();
     updateMaxButton();
+}
+
+void TitleBar::connectWindowHandle() {
+    auto *h = window()->windowHandle();
+    if (!h || _windowConnected)
+        return;
+    _windowConnected = true;
+    connect(h, &QWindow::windowStateChanged, this, [this](Qt::WindowState) {
+#ifdef Q_OS_MACOS
+        configureMacTitleBar(window());
+#endif
+        updateMaxButton();
+    });
 }
 
 bool TitleBar::eventFilter(QObject *watched, QEvent *e) {
@@ -315,8 +326,13 @@ void TitleBar::togglePin() {
         flags |= Qt::WindowStaysOnTopHint;
     else
         flags &= ~Qt::WindowStaysOnTopHint;
+    // setWindowFlags() destroys and recreates the top-level QWindow, taking the
+    // windowStateChanged connection with it. Reconnect to the fresh handle.
+    _windowConnected = false;
     w->setWindowFlags(flags);
     w->show();
+    connectWindowHandle();
+    updateMaxButton();
     updatePinButton();
 }
 

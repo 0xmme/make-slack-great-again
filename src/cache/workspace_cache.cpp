@@ -12,6 +12,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
+#include <QUrl>
 #include <algorithm>
 
 // ── JSON serialization helpers
@@ -339,6 +340,20 @@ static QJsonObject toJson(const Message &m) {
     }
     return o;
 }
+// Host (minus "www.") plus path (minus trailing '/'), lower-cased host; the
+// part of a URL that survives Slack's unfurl canonicalisation.
+static QString urlResourceKey(const QString &url) {
+    const QUrl u(url);
+    if (!u.isValid() || u.host().isEmpty())
+        return url;
+    QString host = u.host().toLower();
+    if (host.startsWith(QLatin1String("www.")))
+        host.remove(0, 4);
+    QString path = u.path();
+    while (path.size() > 1 && path.endsWith(QLatin1Char('/')))
+        path.chop(1);
+    return host + path;
+}
 static Message messageFromJson(const QJsonObject &o) {
     Message m;
     m.ts   = o["ts"].toString();
@@ -368,14 +383,17 @@ static Message messageFromJson(const QJsonObject &o) {
         // with a linked title alone is not enough.
         if (!obj.contains("lp") && !att.isMsgUnfurl && m.botName.isEmpty() &&
             (!m.subtype || *m.subtype != QLatin1String("bot_message"))) {
+            // Slack reports the unfurl's canonical URL (redirects resolved,
+            // tracking params dropped), so compare host+path, not the string.
             const auto linksTo = [&](const QString &url) {
-                return !url.isEmpty() && std::any_of(
-                                             m.text.entities.begin(),
-                                             m.text.entities.end(),
-                                             [&](const TextEntity &e) {
-                                                 return e.type == EntityType::Link && e.data == url;
-                                             }
-                                         );
+                if (url.isEmpty())
+                    return false;
+                const QString key = urlResourceKey(url);
+                return std::any_of(
+                    m.text.entities.begin(), m.text.entities.end(), [&](const TextEntity &e) {
+                        return e.type == EntityType::Link && urlResourceKey(e.data) == key;
+                    }
+                );
             };
             att.isLinkPreview = linksTo(att.titleLink) || linksTo(att.imageUrl);
         }

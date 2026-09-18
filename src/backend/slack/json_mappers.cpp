@@ -644,10 +644,12 @@ Attachment toAttachment(const QJsonObject &o) {
         .fields      = std::move(fields),
         .blocks      = std::move(blocks),
         .buttons     = std::move(buttons),
+        // App unfurls (GitHub/Jira/Docs cards) carry the message's content and
+        // stay visible when web previews are off, like Slack's own preference.
         .isLinkPreview =
-            !isMsgUnfurl && (o.value("is_app_unfurl").toBool() || o.value("is_unfurl").toBool() ||
-                             !o.value("original_url").toString().isEmpty() ||
-                             !o.value("from_url").toString().isEmpty()),
+            !isMsgUnfurl && !o.value("is_app_unfurl").toBool() &&
+            (o.value("is_unfurl").toBool() || !o.value("original_url").toString().isEmpty() ||
+             !o.value("from_url").toString().isEmpty()),
         .isMsgUnfurl   = isMsgUnfurl,
         .authorIcon    = o.value("author_icon").toString(),
         .authorSubname = o.value("author_subname").toString(),

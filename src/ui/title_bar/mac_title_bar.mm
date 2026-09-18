@@ -38,3 +38,24 @@ void configureMacTitleBar(QWidget *widget) {
     window.appearance =
         [NSAppearance appearanceNamed:dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua];
 }
+
+void performMacTitleBarDoubleClick(QWidget *widget) {
+    if (QGuiApplication::platformName() != "cocoa")
+        return;
+    NSView   *view   = reinterpret_cast<NSView *>(widget->winId());
+    NSWindow *window = view.window;
+    if (!window)
+        return;
+    // Same key AppKit reads for native title bars. Values: "Maximize" (Zoom,
+    // the default), "Minimize", "Fill" (macOS 15 tiling; no public API, so it
+    // falls back to zoom) and "None".
+    NSString *action =
+        [[NSUserDefaults standardUserDefaults] stringForKey:@"AppleActionOnDoubleClick"];
+    if ([action isEqualToString:@"None"])
+        return;
+    if ([action isEqualToString:@"Minimize"]) {
+        [window performMiniaturize:nil];
+        return;
+    }
+    [window performZoom:nil];
+}

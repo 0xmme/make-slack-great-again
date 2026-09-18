@@ -327,6 +327,10 @@ TEST_CASE_METHOD(CacheFixture, "link preview classification survives caching", "
     for (int i = 0; i < attachments.size(); ++i) {
         auto attachment = attachments[i].toObject();
         attachment.remove("lp");
+        // Slack canonicalises the unfurl target: host case, "www.", tracking
+        // params and a trailing slash must not defeat the backfill.
+        if (i == 0)
+            attachment["tl"] = "https://WWW.example.com/article/?utm_source=x";
         if (i == 1)
             attachment["tl"] = "https://example.com/build";
         attachments[i] = attachment;

@@ -1220,13 +1220,17 @@ TEST_CASE("toAttachment footer icon and integer ts", "[mappers][attachment]") {
 TEST_CASE(
     "toAttachment distinguishes link previews from message content", "[mappers][attachment]"
 ) {
-    for (const auto &key : {"from_url", "original_url", "is_app_unfurl", "is_unfurl"}) {
+    for (const auto &key : {"from_url", "original_url", "is_unfurl"}) {
         CAPTURE(key);
         QJsonObject attachment{{"title", "Preview"}};
         attachment[key] =
             QString(key).startsWith("is_") ? QJsonValue(true) : QJsonValue("https://example.com");
         CHECK(JsonMappers::toAttachment(attachment).isLinkPreview);
         attachment["is_msg_unfurl"] = true;
+        CHECK_FALSE(JsonMappers::toAttachment(attachment).isLinkPreview);
+        attachment.remove("is_msg_unfurl");
+        // Rich app cards (GitHub, Jira, Docs) are message content, not previews.
+        attachment["is_app_unfurl"] = true;
         CHECK_FALSE(JsonMappers::toAttachment(attachment).isLinkPreview);
     }
     CHECK_FALSE(

@@ -130,9 +130,15 @@ void SettingsDialog::open() {
     _tabs->setFocus();
 }
 
+void SettingsDialog::showEvent(QShowEvent *e) {
+    QWidget::showEvent(e);
+    emit visibilityChanged(true);
+}
+
 void SettingsDialog::hideEvent(QHideEvent *e) {
     _ramTimer->stop();
     QWidget::hideEvent(e);
+    emit visibilityChanged(false);
 }
 
 // ── Panel construction

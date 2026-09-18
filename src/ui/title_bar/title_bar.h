@@ -31,6 +31,7 @@ protected:
 private:
     void applyTheme();
     void updateMaxButton();
+    void connectWindowHandle();
     void togglePin();
     void updatePinButton();
     void refreshHoverState();

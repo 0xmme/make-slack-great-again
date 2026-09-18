@@ -635,8 +635,11 @@ private:
     // rect.
     QRect               dismissButtonVpRect(int msgIdx, int attachIdx) const;
     bool                isAttachmentHidden(const Message &msg, int ai) const {
+        // Hot path (rowHeight/paint per attachment): only build the lookup key
+        // when something was actually dismissed this session.
         return (!_showLinkPreviews && msg.attachments[ai].isLinkPreview) ||
-               _dismissedAttachments.contains(msg.ts + "/" + QString::number(ai));
+               (!_dismissedAttachments.isEmpty() &&
+                _dismissedAttachments.contains(msg.ts + "/" + QString::number(ai)));
     }
     bool hasVisibleAttachments(const Message &msg) const;
 
