@@ -222,6 +222,26 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
     CHECK(loaded[0] == m);
 }
 
+TEST_CASE_METHOD(
+    CacheFixture, "attachment footer icon and ts survive a cache round trip", "[cache][msg]"
+) {
+    Message m;
+    m.ts          = "150.000";
+    m.author      = UserId{"U1"};
+    m.attachments = {Attachment{
+        .text       = TextWithEntities{"Pull request opened", {}},
+        .footer     = "<https://github.com/Hitta/data-collector|Hitta/data-collector>",
+        .footerIcon = "https://slack.github.com/static/img/favicon-neutral.png",
+        .msgDate    = 1755690000000000LL,
+    }};
+
+    ConversationId conv{"C4"};
+    cache.saveMessages(conv, {m});
+    auto loaded = cache.loadMessages(conv);
+    REQUIRE(loaded.size() == 1);
+    CHECK(loaded[0] == m);
+}
+
 TEST_CASE_METHOD(CacheFixture, "message unfurl survives a cache round trip", "[cache][msg]") {
     // The card needs the quoted author/channel/time and the quoted message's
     // files — dropping them on load would silently demote the card to a bare

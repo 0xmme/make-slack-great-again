@@ -1189,11 +1189,26 @@ TEST_CASE("toAttachment reads a shared-message unfurl", "[mappers][attachment]")
     CHECK(a.files[0].name == "file.txt.json");
     CHECK(a.files[0].prettyType == "JSON");
 
-    // An ordinary link unfurl carries neither flag nor files.
+    // An ordinary link unfurl carries neither flag nor files; its `ts` is the
+    // footer timestamp and still lands in msgDate.
     auto plain = JsonMappers::toAttachment(obj(R"({"title": "Link", "ts": "1787145280.873039"})"));
     CHECK(!plain.isMsgUnfurl);
-    CHECK(plain.msgDate == 0);
+    CHECK(plain.msgDate == 1787145280873039LL);
     CHECK(plain.files.empty());
+}
+
+TEST_CASE("toAttachment footer icon and integer ts", "[mappers][attachment]") {
+    // GitHub-style bot attachments: footer text carries a <url|label> token,
+    // footer_icon is the service logo and `ts` arrives as a JSON number.
+    auto a = JsonMappers::toAttachment(obj(R"({
+        "footer": "<https://github.com/Hitta/data-collector|Hitta/data-collector>",
+        "footer_icon": "https://slack.github.com/static/img/favicon-neutral.png",
+        "ts": 1755690000
+    })"));
+    CHECK(a.footer == "<https://github.com/Hitta/data-collector|Hitta/data-collector>");
+    CHECK(a.footerIcon == "https://slack.github.com/static/img/favicon-neutral.png");
+    CHECK(a.msgDate == 1755690000000000LL);
+    CHECK(!a.isMsgUnfurl);
 }
 
 TEST_CASE("toAttachment image and thumb dimensions", "[mappers][attachment]") {

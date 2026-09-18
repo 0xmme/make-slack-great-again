@@ -206,6 +206,10 @@ static QJsonObject toJson(const Attachment &a) {
     o["iu"] = a.imageUrl;
     o["tu"] = a.thumbUrl;
     o["fo"] = a.footer;
+    if (!a.footerIcon.isEmpty())
+        o["fc"] = a.footerIcon;
+    if (a.msgDate > 0)
+        o["md"] = QString::number(a.msgDate); // epoch micros; string-encoded like Message::date
     if (a.imageWidth > 0)
         o["iw"] = a.imageWidth;
     if (a.imageHeight > 0)
@@ -240,7 +244,6 @@ static QJsonObject toJson(const Attachment &a) {
         o["ai"] = a.authorIcon;
         o["as"] = a.authorSubname;
         o["ci"] = a.channelId;
-        o["md"] = QString::number(a.msgDate); // epoch micros; string-encoded like Message::date
         if (!a.files.empty()) {
             QJsonArray arr;
             for (const auto &f : a.files)
@@ -262,6 +265,8 @@ static Attachment attachmentFromJson(const QJsonObject &o) {
     a.imageUrl    = o["iu"].toString();
     a.thumbUrl    = o["tu"].toString();
     a.footer      = o["fo"].toString();
+    a.footerIcon  = o["fc"].toString();
+    a.msgDate     = o["md"].toString().toLongLong();
     a.imageWidth  = o["iw"].toInt();
     a.imageHeight = o["ih"].toInt();
     a.thumbWidth  = o["tw"].toInt();
@@ -283,7 +288,6 @@ static Attachment attachmentFromJson(const QJsonObject &o) {
         a.authorIcon    = o["ai"].toString();
         a.authorSubname = o["as"].toString();
         a.channelId     = o["ci"].toString();
-        a.msgDate       = o["md"].toString().toLongLong();
         for (const auto &v : o["fi"].toArray())
             a.files.push_back(fileFromJson(v.toObject()));
     }

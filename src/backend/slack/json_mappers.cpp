@@ -579,6 +579,18 @@ Block toBlock(const QJsonObject &o) {
     return b;
 }
 
+// An attachment's `ts` is the footer timestamp bots set (documented as an
+// integer epoch, so it usually arrives as a JSON number) or, on a message
+// unfurl, the QUOTED message's "1234.567890" ts string (the unfurling message
+// has its own). Either way it becomes epoch micros for the card/footer.
+static qint64 attachmentTs(const QJsonValue &v) {
+    if (v.isString())
+        return decimalTsToMicros(v.toString());
+    if (v.isDouble())
+        return qRound64(v.toDouble() * 1000000.0);
+    return 0;
+}
+
 Attachment toAttachment(const QJsonObject &o) {
     std::vector<Block> blocks;
     for (const auto &bv : o.value("blocks").toArray())
@@ -619,6 +631,7 @@ Attachment toAttachment(const QJsonObject &o) {
         .thumbUrl      = o.value("thumb_url").toString(),
         .faviconUrl    = o.value("service_icon").toString(),
         .footer        = o.value("footer").toString(),
+        .footerIcon    = o.value("footer_icon").toString(),
         .imageWidth    = o.value("image_width").toInt(),
         .imageHeight   = o.value("image_height").toInt(),
         .thumbWidth    = o.value("thumb_width").toInt(),
@@ -626,13 +639,11 @@ Attachment toAttachment(const QJsonObject &o) {
         .fields        = std::move(fields),
         .blocks        = std::move(blocks),
         .buttons       = std::move(buttons),
-        // `ts` on a message unfurl is the QUOTED message's ts (the unfurling
-        // message has its own) — the card shows it as the quote's time.
         .isMsgUnfurl   = isMsgUnfurl,
         .authorIcon    = o.value("author_icon").toString(),
         .authorSubname = o.value("author_subname").toString(),
         .channelId     = o.value("channel_id").toString(),
-        .msgDate       = isMsgUnfurl ? decimalTsToMicros(o.value("ts").toString()) : 0,
+        .msgDate       = attachmentTs(o.value("ts")),
         .files         = std::move(files),
     };
 }

@@ -791,8 +791,9 @@ struct Attachment {
     TextWithEntities             text;
     QString                      imageUrl;
     QString                      thumbUrl;
-    QString                      faviconUrl; // service_icon URL (favicon for link previews)
-    QString                      footer;
+    QString                      faviconUrl;      // service_icon URL (favicon for link previews)
+    QString                      footer;          // footer text; carries <url|label>/<!date> tokens
+    QString                      footerIcon;      // footer_icon URL, drawn before the footer text
     int                          imageWidth  = 0; // image_url dimensions; 0 when not provided
     int                          imageHeight = 0;
     int                          thumbWidth  = 0; // thumb_url dimensions; 0 when not provided
@@ -812,8 +813,10 @@ struct Attachment {
     QString           authorIcon;    // author_icon: the quoted author's avatar
     QString           authorSubname; // author_subname: bot username; set only for app posts
     QString           channelId;     // channel_id: where the quoted message lives
-    qint64            msgDate = 0;   // the quoted message's wall clock, epoch micros
-    std::vector<File> files;         // files attached to the quoted message
+    // `ts`, epoch micros: the footer's timestamp on an ordinary attachment (drawn
+    // after the footer text), the quoted message's wall clock on a message unfurl.
+    qint64            msgDate = 0;
+    std::vector<File> files; // files attached to the quoted message
 
     bool operator==(const Attachment &) const = default;
 

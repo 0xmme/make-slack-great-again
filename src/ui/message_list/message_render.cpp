@@ -163,6 +163,13 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
             addFrom(MrkdwnParser::parse(att.pretext));
         if (!att.title.isEmpty()) // title is token-resolved at render time
             addFrom(MrkdwnParser::resolveTokens(MrkdwnParser::decodeEntities(att.title)));
+        if (!att.footer.isEmpty()) // so is the footer
+            addFrom(MrkdwnParser::resolveTokens(MrkdwnParser::decodeEntities(att.footer)));
+        // The footer icon is a real <img> in the document (see buildAttachHtml).
+        if (!att.isMsgUnfurl && !att.footerIcon.isEmpty() && !seen.contains(att.footerIcon)) {
+            seen.insert(att.footerIcon);
+            out << att.footerIcon;
+        }
         addFrom(att.text);
         for (const auto &f : att.fields)
             addFrom(f.value);
@@ -196,6 +203,24 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
 // time field — so the UI never parses a ts string as a clock.
 QString formatTs(qint64 dateMicros) {
     return TimeFmt::formatTime(dateMicros / 1000000);
+}
+
+// Attachment footer time, the way Slack shows it: the clock for today's
+// attachments, the date for older ones ("Aug 20").
+QString formatFooterTs(qint64 dateMicros) {
+    const QDateTime dt = QDateTime::fromSecsSinceEpoch(dateMicros / 1000000);
+    if (dt.date() == QDate::currentDate())
+        return TimeFmt::formatTime(dt);
+    return TimeFmt::formatDate(dt.date());
+}
+
+// Slack's attachment footer metrics, scaled off its 15px body font: 12px text
+// (#616061, links included — they're not blue there) and a 16px service icon.
+int footerFontPx() {
+    return std::max(8, qRound(QFontInfo(QApplication::font()).pixelSize() * 12.0 / 15.0));
+}
+int footerIconPx() {
+    return std::max(8, qRound(QFontInfo(QApplication::font()).pixelSize() * 16.0 / 15.0));
 }
 
 QDate tsToDate(qint64 dateMicros) {
@@ -517,6 +542,7 @@ static QString renderRange(
     const std::vector<TextEntity>       &ents,
     const std::vector<std::vector<int>> &kids,
     const Session                       *session,
+    const InlineStyle                   &style,
     int                                  quoteDepth = 0
 ) {
     QString html;
@@ -540,6 +566,7 @@ static QString renderRange(
                                               ents,
                                               kids,
                                               session,
+                                              style,
                                               childQuoteDepth
                                           )
                                                   : rawInner.toHtmlEscaped();
@@ -623,9 +650,11 @@ static QString renderRange(
                 LinkLabels::isShortenedUrlLabel(rawInner, e.data)
                     ? LinkLabels::expandedLabel(e.data, kMaxLinkLabelChars).toHtmlEscaped()
                     : inner;
-            html += "<a href='" + e.data.toHtmlEscaped() +
-                    "' style='color:" + Th::qss(Th::c().text.link) + ";text-decoration:none'>" +
-                    label + "</a>";
+            html += "<a href='" + e.data.toHtmlEscaped() + "' style='color:" +
+                    Th::qss(style.linkColor.isValid() ? style.linkColor : Th::c().text.link) +
+                    (style.fontPx > 0 ? ";font-size:" + QString::number(style.fontPx) + "px"
+                                      : QString()) +
+                    ";text-decoration:none'>" + label + "</a>";
             break;
         }
         case EntityType::MessageLink:
@@ -680,7 +709,7 @@ static QString renderRange(
 }
 
 // Converts TextWithEntities to Qt-flavoured HTML for QTextDocument.
-QString toHtml(const TextWithEntities &twe, const Session *session) {
+QString toHtml(const TextWithEntities &twe, const Session *session, const InlineStyle &style) {
     if (twe.entities.empty())
         return escapeAndBr(twe.text);
 
@@ -707,7 +736,7 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
         (stack.empty() ? roots : kids[stack.back()]).push_back(i);
         stack.push_back(i);
     }
-    return renderRange(twe.text, 0, twe.text.size(), roots, sorted, kids, session);
+    return renderRange(twe.text, 0, twe.text.size(), roots, sorted, kids, session, style);
 }
 
 static void collectCodeTables(QTextFrame *frame, QVector<QTextTable *> &out) {
@@ -1584,9 +1613,39 @@ buildAttachHtml(const Attachment &att, const Session *session, const GifRenderCo
     html += buttonsHtml(att.buttons);
 
     // Footer always renders last, after whichever content variant was chosen.
-    if (!att.footer.isEmpty())
-        html += "<p style='margin:4px 0 0;font-size:0.8em;color:" + Th::qss(Th::c().text.tertiary) +
-                "'>" + MrkdwnParser::decodeEntities(att.footer).toHtmlEscaped() + "</p>";
+    // Like Slack's: "[icon] footer | time", where the footer text carries the
+    // same <url|label>/<!date> tokens a title does (GitHub links the repo name
+    // there) and `ts` is the bot-supplied timestamp.
+    // Sizes are absolute px, not em: Qt re-resolves an anchor's font from the
+    // document default, so an em-sized paragraph rendered its link a size larger
+    // than the plain text beside it.
+    if (!att.footer.isEmpty() || att.msgDate > 0) {
+        const QColor  fg   = Th::c().text.secondary; // Slack: #616061, links too
+        const QString px   = QString::number(footerFontPx());
+        const QString span = "<span style='font-size:" + px + "px;color:" + Th::qss(fg) + "'>";
+        QString       inner;
+        if (!att.footerIcon.isEmpty()) {
+            const QString s = QString::number(footerIconPx());
+            inner += "<img src='" + att.footerIcon.toHtmlEscaped() + "' width='" + s +
+                     "' height='" + s + "' style='vertical-align:middle'>" + span + "&nbsp;</span>";
+        }
+        if (!att.footer.isEmpty())
+            inner += span +
+                     toHtml(
+                         MrkdwnParser::resolveTokens(MrkdwnParser::decodeEntities(att.footer)),
+                         session,
+                         InlineStyle{.linkColor = fg, .fontPx = footerFontPx()}
+                     ) +
+                     "</span>";
+        if (att.msgDate > 0) {
+            if (!att.footer.isEmpty())
+                inner += "<span style='font-size:" + px +
+                         "px;color:" + Th::qss(Th::c().text.tertiary) + "'>&nbsp;|&nbsp;</span>";
+            inner += span + formatFooterTs(att.msgDate).toHtmlEscaped() + "</span>";
+        }
+        html += "<p style='margin:5px 0 0;font-size:" + px + "px;color:" + Th::qss(fg) + "'>" +
+                inner + "</p>";
+    }
 
     return html;
 }

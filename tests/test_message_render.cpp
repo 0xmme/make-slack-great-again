@@ -20,6 +20,7 @@
 #include <QTextDocument>
 
 #include "ui/message_list/message_render.h"
+#include "ui/theme.h"
 #include "text/mrkdwn_parser.h"
 #include "util/emoji_font.h"
 #include "session/session.h"
@@ -543,6 +544,82 @@ TEST_CASE("buildAttachHtml parses pretext as mrkdwn", "[render][attachment]") {
     att.pretext        = "_1 minute until this event_";
     const QString html = MsgRender::buildAttachHtml(att, nullptr);
     CHECK(html.contains("<i>1 minute until this event</i>"));
+}
+
+TEST_CASE("buildAttachHtml resolves footer tokens, icon and time", "[render][attachment]") {
+    // GitHub's attachments put the repo link in the footer as a <url|label>
+    // token, with the service logo in footer_icon and a `ts` — Slack renders
+    // "[icon] Hitta/data-collector | Aug 20", not the literal token.
+    Attachment att;
+    att.text           = TextWithEntities{"body", {}};
+    att.footer         = "<https://github.com/Hitta/data-collector|Hitta/data-collector>";
+    att.footerIcon     = "https://slack.github.com/static/img/favicon-neutral.png";
+    att.msgDate        = 1755690000000000LL; // 2025-08-20
+    const QString html = MsgRender::buildAttachHtml(att, nullptr);
+    CHECK(!html.contains("&lt;https://github.com"));  // no literal token
+    CHECK(html.contains("Hitta/data-collector</a>")); // label is a clickable link
+    CHECK(html.contains("href='https://github.com/Hitta/data-collector'"));
+    CHECK(html.contains("<img src='https://slack.github.com/static/img/favicon-neutral.png'"));
+    CHECK(html.contains(MsgRender::formatFooterTs(att.msgDate)));
+    CHECK(
+        html.indexOf("Hitta/data-collector") < html.indexOf(MsgRender::formatFooterTs(att.msgDate))
+    );
+    CHECK(html.indexOf("body") < html.indexOf("<img src="));
+
+    // The footer icon is fetched through the same list as custom emoji, so the
+    // document can register it once downloaded.
+    Message msg;
+    msg.attachments = {att};
+    CHECK(MsgRender::collectEmojiImageUrls(msg, nullptr).contains(att.footerIcon));
+
+    // A bare timestamp (no footer text) still gets a footer line.
+    Attachment tsOnly;
+    tsOnly.msgDate = att.msgDate;
+    CHECK(
+        MsgRender::buildAttachHtml(tsOnly, nullptr).contains(MsgRender::formatFooterTs(att.msgDate))
+    );
+}
+
+TEST_CASE(
+    "attachment footer link matches its neighbours' size and colour", "[render][attachment]"
+) {
+    // Slack's footer is one 12px #616061 run — the repo link is neither blue nor
+    // body-sized. Qt re-resolves an anchor's font from the document default, so
+    // an em-sized footer once drew the link a size bigger than the date beside it;
+    // check the laid-out fragments, not the HTML string.
+    Attachment att;
+    att.text    = TextWithEntities{"body", {}};
+    att.footer  = "<https://github.com/Hitta/data-collector|Hitta/data-collector>";
+    att.msgDate = 1755690000000000LL;
+    QTextDocument doc;
+    doc.setDefaultFont(QApplication::font());
+    doc.setDefaultStyleSheet(MsgRender::docStyleSheet());
+    doc.setHtml(MsgRender::buildAttachHtml(att, nullptr));
+
+    QTextBlock footer = doc.lastBlock();
+    REQUIRE(footer.text().contains("Hitta/data-collector"));
+    const QColor want    = Th::c().text.secondary;
+    int          anchors = 0, plain = 0;
+    qreal        anchorPt = 0, plainPt = 0;
+    for (auto it = footer.begin(); !it.atEnd(); ++it) {
+        const QTextFragment f = it.fragment();
+        const QString       t = f.text().trimmed();
+        if (t.isEmpty() || t == "|" || t.contains(QChar(0xFFFC)))
+            continue; // spacing, the "|" separator (dimmer by design), the icon
+        const QTextCharFormat cf = f.charFormat();
+        CHECK(cf.foreground().color() == want);
+        if (cf.isAnchor()) {
+            ++anchors;
+            anchorPt = cf.font().pointSizeF();
+        } else {
+            ++plain;
+            plainPt = cf.font().pointSizeF();
+        }
+    }
+    REQUIRE(anchors > 0);
+    REQUIRE(plain > 0);
+    CHECK(anchorPt == plainPt);
+    CHECK(plainPt < QApplication::font().pointSizeF()); // smaller than the body
 }
 
 TEST_CASE("buildAttachHtml decodes HTML entities in title and footer", "[render][attachment]") {

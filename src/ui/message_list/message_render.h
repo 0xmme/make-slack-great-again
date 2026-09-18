@@ -71,6 +71,9 @@ struct GifRenderContext {
 // Take Message::date (epoch microseconds), not a ts string — display reads the
 // dedicated time field so non-Slack ids (which aren't clocks) still render.
 QString formatTs(qint64 dateMicros);
+QString formatFooterTs(qint64 dateMicros); // attachment footer: time today, date otherwise
+int     footerFontPx();                    // attachment footer text, Slack's 12px on a 15px body
+int     footerIconPx();                    // attachment footer_icon, Slack's 16px
 QDate   tsToDate(qint64 dateMicros);
 QString formatDateLabel(qint64 dateMicros);
 // Slack-style absolute label for the reply bar: "today at 1:12 PM",
@@ -81,7 +84,17 @@ QString lastReplyLabel(const Ts &ts);
 // rows from different days sit side by side there, so time alone is ambiguous.
 QString dateTimeLabel(qint64 dateMicros);
 QString resolveMention(const QString &userId, const Session *session);
-QString toHtml(const TextWithEntities &twe, const Session *session = nullptr);
+// Per-call overrides for inline runs toHtml emits. Anchors get their own inline
+// style, so a caller shrinking/recolouring a whole passage (attachment footers)
+// has to pass the same values here — a plain <span> around the output wouldn't
+// reach into them.
+struct InlineStyle {
+    QColor linkColor;  // invalid → Th::c().text.link
+    int    fontPx = 0; // 0 → inherit
+};
+QString toHtml(
+    const TextWithEntities &twe, const Session *session = nullptr, const InlineStyle &style = {}
+);
 
 // The text shown inside a message-link chip: "#channel" for a channel, the peer's
 // name for a DM, and a neutral "message" when the conversation isn't one of this
