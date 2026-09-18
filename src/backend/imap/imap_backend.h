@@ -129,6 +129,13 @@ private:
         bool       supported = false;
     };
     Pagination paginationFor(const QString &convId) const;
+    // Record an older-history page's refs in _index so per-message actions
+    // (delete / label / markRead) can resolve their UIDs — the scan only indexes
+    // the newest kScanWindow INBOX messages, so anything reached via "load more"
+    // is otherwise unknown to uidForTs() and the action silently no-ops.
+    void       indexOlderPage(const QString &convId, const QList<MsgRef> &refs);
+    // \Deleted + expunge one UID in `mailbox`; fires EvMessageDeleted on success.
+    void       deleteUid(ConversationId conv, const Ts &ts, const QString &mailbox, quint32 uid);
 
     // Shared send path for plain sends + file uploads (SMTP submit + APPEND + echo).
     void submitMail(

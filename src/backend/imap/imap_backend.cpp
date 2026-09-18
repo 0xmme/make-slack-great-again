@@ -993,7 +993,8 @@ Backend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
                 }
                 const quint32 cursorUid = cursor->toUInt();
                 _client->select(
-                    pg.mailbox, [this, pg, cursorUid, consumer](bool ok, SelectResult) mutable {
+                    pg.mailbox,
+                    [this, conv, pg, cursorUid, consumer](bool ok, SelectResult) mutable {
                         if (!ok) {
                             consumer.put_next(MessagePage{});
                             consumer.put_done();
@@ -1001,7 +1002,9 @@ Backend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
                         }
                         _client->uidSearch(
                             pg.criteria,
-                            [this, pg, cursorUid, consumer](bool ok2, QList<quint32> uids) mutable {
+                            [this, conv, pg, cursorUid, consumer](
+                                bool ok2, QList<quint32> uids
+                            ) mutable {
                                 QList<quint32> older;
                                 for (quint32 u : uids)
                                     if (u < cursorUid)
@@ -1022,7 +1025,7 @@ Backend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
                                 _client->uidFetch(
                                     joinUids(slice),
                                     "UID FLAGS INTERNALDATE ENVELOPE",
-                                    [this, mailbox, newCursor, consumer](
+                                    [this, conv, mailbox, newCursor, consumer](
                                         bool, QList<QByteArray> lines
                                     ) mutable {
                                         QList<MsgRef> refs;
@@ -1044,6 +1047,10 @@ Backend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
                                                 return a.env.date < b.env.date;
                                             }
                                         );
+                                        // Make the paged-in messages actionable
+                                        // (delete / label / mark read resolve
+                                        // their UIDs through _index).
+                                        indexOlderPage(conv.value, refs);
                                         // Older pages render flat (threads may straddle pages).
                                         fetchBodiesAndEmit(
                                             refs, false, {}, {}, newCursor, consumer
@@ -1238,6 +1245,33 @@ Backend::Pagination Backend::paginationFor(const QString &convId) const {
     }
     // MPDM / list / broadcast paging is a follow-up (no "load more" for now).
     return p;
+}
+
+void Backend::indexOlderPage(const QString &convId, const QList<MsgRef> &refs) {
+    if (refs.isEmpty())
+        return;
+    ConvData &cd = _index[convId];
+    if (cd.conv.id.value.isEmpty())
+        cd.conv.id = ConversationId{convId};
+    bool added = false;
+    for (const MsgRef &r : refs) {
+        const bool known =
+            std::any_of(cd.messages.cbegin(), cd.messages.cend(), [&r](const MsgRef &m) {
+                return m.uid == r.uid && m.mailbox == r.mailbox;
+            });
+        if (known)
+            continue;
+        cd.messages.append(r);
+        added = true;
+    }
+    // ConvData::messages is oldest → newest (markRead walks it up to the read
+    // cursor), so restore the order after prepending history from the past.
+    if (added)
+        std::stable_sort(
+            cd.messages.begin(), cd.messages.end(), [](const MsgRef &a, const MsgRef &b) {
+                return dateMicros(a.env, a.internalDate) < dateMicros(b.env, b.internalDate);
+            }
+        );
 }
 
 rpl::producer<MessagePage>
@@ -1502,30 +1536,78 @@ void Backend::editMessage(ConversationId, Ts, TextWithEntities) {} // email: not
 
 void Backend::deleteMessage(ConversationId conv, Ts ts) {
     whenReady([this, conv, ts]() mutable {
-        if (!_client->isLoggedIn())
+        if (!_client->isLoggedIn()) {
+            qWarning("imap delete: offline, %s not deleted", qPrintable(ts));
             return;
-        const quint32 uid = uidForTs(conv.value, ts);
-        if (uid == 0)
+        }
+        if (const quint32 uid = uidForTs(conv.value, ts)) {
+            deleteUid(conv, ts, mailboxForTs(conv.value, ts), uid);
             return;
-        const QString mailbox = mailboxForTs(conv.value, ts);
-        const bool    uidPlus = _client->hasCapability("UIDPLUS");
-        _client->select(mailbox, [this, conv, ts, uid, uidPlus](bool ok, SelectResult) {
-            if (!ok)
+        }
+        // Not in _index — e.g. shown from history the scan never covered. Keys
+        // are Message-IDs (except the "uid:N" fallback for header-less mail),
+        // so resolve the UID on the server before giving up.
+        if (ts.startsWith(QLatin1String("uid:"))) {
+            qWarning("imap delete: %s has no indexed UID", qPrintable(ts));
+            return;
+        }
+        const Pagination pg      = paginationFor(conv.value);
+        const QString    mailbox = pg.supported ? pg.mailbox : QStringLiteral("INBOX");
+        _client->select(mailbox, [this, conv, ts, mailbox](bool ok, SelectResult) {
+            if (!ok) {
+                qWarning("imap delete: select %s failed", qPrintable(mailbox));
                 return;
-            _client->sendCommand(
-                "UID STORE " + QByteArray::number(uid) + " +FLAGS (\\Deleted)",
-                [this, conv, ts, uid, uidPlus](const Response &r) {
-                    if (!r.ok)
+            }
+            _client->uidSearch(
+                "HEADER Message-ID " + Proto::quote(ts.toUtf8()),
+                [this, conv, ts, mailbox](bool ok2, QList<quint32> uids) {
+                    if (!ok2 || uids.isEmpty()) {
+                        qWarning(
+                            "imap delete: %s not found in %s", qPrintable(ts), qPrintable(mailbox)
+                        );
                         return;
-                    // UID EXPUNGE removes just this message (UIDPLUS);
-                    // plain EXPUNGE clears all \Deleted in the mailbox.
-                    _client->sendCommand(
-                        uidPlus ? ("UID EXPUNGE " + QByteArray::number(uid)) : QByteArray("EXPUNGE")
-                    );
-                    _events.fire(EvMessageDeleted{conv, ts, std::nullopt});
+                    }
+                    deleteUid(conv, ts, mailbox, uids.first());
                 }
             );
         });
+    });
+}
+
+void Backend::deleteUid(ConversationId conv, const Ts &ts, const QString &mailbox, quint32 uid) {
+    const bool uidPlus = _client->hasCapability("UIDPLUS");
+    _client->select(mailbox, [this, conv, ts, mailbox, uid, uidPlus](bool ok, SelectResult) {
+        if (!ok) {
+            qWarning("imap delete: select %s failed", qPrintable(mailbox));
+            return;
+        }
+        _client->sendCommand(
+            "UID STORE " + QByteArray::number(uid) + " +FLAGS (\\Deleted)",
+            [this, conv, ts, mailbox, uid, uidPlus](const Response &r) {
+                if (!r.ok) {
+                    qWarning(
+                        "imap delete: STORE uid %u in %s failed: %s",
+                        uid,
+                        qPrintable(mailbox),
+                        r.status.constData()
+                    );
+                    return;
+                }
+                // UID EXPUNGE removes just this message (UIDPLUS);
+                // plain EXPUNGE clears all \Deleted in the mailbox.
+                _client->sendCommand(
+                    uidPlus ? ("UID EXPUNGE " + QByteArray::number(uid)) : QByteArray("EXPUNGE")
+                );
+                // Drop the ref so a reopen before the next scan doesn't re-list
+                // (and try to fetch) the expunged UID.
+                const auto it = _index.find(conv.value);
+                if (it != _index.end())
+                    it->messages.removeIf([&](const MsgRef &m) {
+                        return m.uid == uid && m.mailbox == mailbox;
+                    });
+                _events.fire(EvMessageDeleted{conv, ts, std::nullopt});
+            }
+        );
     });
 }
 
