@@ -558,6 +558,13 @@ else()
     target_link_libraries(msga PRIVATE msga_miniaudio)
 endif()
 
+# Native macOS window chrome, using the AppKit dependency above.
+if(APPLE)
+    target_sources(msga PRIVATE src/ui/title_bar/mac_title_bar.mm)
+    set_source_files_properties(src/ui/title_bar/mac_title_bar.mm
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+endif()
+
 # Secret storage (src/util/secret_store*): credentials (tokens, API keys, the
 # personal Slack app secret, IMAP passwords) live in the OS keychain where one
 # exists, never in the plaintext QSettings/plist. macOS uses the Security

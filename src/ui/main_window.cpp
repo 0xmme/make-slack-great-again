@@ -1,54 +1,54 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "main_window.h"
-#include "theme.h"
-#include "theme_manager.h"
-#include "header_avatar_widget.h"
-#include "image_cache.h"
-#include "title_bar/title_bar.h"
-#include "popup_tooltip/popup_tooltip.h"
-#include "message_list/message_list.h"
-#include "composer/composer_widget.h"
-#include "typing_indicator/typing_indicator.h"
-#include "conv_list/conv_list_widget.h"
-#include "conv_footer/conv_footer_widget.h"
-#include "context_menu/context_menu.h"
 #include "app_dialog/app_dialog.h"
-#include "workspace_switcher/workspace_switcher.h"
-#include "session/session.h"
-#include "cache/cache_evictor.h"
-#include "auth/token_store.h"
 #include "auth/auth_strategy.h"
+#include "auth/auth_strategy_factory.h"
+#include "auth/token_store.h"
+#include "backend/backend.h"
+#include "backend/backend_factory.h"
 #include "backend/slack/session_import/session_migrator.h"
 #include "backend/slack/session_import/token_deriver.h"
 #include "backend/slack/slack_auth.h"
-#include "ui/session_import_dialog/session_import_dialog.h"
-#include "auth/auth_strategy_factory.h"
-#include "backend/backend.h"
-#include "backend/backend_factory.h"
-#include "settings/settings_dialog.h"
-#include "search/search_widget.h"
-#include "thread_panel/thread_panel.h"
-#include "message_list/message_render.h"
-#include "canvas_page/canvas_page.h"
-#include "threads_page/threads_page.h"
-#include "saved_page/saved_messages_page.h"
-#include "conv_tabs/conv_tabs_widget.h"
-#include "welcome_tips/welcome_widget.h"
-#include "forward_dialog/forward_dialog.h"
-#include "move_to_thread_dialog/move_to_thread_dialog.h"
-#include "create_channel_dialog/create_channel_dialog.h"
-#include "rename_conversation_dialog/rename_conversation_dialog.h"
-#include "profile_dialog/profile_dialog.h"
-#include "status_dialog/status_dialog.h"
 #include "browse_channels_dialog/browse_channels_dialog.h"
-#include "quick_switcher/quick_switcher_dialog.h"
-#include "update_checker/update_checker.h"
+#include "cache/cache_evictor.h"
+#include "canvas_page/canvas_page.h"
+#include "composer/composer_widget.h"
+#include "context_menu/context_menu.h"
+#include "conv_footer/conv_footer_widget.h"
+#include "conv_list/conv_list_widget.h"
+#include "conv_tabs/conv_tabs_widget.h"
+#include "create_channel_dialog/create_channel_dialog.h"
+#include "forward_dialog/forward_dialog.h"
+#include "header_avatar_widget.h"
 #include "huddle_banner/huddle_banner.h"
+#include "image_cache.h"
+#include "message_list/message_list.h"
+#include "message_list/message_render.h"
+#include "move_to_thread_dialog/move_to_thread_dialog.h"
 #include "parallel_usage_banner/parallel_usage_banner.h"
-#include "update_bar/update_bar.h"
-#include "styled_button/styled_button.h"
+#include "popup_tooltip/popup_tooltip.h"
+#include "profile_dialog/profile_dialog.h"
+#include "quick_switcher/quick_switcher_dialog.h"
+#include "rename_conversation_dialog/rename_conversation_dialog.h"
+#include "saved_page/saved_messages_page.h"
+#include "search/search_widget.h"
+#include "session/session.h"
+#include "settings/settings_dialog.h"
 #include "shortcuts.h"
+#include "status_dialog/status_dialog.h"
+#include "styled_button/styled_button.h"
+#include "theme.h"
+#include "theme_manager.h"
+#include "thread_panel/thread_panel.h"
+#include "threads_page/threads_page.h"
+#include "title_bar/title_bar.h"
+#include "typing_indicator/typing_indicator.h"
+#include "ui/session_import_dialog/session_import_dialog.h"
+#include "update_bar/update_bar.h"
+#include "update_checker/update_checker.h"
+#include "welcome_tips/welcome_widget.h"
+#include "workspace_switcher/workspace_switcher.h"
 
 #include "ui/icon_utils.h"
 #include "util/desktop_notifier.h"
@@ -58,39 +58,40 @@
 #include "util/mac_app_badge.h"
 #endif
 
+#include <QApplication>
+#include <QBitmap>
+#include <QCloseEvent>
+#include <QCursor>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDialog>
 #include <QEvent>
-#include <QCloseEvent>
+#include <QEventLoop>
+#include <QFile>
+#include <QGridLayout>
 #include <QHBoxLayout>
-#include <QVBoxLayout>
-#include <QMouseEvent>
-#include <QResizeEvent>
+#include <QIcon>
 #include <QLabel>
 #include <QMenu>
-#include <QPushButton>
-#include <QApplication>
-#include <QEventLoop>
-#include <QIcon>
 #include <QMessageBox>
-#include <QStackedWidget>
-#include <QSystemTrayIcon>
-#include <QCursor>
-#include <QSettings>
-#include <QSplitter>
-#include <QWindow>
-#include <QBitmap>
+#include <QMouseEvent>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPointer>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QFile>
 #include <QProcess>
-#include <QTimer>
-#include <QDesktopServices>
+#include <QPushButton>
+#include <QResizeEvent>
 #include <QScreen>
+#include <QSettings>
 #include <QShowEvent>
+#include <QSplitter>
+#include <QStackedWidget>
+#include <QSystemTrayIcon>
+#include <QTimer>
+#include <QVBoxLayout>
+#include <QWindow>
 
 #include <memory>
 
@@ -114,7 +115,8 @@ static constexpr qint64 kActivityNoteGapMs = 20'000;
 // string, e.g. "slack:T0123ABCD". This helper resolves a handle to its neutral
 // registry record (empty record if the handle is malformed or absent).
 // Key for _drafts: workspace-qualified so identical conversation ids in two
-// workspaces stay separate stashes (same separator convention as _notifiedHuddles).
+// workspaces stay separate stashes (same separator convention as
+// _notifiedHuddles).
 static QString draftKey(const QString &teamId, const ConversationId &conv) {
     return teamId + QLatin1Char('\x1f') + conv.value;
 }
@@ -218,12 +220,12 @@ private:
 };
 
 // Root container of the frameless window. At fractional display scale Qt rounds
-// each child widget's painted device-pixel region independently, which can leave
-// a 1-device-pixel gap at a sibling boundary; whatever this frame paints there
-// shows through as a hairline seam. A single flat fill can't hide every seam,
-// because the chrome blocks above it differ in colour — a dark nav block on one
-// side, the light message surface on the other; one backdrop colour always
-// contrasts with one of them.
+// each child widget's painted device-pixel region independently, which can
+// leave a 1-device-pixel gap at a sibling boundary; whatever this frame paints
+// there shows through as a hairline seam. A single flat fill can't hide every
+// seam, because the chrome blocks above it differ in colour — a dark nav block
+// on one side, the light message surface on the other; one backdrop colour
+// always contrasts with one of them.
 //
 // So the frame paints a low-fidelity *mirror* of the chrome: the dark nav tone
 // everywhere, then the light content surface under the right-hand panel. A gap
@@ -270,8 +272,22 @@ MainWindow::~MainWindow() {
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("");
+#ifdef Q_OS_MACOS
+    // Keep AppKit's traffic lights, shadow, rounded corners, and resize handling.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+    setWindowFlags(Qt::Window | Qt::ExpandedClientAreaHint | Qt::NoTitleBarBackgroundHint);
+    // We reserve room for the traffic lights in the header itself. Otherwise
+    // QWidget inserts a second, empty title-bar-height margin above the header.
+    setAttribute(Qt::WA_ContentsMarginsRespectsSafeArea, false);
+#else
+    // Earlier Qt versions need the native full-size-content style; the macOS
+    // title-bar helper applies it once the NSWindow exists.
+    setWindowFlags(Qt::Window);
+#endif
+#else
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     setAttribute(Qt::WA_TranslucentBackground);
+#endif
     setMouseTracking(true);
     setMinimumSize(kPreferredMinSize);
     resize(kDefaultWindowSize);
@@ -356,7 +372,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
 }
 
-// ── UI construction ───────────────────────────────────────────────────────────
+// ── UI construction
+// ───────────────────────────────────────────────────────────
 
 void MainWindow::buildUi() {
     _frame = new BackdropFrame(this);
@@ -373,13 +390,15 @@ void MainWindow::buildUi() {
     _frameLayout->setSpacing(0);
 
     _titleBar = new TitleBar(_frame);
+    _titleBar->setTitle({});
     _frameLayout->addWidget(_titleBar);
 
     _updateBar = new UpdateBar(_frame);
     _frameLayout->addWidget(_updateBar);
 
     // Horizontal body: switcher rail always present, stack fills the rest.
-    // _stack must be created before buildWorkspaceSwitcher (SettingsDialog parents to body).
+    // _stack must be created before buildWorkspaceSwitcher (SettingsDialog
+    // parents to body).
     auto *body       = new QWidget(_frame);
     auto *bodyLayout = new QHBoxLayout(body);
     bodyLayout->setContentsMargins(0, 0, 0, 0);
@@ -414,8 +433,9 @@ void MainWindow::buildUi() {
 }
 
 QWidget *MainWindow::buildLoggedOutPage() {
-    // Outer nav.bg wrapper — right/bottom margin exposes nav.bg as a colored border,
-    // matching the same treatment applied to rightArea in buildMainPage().
+    // Outer nav.bg wrapper — right/bottom margin exposes nav.bg as a colored
+    // border, matching the same treatment applied to rightArea in
+    // buildMainPage().
     auto *wrapper = new QWidget;
     wrapper->setObjectName("loggedOutWrapper");
     wrapper->setAttribute(Qt::WA_StyledBackground);
@@ -537,7 +557,8 @@ QWidget *MainWindow::buildMainPage() {
     // already repaints the frame).
     rightArea->installEventFilter(this);
 
-    // Apply stored appearance setting and keep conv list in sync when settings are saved.
+    // Apply stored appearance setting and keep conv list in sync when settings
+    // are saved.
     _convList->setRelevantDays(
         QSettings("msga", "msga").value("appearance/relevantDays", 14).toInt()
     );
@@ -702,7 +723,8 @@ QWidget *MainWindow::buildConvPanel(QWidget *parent) {
     _convList->setObjectName("convList");
     convLayout->addWidget(_convList, /*stretch=*/1);
 
-    // Self-presence footer pinned to the bottom (no top border — blends into the list).
+    // Self-presence footer pinned to the bottom (no top border — blends into the
+    // list).
     _convFooter = new ConvFooterWidget(_imgCache, _convPanel);
     convLayout->addWidget(_convFooter);
     connect(_convFooter, &ConvFooterWidget::presenceToggleRequested, this, [this](bool away) {
@@ -741,10 +763,23 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     auto *msgHeader = new QWidget(rightPanel);
     msgHeader->setObjectName("msgHeader");
     msgHeader->setAttribute(Qt::WA_StyledBackground);
+    const auto &sp = Th::c().spacing;
+#ifdef Q_OS_MACOS
+    // TitleBar's layout owns the unified header's height.
+    auto *headerGrid = new QGridLayout(msgHeader);
+    headerGrid->setContentsMargins(0, 0, 0, 1);
+    headerGrid->setSpacing(0);
+    auto *heading         = new QWidget(msgHeader);
+    auto *msgHeaderLayout = new QHBoxLayout(heading);
+    msgHeaderLayout->setContentsMargins(0, 0, 0, 0);
+    msgHeaderLayout->addStretch(1);
+    headerGrid->addWidget(heading, 0, 1);
+    headerGrid->setColumnStretch(1, 1);
+#else
     msgHeader->setFixedHeight(48);
-    const auto &sp              = Th::c().spacing;
-    auto       *msgHeaderLayout = new QHBoxLayout(msgHeader);
+    auto *msgHeaderLayout = new QHBoxLayout(msgHeader);
     msgHeaderLayout->setContentsMargins(sp.xl, 0, sp.md, 0);
+#endif
     msgHeaderLayout->setSpacing(sp.md);
 
     _headerAvatar = new HeaderAvatarWidget(msgHeader);
@@ -753,7 +788,26 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
 
     _convNameLabel = new QLabel("", msgHeader);
     _convNameLabel->setObjectName("convNameLabel");
+#ifdef Q_OS_MACOS
+    _convNameLabel->setAlignment(Qt::AlignCenter);
+    _convNameLabel->setMinimumWidth(0);
+    _convNameLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    // Let empty header space and the title drag the native window.
+    _convNameLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    auto *actions = new QWidget(msgHeader);
+    actions->setFixedWidth(132);
+    auto *actionsLayout = new QHBoxLayout(actions);
+    actionsLayout->setContentsMargins(0, 0, sp.md, 0);
+    actionsLayout->setSpacing(sp.xs);
+    actionsLayout->addStretch();
+    headerGrid->setColumnMinimumWidth(0, 132);
+    headerGrid->addWidget(actions, 0, 2);
+    msgHeaderLayout->addWidget(_convNameLabel);
+    msgHeaderLayout->addStretch(1);
+#else
+    auto *actionsLayout = msgHeaderLayout;
     msgHeaderLayout->addWidget(_convNameLabel, 1);
+#endif
 
     // Huddle button — hands off to the Slack web client like the huddle banner's
     // Join (huddles aren't startable through the public API).
@@ -765,8 +819,8 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _huddleBtn->setIcon(svgIcon(":/ui/headphones.svg", QSize(16, 16), Th::c().icon.def));
     _huddleBtnTooltip = new PopupTooltip(_huddleBtn);
     _huddleBtn->installEventFilter(this);
-    msgHeaderLayout->addWidget(_huddleBtn);
-    msgHeaderLayout->addSpacing(sp.xs);
+    actionsLayout->addWidget(_huddleBtn);
+    actionsLayout->addSpacing(sp.xs);
 
     _starBtn = new QPushButton(msgHeader);
     _starBtn->setFixedSize(28, 28);
@@ -776,8 +830,8 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _starBtn->setVisible(false);
     _starBtnTooltip = new PopupTooltip(_starBtn);
     _starBtn->installEventFilter(this);
-    msgHeaderLayout->addWidget(_starBtn);
-    msgHeaderLayout->addSpacing(sp.xs);
+    actionsLayout->addWidget(_starBtn);
+    actionsLayout->addSpacing(sp.xs);
 
     _searchBtn = new QPushButton(msgHeader);
     _searchBtn->setObjectName("headerSearchBtn");
@@ -788,9 +842,14 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), Th::c().icon.def));
     _searchBtnTooltip = new PopupTooltip(_searchBtn);
     _searchBtn->installEventFilter(this);
-    msgHeaderLayout->addWidget(_searchBtn);
+    actionsLayout->addWidget(_searchBtn);
     _msgHeader = msgHeader;
+#ifdef Q_OS_MACOS
+    msgHeader->setEnabled(!_settingsDialog->isVisible());
+    _titleBar->setContent(msgHeader);
+#else
     rightLayout->addWidget(msgHeader);
+#endif
 
     // Messages / canvas tab strip; paints its own bottom divider, replacing
     // the old 1px header divider.
@@ -884,8 +943,8 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         }
     );
 
-    // Search is an overlay on msgArea — not a stack page, so it doesn't replace the
-    // message list.  Show/hide it; the message list stays loaded beneath it.
+    // Search is an overlay on msgArea — not a stack page, so it doesn't replace
+    // the message list.  Show/hide it; the message list stays loaded beneath it.
     _searchWidget = new SearchWidget(msgArea);
     _searchWidget->hide();
     _contentStack->installEventFilter(this);
@@ -924,10 +983,11 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     });
     connect(_searchWidget, &SearchWidget::resultSelected, this, [this](ConversationId conv, Ts ts) {
         if (conv != _currentConvId) {
-            // Same coordinated path as a notification open: selectConversation()
-            // moves the list highlight and drives openConversation() via the
-            // signal, so the header and the selected row don't stay on the old
-            // conversation. (It also un-hides a relevance-filtered result.)
+            // Same coordinated path as a notification open:
+            // selectConversation() moves the list highlight and drives
+            // openConversation() via the signal, so the header and the
+            // selected row don't stay on the old conversation. (It also
+            // un-hides a relevance-filtered result.)
             _convList->selectConversation(conv);
             if (_currentConvId != conv) {
                 const int row = _convList->rowForId(conv);
@@ -936,8 +996,8 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
             }
         }
         // Issued after the open so it outranks the restore-reading-position
-        // intent, and survives the switch: the jump re-targets once the freshly
-        // opened conversation's history page lands.
+        // intent, and survives the switch: the jump re-targets once the
+        // freshly opened conversation's history page lands.
         _messageList->jumpToTs(ts);
     });
 
@@ -1141,7 +1201,8 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     return rightPanel;
 }
 
-// ── Theme ─────────────────────────────────────────────────────────────────────
+// ── Theme
+// ─────────────────────────────────────────────────────────────────────
 
 void MainWindow::applyTheme() {
     // qApp->setStyleSheet() forces Qt to re-polish (recompute the style of)
@@ -1159,6 +1220,17 @@ void MainWindow::applyTheme() {
     }
 
     const auto &th = Th::c();
+
+#ifdef Q_OS_MACOS
+    if (_msgHeader)
+        _msgHeader->setStyleSheet(
+            QString(
+                "QWidget#msgHeader { background: %1; border-bottom: 1px solid "
+                "%2; }"
+            )
+                .arg(Th::qss(th.surface.content), Th::qss(th.divider.subtle))
+        );
+#endif
 
     // The window backdrop (nav tone + mirrored light content region) is painted
     // by BackdropFrame::paintEvent reading the live theme, so a theme switch just
@@ -1192,12 +1264,16 @@ void MainWindow::applyTheme() {
         }
     }
 
-    // _msgHeader has no background of its own: it sits directly on the right
-    // panel's content surface (an explicit raised fill read as a boxed band on
-    // dark themes, where raised != content).
+    // The header uses the same content surface on both platforms, keeping the
+    // macOS overlay consistent with the right-panel header elsewhere.
     if (_convNameLabel) {
+#ifdef Q_OS_MACOS
+        const int titleFontSize = th.fonts.xl;
+#else
+        const int titleFontSize = th.fonts.xxl;
+#endif
         _convNameLabel->setStyleSheet(QString("font-weight: 600; font-size: %1px; color: %2;")
-                                          .arg(th.fonts.xxl)
+                                          .arg(titleFontSize)
                                           .arg(Th::qss(th.text.primary)));
     }
     if (_huddleBtn) {
@@ -1225,7 +1301,8 @@ void MainWindow::applyTheme() {
     }
 }
 
-// ── Session lifecycle ─────────────────────────────────────────────────────────
+// ── Session lifecycle
+// ─────────────────────────────────────────────────────────
 
 Session *MainWindow::ensureSession(const QString &teamId) {
     auto it = _sessions.find(teamId);
@@ -1485,6 +1562,8 @@ void MainWindow::showLoggedOut() {
     updateTrayIcon();
     if (_titleBar)
         _titleBar->setTitle({});
+    if (_msgHeader)
+        _msgHeader->hide();
     refreshSwitcher(); // switcher is always visible — deselect the active entry
     _stack->setCurrentWidget(_loggedOutPage);
 }
@@ -1521,8 +1600,8 @@ void MainWindow::promptAddWorkspace(const QPoint &anchorGlobal) {
 }
 
 void MainWindow::connectSlack() {
-    // Session is the default Slack connection method: open the import dialog first.
-    // Its secondary "use app keys" escape falls back to the OAuth flow.
+    // Session is the default Slack connection method: open the import dialog
+    // first. Its secondary "use app keys" escape falls back to the OAuth flow.
     auto *dlg = new SessionImportDialog(this);
     connect(
         dlg,
@@ -1559,7 +1638,8 @@ void MainWindow::migrateSlackToSession() {
         QMessageBox::information(
             this,
             tr("Convert to session"),
-            tr("Add one workspace with your Slack session first — its cookie is reused for the "
+            tr("Add one workspace with your Slack session "
+               "first — its cookie is reused for the "
                "rest.")
         );
         return;
@@ -1588,7 +1668,8 @@ void MainWindow::migrateSlackToSession() {
             for (const auto &c : converted)
                 TokenStore::saveWorkspace(slack::toRecord(c));
             slack::setConnectionMode(slack::ConnectionMode::Session);
-            // Restart to drop Socket Mode and rebuild every backend in session mode.
+            // Restart to drop Socket Mode and rebuild every backend in session
+            // mode.
             restartApp();
         }
     );
@@ -1606,12 +1687,13 @@ void MainWindow::addSessionWorkspaces(const QList<TokenStore::WorkspaceRecord> &
         TokenStore::saveWorkspace(rec);
     _activeTeamId = recs.first().key.toString();
 
-    // The account-wide `d` cookie rotates on each browser re-login, so importing a
-    // fresh one stales the OTHER session workspaces' stored token+cookie (this is
-    // why adding a workspace disconnected the previous one). Re-mint each other
-    // session workspace's token against the new cookie using its stored URL, then
-    // restart so running backends reload fresh creds. Workspaces with no stored
-    // URL (added before URLs were persisted) can't be auto-healed — re-import once.
+    // The account-wide `d` cookie rotates on each browser re-login, so importing
+    // a fresh one stales the OTHER session workspaces' stored token+cookie (this
+    // is why adding a workspace disconnected the previous one). Re-mint each
+    // other session workspace's token against the new cookie using its stored
+    // URL, then restart so running backends reload fresh creds. Workspaces with
+    // no stored URL (added before URLs were persisted) can't be auto-healed —
+    // re-import once.
     const QString                      newCookie = slack::fromRecord(recs.first()).cookie;
     QList<slack::session::TeamSession> stale;
     if (!newCookie.isEmpty()) {
@@ -1676,7 +1758,8 @@ void MainWindow::loginWithService(Service service) {
         &auth::AuthStrategy::succeeded,
         this,
         [this, s, service](TokenStore::WorkspaceRecord rec) {
-            // OAuth sign-in ⇒ app-keys mode (Socket Mode on) — mode follows how you connect.
+            // OAuth sign-in ⇒ app-keys mode (Socket Mode on) — mode follows how
+            // you connect.
             if (service == Service::Slack)
                 slack::setConnectionMode(slack::ConnectionMode::AppKeys);
             TokenStore::saveWorkspace(rec);
@@ -1702,7 +1785,8 @@ void MainWindow::handleOAuthUri(const QUrl &uri) {
         _activeFlow->handleCallbackUri(uri);
 }
 
-// How the user's own presence reads to others — shown on the self-DM header avatar.
+// How the user's own presence reads to others — shown on the self-DM header
+// avatar.
 static QString selfPresenceTooltip(const SelfPresence &sp) {
     if (sp.phantomAway())
         return QCoreApplication::translate(
@@ -1849,7 +1933,8 @@ void MainWindow::openBrowseDialog(int initialTab) {
         cdlg->deleteLater();
     });
     connect(dlg, &BrowseChannelsDialog::channelActivated, this, [this](ConversationId id) {
-        // Already a member: just navigate (even if hidden by the relevance filter)
+        // Already a member: just navigate (even if hidden by the relevance
+        // filter)
         if (_convList->selectConversation(id))
             return;
         // Not a member: join first, then navigate when conv list updates
@@ -2028,7 +2113,8 @@ void MainWindow::connectToSession() {
                     }
                 }
                 if (_convList) {
-                    // Re-apply header for current DM conv now that user names are resolved.
+                    // Re-apply header for current DM conv now that user names are
+                    // resolved.
                     if (!_currentConvId.value.isEmpty()) {
                         const auto *conv = _session->findConversation(_currentConvId);
                         if (conv && (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim)) {
@@ -2194,7 +2280,8 @@ void MainWindow::showNetworkError(const QString &message) {
 
 void MainWindow::applyUpdateAndRestart() {
 #if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
-    // Signal main() to release SingleInstance and re-exec after the event loop exits.
+    // Signal main() to release SingleInstance and re-exec after the event loop
+    // exits.
     QCoreApplication::exit(kRestartExitCode);
 #elif defined(Q_OS_MACOS)
     QDesktopServices::openUrl(QUrl::fromLocalFile(_updateChecker->downloadedPath()));
@@ -2202,8 +2289,8 @@ void MainWindow::applyUpdateAndRestart() {
 }
 
 void MainWindow::restartApp() {
-    // Same clean re-exec path as an applied update (main() handles kRestartExitCode
-    // on every platform); no download involved.
+    // Same clean re-exec path as an applied update (main() handles
+    // kRestartExitCode on every platform); no download involved.
     QCoreApplication::exit(kRestartExitCode);
 }
 
@@ -2243,7 +2330,8 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     if (!s.value("notifications/enabled", true).toBool())
         return;
 
-    // Muted workspace: high-level switch suppresses every OS notification from it.
+    // Muted workspace: high-level switch suppresses every OS notification from
+    // it.
     if (_mutedTeams.contains(teamId))
         return;
 
@@ -2738,10 +2826,10 @@ void MainWindow::notifySessionExpired(const QString &teamId) {
 }
 
 void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs) {
-    // important (red) = DM/MPDM unreads + channel @mentions. normal (blue) = other
-    // *allowed* unread activity — only in channels set to "All new posts". A muted
-    // conversation is fully silent (no red, no blue); a "Just mentions" channel
-    // contributes only its @mentions (red), never blue.
+    // important (red) = DM/MPDM unreads + channel @mentions. normal (blue) =
+    // other *allowed* unread activity — only in channels set to "All new posts".
+    // A muted conversation is fully silent (no red, no blue); a "Just mentions"
+    // channel contributes only its @mentions (red), never blue.
     const NotificationLevel fallback = globalDefaultNotifLevel();
     int                     normal = 0, important = 0;
     for (const auto &c : convs) {
@@ -2799,7 +2887,8 @@ void MainWindow::updateTrayIcon() {
     if (!_trayIcon)
         return;
 
-    // Always render via QSvgRenderer so the alpha channel is preserved in static builds.
+    // Always render via QSvgRenderer so the alpha channel is preserved in static
+    // builds.
     const int    sz = 128;
     QSvgRenderer renderer(QString(":/icon_tray.svg"));
     QPixmap      px(sz, sz);
@@ -2820,7 +2909,8 @@ void MainWindow::updateTrayIcon() {
     _trayIcon->setIcon(QIcon(px));
 }
 
-// ── Workspace management ──────────────────────────────────────────────────────
+// ── Workspace management
+// ──────────────────────────────────────────────────────
 
 void MainWindow::refreshSwitcher() {
     if (!_switcher)
@@ -2885,7 +2975,8 @@ void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPo
     auto      *menu = new ContextMenu(this);
     menu->setWidthMode(ContextMenu::WidthMode::MinWidth);
 
-    // Workspace admins get a shortcut to the Slack admin settings in their browser.
+    // Workspace admins get a shortcut to the Slack admin settings in their
+    // browser.
     const auto it = _sessions.find(teamId);
     if (it != _sessions.end() && it->second.session && it->second.session->meIsAdmin()) {
         QString base = it->second.session->teamUrl();
@@ -2911,7 +3002,8 @@ void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPo
     menu->popup(globalPos);
 }
 
-// ── Tray ──────────────────────────────────────────────────────────────────────
+// ── Tray
+// ──────────────────────────────────────────────────────────────────────
 
 void MainWindow::restoreFromTray() {
     // Bring the window to the front whatever its state (minimized to taskbar,
@@ -2926,10 +3018,10 @@ void MainWindow::restoreFromTray() {
     // isMinimized() stays false and the state still reads Maximized/Normal, while
     // raise()/activateWindow() are silently ignored (no xdg-activation token — a
     // D-Bus tray click can't grant one). The only reliable way to bring the
-    // window back is to destroy and recreate the surface (hide → show*): a freshly
-    // mapped toplevel is shown by the compositor. The robust signal for "we need
-    // to do this" is that we don't currently hold focus; when already active we
-    // skip the cycle to avoid a needless flicker.
+    // window back is to destroy and recreate the surface (hide → show*): a
+    // freshly mapped toplevel is shown by the compositor. The robust signal for
+    // "we need to do this" is that we don't currently hold focus; when already
+    // active we skip the cycle to avoid a needless flicker.
     if (!isActiveWindow()) {
         const bool wasMaximized = windowState() & Qt::WindowMaximized;
         hide();
@@ -2977,7 +3069,8 @@ void MainWindow::setupTray() {
     menu->addSeparator();
     auto *quitAct = menu->addAction(tr("Quit"));
     // Defer quit so the menu closes fully before the event loop exits;
-    // calling exit() synchronously inside a menu-action handler corrupts Qt's popup state.
+    // calling exit() synchronously inside a menu-action handler corrupts Qt's
+    // popup state.
     connect(quitAct, &QAction::triggered, this, [] {
         QTimer::singleShot(0, qApp, &QCoreApplication::quit);
     });
@@ -2988,12 +3081,12 @@ void MainWindow::setupTray() {
         &QSystemTrayIcon::activated,
         this,
         [this](QSystemTrayIcon::ActivationReason reason) {
-            // Left click (Trigger): restore the window if it's tucked away in the
-            // tray (hidden via closeEvent) or minimized; otherwise do nothing —
-            // matching Telegram Desktop. Right click shows the context menu, which
-            // Qt handles natively (placed next to the icon). The native popup we
-            // used to raise here on Trigger appeared in the wrong style and far
-            // from the icon.
+            // Left click (Trigger): restore the window if it's tucked away in
+            // the tray (hidden via closeEvent) or minimized; otherwise do
+            // nothing — matching Telegram Desktop. Right click shows the
+            // context menu, which Qt handles natively (placed next to the
+            // icon). The native popup we used to raise here on Trigger appeared
+            // in the wrong style and far from the icon.
             if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
                 if (!isVisible() || isMinimized())
                     restoreFromTray();
@@ -3314,7 +3407,8 @@ void MainWindow::openNotifTarget(
     }
 }
 
-// ── Event handlers ────────────────────────────────────────────────────────────
+// ── Event handlers
+// ────────────────────────────────────────────────────────────
 
 static Qt::Edges resizeEdgesAt(const QPoint &pos, const QSize &sz) {
     Qt::Edges edges;
@@ -3346,6 +3440,13 @@ static Qt::CursorShape cursorForEdges(Qt::Edges edges) {
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
+#ifdef Q_OS_MACOS
+    // Settings covers the body, but the unified conversation header sits above
+    // that overlay. Block its actions until Settings closes as well.
+    if (obj == _settingsDialog && _msgHeader &&
+        (e->type() == QEvent::Show || e->type() == QEvent::Hide))
+        _msgHeader->setEnabled(e->type() == QEvent::Hide);
+#endif
     // Keep the window backdrop's mirrored light region aligned with the content
     // panel when it moves/resizes independently of the window (conv-panel drag,
     // show/hide). Non-consuming — fall through to the rest of the filter.
@@ -3381,7 +3482,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
             }
         }
     }
-    if (!isMaximized() && !isFullScreen()) {
+    if (windowFlags().testFlag(Qt::FramelessWindowHint) && !isMaximized() && !isFullScreen()) {
         auto *w = qobject_cast<QWidget *>(obj);
         if (w && w->window() == this) {
             if (e->type() == QEvent::MouseButtonPress) {
@@ -3495,8 +3596,11 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
 void MainWindow::updateRoundedMask() {
     if (!_frame)
         return;
-    const bool  windowed = !isMaximized() && !isFullScreen();
-    const auto &sp       = Th::c().spacing;
+    // Native frames own their corners; only frameless windows need the inset
+    // border and client-area mask.
+    const bool windowed =
+        windowFlags().testFlag(Qt::FramelessWindowHint) && !isMaximized() && !isFullScreen();
+    const auto &sp = Th::c().spacing;
     if (_rightPanelLayout)
         _rightPanelLayout->setContentsMargins(0, 0, windowed ? sp.sm : 0, windowed ? sp.sm : 0);
     if (_loggedOutPageLayout)
@@ -3520,11 +3624,12 @@ void MainWindow::resizeEvent(QResizeEvent *e) {
     updateRoundedMask();
 }
 
-// ── Screen fit ────────────────────────────────────────────────────────────────
+// ── Screen fit
+// ────────────────────────────────────────────────────────────────
 
-// The screen a window rect belongs to: the one it overlaps most, falling back to
-// the one under the pointer (where a not-yet-mapped window will most likely land)
-// and finally the primary.
+// The screen a window rect belongs to: the one it overlaps most, falling back
+// to the one under the pointer (where a not-yet-mapped window will most likely
+// land) and finally the primary.
 static QScreen *screenForRect(const QRect &r) {
     QScreen *best     = nullptr;
     int      bestArea = 0;
@@ -3546,13 +3651,13 @@ static QScreen *screenForRect(const QRect &r) {
 // does NOT fit gets pulled in.
 //
 // This matters more for us than for a decorated app: frameless means the only
-// resize affordances are our own 6px hot border (resizeEdgesAt) and the titlebar
-// buttons. A window taller than the work area has its bottom border below the
-// screen and, depending on where the WM parks it, its titlebar above the top —
-// at which point there is nothing left to grab and the user is stuck with it.
-// That was issue #45 ("login window too big for my laptop screen and could not
-// resize it": a 1200x800 default against, say, 1920x1080 at 150% scaling, which
-// is 1280x720 of logical room).
+// resize affordances are our own 6px hot border (resizeEdgesAt) and the
+// titlebar buttons. A window taller than the work area has its bottom border
+// below the screen and, depending on where the WM parks it, its titlebar above
+// the top — at which point there is nothing left to grab and the user is stuck
+// with it. That was issue #45 ("login window too big for my laptop screen and
+// could not resize it": a 1200x800 default against, say, 1920x1080 at 150%
+// scaling, which is 1280x720 of logical room).
 void MainWindow::fitToScreen() {
     // Maximized/fullscreen geometry is the windowing system's business, and
     // saveGeometry/restoreGeometry carry the normal geometry separately.
@@ -3600,9 +3705,9 @@ void MainWindow::fitToScreen() {
         move(p + frameOff);
 }
 
-// Tray rescue: back to the default size (fitted), centred on the current screen.
-// Unlike fitToScreen() this one is a deliberate user request, so it may grow the
-// window as well as move it.
+// Tray rescue: back to the default size (fitted), centred on the current
+// screen. Unlike fitToScreen() this one is a deliberate user request, so it may
+// grow the window as well as move it.
 void MainWindow::resetWindowGeometry() {
     if (isMaximized() || isFullScreen())
         showNormal();
@@ -3926,13 +4031,14 @@ QString MainWindow::huddleJoinUrl(const ConversationId &conv) const {
 
 QString MainWindow::huddleJoinUrl(const QString &teamId, const ConversationId &conv) const {
     // Prefer the room's own `huddle_link` (Slack's authoritative "Copy huddle
-    // link" URL, delivered on the huddle_thread realtime event / conversations.info
-    // room object). It is the only join URL guaranteed to work — a link we build
-    // by hand only reliably opens a *channel* huddle; the same /huddle/<team>/<id>
-    // shape server-errors for a DM ("D…") id, which is why clicking a live DM
-    // huddle used to land on Slack's "Server Error" page. We only fall back to a
-    // constructed link when we have no authoritative one (e.g. starting a fresh
-    // huddle, or an active huddle we learned about without room detail).
+    // link" URL, delivered on the huddle_thread realtime event /
+    // conversations.info room object). It is the only join URL guaranteed to work
+    // — a link we build by hand only reliably opens a *channel* huddle; the same
+    // /huddle/<team>/<id> shape server-errors for a DM ("D…") id, which is why
+    // clicking a live DM huddle used to land on Slack's "Server Error" page. We
+    // only fall back to a constructed link when we have no authoritative one
+    // (e.g. starting a fresh huddle, or an active huddle we learned about without
+    // room detail).
     const Conversation *c = _session ? _session->findConversation(conv) : nullptr;
     if (c && !c->huddleLink.isEmpty())
         return c->huddleLink;
@@ -4056,8 +4162,9 @@ void MainWindow::restoreLastConv() {
         return;
     _convList->selectRow(row);
     // selectRow is a no-op when the row is already visually selected (e.g. after
-    // rebuildFilteredConvs re-mapped _selectedId without emitting conversationSelected).
-    // In that case openConversation was never called, so drive it directly.
+    // rebuildFilteredConvs re-mapped _selectedId without emitting
+    // conversationSelected). In that case openConversation was never called, so
+    // drive it directly.
     if (_currentConvId.value.isEmpty())
         openConversation(row);
 }
