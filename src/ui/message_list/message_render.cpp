@@ -133,7 +133,8 @@ QString docStyleSheet() {
     return QString("p { line-height: %1%; margin: 0; }").arg(pct);
 }
 
-QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
+QStringList
+collectEmojiImageUrls(const Message &msg, const Session *session, bool showLinkPreviews) {
     QStringList   out;
     QSet<QString> seen;
     auto          addFrom = [&](const TextWithEntities &twe) {
@@ -159,6 +160,8 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
         addBlockImage(b);
     }
     for (const auto &att : msg.attachments) {
+        if (!showLinkPreviews && att.isLinkPreview)
+            continue;
         if (!att.pretext.isEmpty()) // pretext is parsed as mrkdwn at render time
             addFrom(MrkdwnParser::parse(att.pretext));
         if (!att.title.isEmpty()) // title is token-resolved at render time

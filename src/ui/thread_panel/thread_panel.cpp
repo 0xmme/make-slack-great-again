@@ -277,6 +277,10 @@ void ThreadPanel::refreshTimestamps() {
     _msgList->viewport()->update();
 }
 
+void ThreadPanel::setLinkPreviewsEnabled(bool on) {
+    _msgList->setLinkPreviewsEnabled(on);
+}
+
 void ThreadPanel::pauseGifPlayback() {
     _msgList->pauseGifPlayback();
 }

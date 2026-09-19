@@ -52,7 +52,8 @@ QString docStyleSheet();
 // All image URLs a message's docs reference as <img>: custom emoji plus Block
 // Kit image-block urls (top-level and attachment-embedded), deduplicated.
 // Used to register QTextDocument image resources and trigger downloads.
-QStringList collectEmojiImageUrls(const Message &msg, const Session *session);
+QStringList
+collectEmojiImageUrls(const Message &msg, const Session *session, bool showLinkPreviews = true);
 
 // Context for rendering Block Kit "image" blocks inline (Slack GIF/Giphy
 // messages). When provided, image blocks emit a title line ("GIF ▾", a

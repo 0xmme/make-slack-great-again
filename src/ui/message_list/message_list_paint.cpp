@@ -394,21 +394,21 @@ void MessageListWidget::paintRow(
     // ── Attachments ──────────────────────────────────────────────────
     paintAttachments(p, item, ctx, contentY, index);
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-        if (isDismissed(item.msg.ts, ai))
+        if (isAttachmentHidden(item.msg, ai))
             continue;
         contentY += kAttachGap + attachTotalH(item, ai);
     }
 
     // ── Inline file previews (images + prerendered docs) ─────────────
     paintFileImages(p, item, ctx, contentY);
-    const bool hasImgAbove = item.docHeight > 0 || !item.attachDocs.empty();
+    const bool hasImgAbove = item.docHeight > 0 || hasVisibleAttachments(item.msg);
     const int  imgRegionH  = layoutFileImages(item, ctx.textWidth, hasImgAbove).height;
     contentY += imgRegionH;
 
     // ── File chips (files without a preview) ─────────────────────────
     paintFileChips(p, item, ctx, contentY);
     {
-        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
+        const bool hasAboveChips = hasImgAbove || imgRegionH > 0;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
             if (f.hasPreview())
@@ -822,7 +822,7 @@ void MessageListWidget::paintAttachments(
     const int   textX       = left + kAttachBarW + kAttachBarGap;
     int         y           = top;
     for (int ai = 0; ai < (int)attachments.size(); ++ai) {
-        if (isDismissed(item.msg.ts, ai))
+        if (isAttachmentHidden(item.msg, ai))
             continue;
 
         const auto &att = attachments[ai];
@@ -1188,7 +1188,7 @@ void MessageListWidget::paintFileImages(
 ) const {
     const int  left     = ctx.textLeft;
     const int  width    = ctx.textWidth;
-    const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
+    const bool hasAbove = item.docHeight > 0 || hasVisibleAttachments(item.msg);
 
     // Single source of truth for the region geometry — rowHeight() and
     // fileViewportRect() walk the very same layout, so nothing drifts.
@@ -1439,27 +1439,16 @@ void MessageListWidget::requestItemImages(MessageItem &item) {
 
         // Attachment preview images and favicons (public CDN URLs → via shared ImageCache).
         if (!item.attachImgsRequested && _imgCache) {
-            bool needsAttach = false;
-            for (const auto &att : item.msg.attachments) {
+            item.attachImgsRequested = true;
+            for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
+                if (isAttachmentHidden(item.msg, ai))
+                    continue;
+                const auto   &att    = item.msg.attachments[ai];
                 const QString imgUrl = attachPreviewUrl(att);
-                if (!imgUrl.isEmpty()) {
-                    needsAttach = true;
-                    break;
-                }
-                if (!att.faviconUrl.isEmpty()) {
-                    needsAttach = true;
-                    break;
-                }
-            }
-            if (needsAttach) {
-                item.attachImgsRequested = true;
-                for (const auto &att : item.msg.attachments) {
-                    const QString imgUrl = attachPreviewUrl(att);
-                    if (!imgUrl.isEmpty())
-                        _imgCache->get(imgUrl);
-                    if (!att.faviconUrl.isEmpty())
-                        _imgCache->get(att.faviconUrl);
-                }
+                if (!imgUrl.isEmpty())
+                    _imgCache->get(imgUrl);
+                if (!att.faviconUrl.isEmpty())
+                    _imgCache->get(att.faviconUrl);
             }
         }
     }
@@ -1605,7 +1594,7 @@ void MessageListWidget::paintFileChips(
             anyImg = true;
             break;
         }
-    const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
+    const bool hasAbove = item.docHeight > 0 || hasVisibleAttachments(item.msg) || anyImg;
 
     int  y     = top;
     bool first = true;
@@ -1661,7 +1650,7 @@ MessageListWidget::fileChipAt(const QPoint &viewportPos, QRect *chipRect, int *m
             rowTop + sep2 + padV + pinnedH2 + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
         const int attX = textLeft; // cards are un-indented (attachIsBarless)
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-            if (isDismissed(item.msg.ts, ai))
+            if (isAttachmentHidden(item.msg, ai))
                 continue;
             chipY += kAttachGap;
             // A quoted message's chips live inside the card, under its body.
@@ -1688,11 +1677,11 @@ MessageListWidget::fileChipAt(const QPoint &viewportPos, QRect *chipRect, int *m
             chipY += attachTotalH(item, ai);
         }
 
-        const bool hasAbove0  = item.docHeight > 0 || !item.attachDocs.empty();
+        const bool hasAbove0  = item.docHeight > 0 || hasVisibleAttachments(item.msg);
         const int  imgRegionH = layoutFileImages(item, textWidth, hasAbove0).height;
         chipY += imgRegionH;
 
-        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
+        const bool hasAboveChips = hasAbove0 || imgRegionH > 0;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
             if (f.hasPreview())
@@ -1911,18 +1900,18 @@ int MessageListWidget::replyBarVpTop(int i, const PaintContext &ctx) const {
     const int  pinnedH3  = bannersH(item);
     int y = rowTop + sep3 + padV + pinnedH3 + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-        if (isDismissed(item.msg.ts, ai))
+        if (isAttachmentHidden(item.msg, ai))
             continue;
         y += kAttachGap + attachTotalH(item, ai);
     }
 
     // Inline file previews (images + prerendered docs) — mirror paint.
-    const bool hasAboveImages = item.docHeight > 0 || !item.attachDocs.empty();
+    const bool hasAboveImages = item.docHeight > 0 || hasVisibleAttachments(item.msg);
     const int  imgRegionH     = layoutFileImages(item, textWidth, hasAboveImages).height;
     y += imgRegionH;
 
     // File chips (files without a preview) — mirror paint.
-    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
+    const bool hasAboveChips = hasAboveImages || imgRegionH > 0;
     bool       firstChip     = true;
     for (const auto &f : item.msg.files) {
         if (f.hasPreview())
@@ -1988,14 +1977,14 @@ int MessageListWidget::replyItemHeight(const MessageItem &item, int width, bool 
 
     int extraH = 0;
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-        if (isDismissed(item.msg.ts, ai))
+        if (isAttachmentHidden(item.msg, ai))
             continue;
         extraH += kAttachGap + std::max(attachTotalH(item, ai), 0);
     }
-    const bool hasAboveImages = item.docHeight > 0 || !item.attachDocs.empty();
+    const bool hasAboveImages = item.docHeight > 0 || hasVisibleAttachments(item.msg);
     const int  imgRegionH     = layoutFileImages(item, width, hasAboveImages).height;
     extraH += imgRegionH;
-    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
+    const bool hasAboveChips = hasAboveImages || imgRegionH > 0;
     bool       firstChip     = true;
     for (const auto &f : item.msg.files) {
         if (f.hasPreview())
@@ -2073,19 +2062,19 @@ void MessageListWidget::paintReplyItem(
     // context and index -1 (so no hover/dismiss chrome ever matches).
     paintAttachments(p, item, subCtx, contentY, -1);
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-        if (isDismissed(item.msg.ts, ai))
+        if (isAttachmentHidden(item.msg, ai))
             continue;
         contentY += kAttachGap + attachTotalH(item, ai);
     }
 
     paintFileImages(p, item, subCtx, contentY);
-    const bool hasImgAbove = item.docHeight > 0 || !item.attachDocs.empty();
+    const bool hasImgAbove = item.docHeight > 0 || hasVisibleAttachments(item.msg);
     const int  imgRegionH  = layoutFileImages(item, subCtx.textWidth, hasImgAbove).height;
     contentY += imgRegionH;
 
     paintFileChips(p, item, subCtx, contentY);
     {
-        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
+        const bool hasAboveChips = hasImgAbove || imgRegionH > 0;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
             if (f.hasPreview())
@@ -2228,17 +2217,17 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
         int y = rowTop + sep + pinH + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
 
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-            if (!isDismissed(item.msg.ts, ai))
+            if (!isAttachmentHidden(item.msg, ai))
                 y += kAttachGap + attachTotalH(item, ai);
         }
 
         // File previews
-        const bool hasAbove   = item.docHeight > 0 || !item.attachDocs.empty();
+        const bool hasAbove   = item.docHeight > 0 || hasVisibleAttachments(item.msg);
         const int  imgRegionH = layoutFileImages(item, textWidth, hasAbove).height;
         y += imgRegionH;
 
         // File chips
-        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
+        const bool hasAboveChips = hasAbove || imgRegionH > 0;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
             if (f.hasPreview())
@@ -2382,13 +2371,13 @@ QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
     int contentY =
         rowTop + sep + pinnedH + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-        if (!isDismissed(item.msg.ts, ai))
+        if (!isAttachmentHidden(item.msg, ai))
             contentY += kAttachGap + attachTotalH(item, ai);
     }
 
     // File previews: the requested file's rect comes straight from the shared
     // layout (single image or gallery tile), offset into viewport coordinates.
-    const bool            hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
+    const bool            hasAbove = item.docHeight > 0 || hasVisibleAttachments(item.msg);
     const FileImageLayout layout   = layoutFileImages(item, width, hasAbove);
     if (item.msg.files[fileIdx].hasPreview()) {
         const QRect r = layout.rects[fileIdx];
@@ -2399,7 +2388,7 @@ QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
 
     // Walk file chips (same logic as paintFileChips), starting past the image region.
     int        y             = contentY + layout.height;
-    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || layout.height > 0;
+    const bool hasAboveChips = hasAbove || layout.height > 0;
     bool       firstChip     = true;
     for (int fi = 0; fi < (int)item.msg.files.size(); ++fi) {
         const auto &f = item.msg.files[fi];

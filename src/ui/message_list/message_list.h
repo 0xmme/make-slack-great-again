@@ -111,6 +111,7 @@ public:
     // reply bar expands the replies underneath the message instead of opening
     // the standalone panel. Switching modes collapses any inline expansions.
     void setThreadsInline(bool on);
+    void setLinkPreviewsEnabled(bool on);
     // The thread root currently shown in the standalone panel ({} when none).
     // Drives the reply-bar "Close thread" copy in standalone mode. Pass {} when
     // the panel is closed — this only clears the open-root, it never collapses an
@@ -617,9 +618,14 @@ private:
     std::pair<int, int> dismissButtonAt(const QPoint &viewportPos) const;
     // Returns the viewport rect of dismiss button (msgIdx, attachIdx), or null rect.
     QRect               dismissButtonVpRect(int msgIdx, int attachIdx) const;
-    bool                isDismissed(const Ts &ts, int ai) const {
-        return _dismissedAttachments.contains(ts + "/" + QString::number(ai));
+    bool                isAttachmentHidden(const Message &msg, int ai) const {
+        // Hot path (rowHeight/paint per attachment): only build the lookup key
+        // when something was actually dismissed this session.
+        return (!_showLinkPreviews && msg.attachments[ai].isLinkPreview) ||
+               (!_dismissedAttachments.isEmpty() &&
+                _dismissedAttachments.contains(msg.ts + "/" + QString::number(ai)));
     }
+    bool hasVisibleAttachments(const Message &msg) const;
 
     // Layout constants (all in logical pixels)
     static constexpr int kPadH            = 16; // horizontal margin on both sides
@@ -813,6 +819,7 @@ private:
 
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;
+    bool          _showLinkPreviews = true;
 
     // Image blocks the user collapsed via their "GIF ▾" title line.
     // Key: ts [+ "/a" + attachIndex] + "/b" + blockIndex (see GifRenderContext).

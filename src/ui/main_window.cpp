@@ -62,6 +62,7 @@
 #include <QDialog>
 #include <QEvent>
 #include <QCloseEvent>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMouseEvent>
@@ -270,8 +271,22 @@ MainWindow::~MainWindow() {
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("");
+#ifdef Q_OS_MACOS
+    // Keep AppKit's traffic lights, shadow, rounded corners, and resize handling.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+    setWindowFlags(Qt::Window | Qt::ExpandedClientAreaHint | Qt::NoTitleBarBackgroundHint);
+    // We reserve room for the traffic lights in the header itself. Otherwise
+    // QWidget inserts a second, empty title-bar-height margin above the header.
+    setAttribute(Qt::WA_ContentsMarginsRespectsSafeArea, false);
+#else
+    // Earlier Qt versions need the native full-size-content style; the macOS
+    // title-bar helper applies it once the NSWindow exists.
+    setWindowFlags(Qt::Window);
+#endif
+#else
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     setAttribute(Qt::WA_TranslucentBackground);
+#endif
     setMouseTracking(true);
     setMinimumSize(kPreferredMinSize);
     resize(kDefaultWindowSize);
@@ -373,6 +388,7 @@ void MainWindow::buildUi() {
     _frameLayout->setSpacing(0);
 
     _titleBar = new TitleBar(_frame);
+    _titleBar->setTitle({});
     _frameLayout->addWidget(_titleBar);
 
     _updateBar = new UpdateBar(_frame);
@@ -584,6 +600,22 @@ QWidget *MainWindow::buildMainPage() {
         _messageList,
         &MessageListWidget::setThreadsInline
     );
+    const bool showLinkPreviews =
+        QSettings("msga", "msga").value("appearance/showLinkPreviews", true).toBool();
+    _messageList->setLinkPreviewsEnabled(showLinkPreviews);
+    _threadPanel->setLinkPreviewsEnabled(showLinkPreviews);
+    connect(
+        _settingsDialog,
+        &SettingsDialog::linkPreviewsChanged,
+        _messageList,
+        &MessageListWidget::setLinkPreviewsEnabled
+    );
+    connect(
+        _settingsDialog,
+        &SettingsDialog::linkPreviewsChanged,
+        _threadPanel,
+        &ThreadPanel::setLinkPreviewsEnabled
+    );
     // Enter vs Ctrl+Enter: the composers read the registry per keypress; only
     // the welcome screen's shortcut panel holds built rows to refresh.
     connect(
@@ -741,10 +773,23 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     auto *msgHeader = new QWidget(rightPanel);
     msgHeader->setObjectName("msgHeader");
     msgHeader->setAttribute(Qt::WA_StyledBackground);
+    const auto &sp = Th::c().spacing;
+#ifdef Q_OS_MACOS
+    // TitleBar's layout owns the unified header's height.
+    auto *headerGrid = new QGridLayout(msgHeader);
+    headerGrid->setContentsMargins(0, 0, 0, 1);
+    headerGrid->setSpacing(0);
+    auto *heading         = new QWidget(msgHeader);
+    auto *msgHeaderLayout = new QHBoxLayout(heading);
+    msgHeaderLayout->setContentsMargins(0, 0, 0, 0);
+    msgHeaderLayout->addStretch(1);
+    headerGrid->addWidget(heading, 0, 1);
+    headerGrid->setColumnStretch(1, 1);
+#else
     msgHeader->setFixedHeight(48);
-    const auto &sp              = Th::c().spacing;
-    auto       *msgHeaderLayout = new QHBoxLayout(msgHeader);
+    auto *msgHeaderLayout = new QHBoxLayout(msgHeader);
     msgHeaderLayout->setContentsMargins(sp.xl, 0, sp.md, 0);
+#endif
     msgHeaderLayout->setSpacing(sp.md);
 
     _headerAvatar = new HeaderAvatarWidget(msgHeader);
@@ -753,7 +798,26 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
 
     _convNameLabel = new QLabel("", msgHeader);
     _convNameLabel->setObjectName("convNameLabel");
+#ifdef Q_OS_MACOS
+    _convNameLabel->setAlignment(Qt::AlignCenter);
+    _convNameLabel->setMinimumWidth(0);
+    _convNameLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    // Let empty header space and the title drag the native window.
+    _convNameLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    auto *actions = new QWidget(msgHeader);
+    actions->setFixedWidth(132);
+    auto *actionsLayout = new QHBoxLayout(actions);
+    actionsLayout->setContentsMargins(0, 0, sp.md, 0);
+    actionsLayout->setSpacing(sp.xs);
+    actionsLayout->addStretch();
+    headerGrid->setColumnMinimumWidth(0, 132);
+    headerGrid->addWidget(actions, 0, 2);
+    msgHeaderLayout->addWidget(_convNameLabel);
+    msgHeaderLayout->addStretch(1);
+#else
+    auto *actionsLayout = msgHeaderLayout;
     msgHeaderLayout->addWidget(_convNameLabel, 1);
+#endif
 
     // Huddle button — hands off to the Slack web client like the huddle banner's
     // Join (huddles aren't startable through the public API).
@@ -765,8 +829,8 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _huddleBtn->setIcon(svgIcon(":/ui/headphones.svg", QSize(16, 16), Th::c().icon.def));
     _huddleBtnTooltip = new PopupTooltip(_huddleBtn);
     _huddleBtn->installEventFilter(this);
-    msgHeaderLayout->addWidget(_huddleBtn);
-    msgHeaderLayout->addSpacing(sp.xs);
+    actionsLayout->addWidget(_huddleBtn);
+    actionsLayout->addSpacing(sp.xs);
 
     _starBtn = new QPushButton(msgHeader);
     _starBtn->setFixedSize(28, 28);
@@ -776,8 +840,8 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _starBtn->setVisible(false);
     _starBtnTooltip = new PopupTooltip(_starBtn);
     _starBtn->installEventFilter(this);
-    msgHeaderLayout->addWidget(_starBtn);
-    msgHeaderLayout->addSpacing(sp.xs);
+    actionsLayout->addWidget(_starBtn);
+    actionsLayout->addSpacing(sp.xs);
 
     _searchBtn = new QPushButton(msgHeader);
     _searchBtn->setObjectName("headerSearchBtn");
@@ -788,9 +852,17 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), Th::c().icon.def));
     _searchBtnTooltip = new PopupTooltip(_searchBtn);
     _searchBtn->installEventFilter(this);
-    msgHeaderLayout->addWidget(_searchBtn);
+    actionsLayout->addWidget(_searchBtn);
     _msgHeader = msgHeader;
+#ifdef Q_OS_MACOS
+    // Settings covers the body, but the unified conversation header sits above
+    // that overlay. Block its actions while Settings is open.
+    msgHeader->setEnabled(!_settingsDialog->isVisible());
+    connect(_settingsDialog, &SettingsDialog::visibilityChanged, msgHeader, &QWidget::setDisabled);
+    _titleBar->setContent(msgHeader);
+#else
     rightLayout->addWidget(msgHeader);
+#endif
 
     // Messages / canvas tab strip; paints its own bottom divider, replacing
     // the old 1px header divider.
@@ -1160,6 +1232,14 @@ void MainWindow::applyTheme() {
 
     const auto &th = Th::c();
 
+#ifdef Q_OS_MACOS
+    if (_msgHeader)
+        _msgHeader->setStyleSheet(
+            QString("QWidget#msgHeader { background: %1; border-bottom: 1px solid %2; }")
+                .arg(Th::qss(th.surface.content), Th::qss(th.divider.subtle))
+        );
+#endif
+
     // The window backdrop (nav tone + mirrored light content region) is painted
     // by BackdropFrame::paintEvent reading the live theme, so a theme switch just
     // needs a repaint rather than a palette/stylesheet change (which would
@@ -1192,12 +1272,16 @@ void MainWindow::applyTheme() {
         }
     }
 
-    // _msgHeader has no background of its own: it sits directly on the right
-    // panel's content surface (an explicit raised fill read as a boxed band on
-    // dark themes, where raised != content).
+    // The header uses the same content surface on both platforms, keeping the
+    // macOS overlay consistent with the right-panel header elsewhere.
     if (_convNameLabel) {
+#ifdef Q_OS_MACOS
+        const int titleFontSize = th.fonts.xl;
+#else
+        const int titleFontSize = th.fonts.xxl;
+#endif
         _convNameLabel->setStyleSheet(QString("font-weight: 600; font-size: %1px; color: %2;")
-                                          .arg(th.fonts.xxl)
+                                          .arg(titleFontSize)
                                           .arg(Th::qss(th.text.primary)));
     }
     if (_huddleBtn) {
@@ -1485,6 +1569,8 @@ void MainWindow::showLoggedOut() {
     updateTrayIcon();
     if (_titleBar)
         _titleBar->setTitle({});
+    if (_msgHeader)
+        _msgHeader->hide();
     refreshSwitcher(); // switcher is always visible — deselect the active entry
     _stack->setCurrentWidget(_loggedOutPage);
 }
@@ -3381,7 +3467,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
             }
         }
     }
-    if (!isMaximized() && !isFullScreen()) {
+    if (windowFlags().testFlag(Qt::FramelessWindowHint) && !isMaximized() && !isFullScreen()) {
         auto *w = qobject_cast<QWidget *>(obj);
         if (w && w->window() == this) {
             if (e->type() == QEvent::MouseButtonPress) {
@@ -3495,8 +3581,11 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
 void MainWindow::updateRoundedMask() {
     if (!_frame)
         return;
-    const bool  windowed = !isMaximized() && !isFullScreen();
-    const auto &sp       = Th::c().spacing;
+    // Native frames own their corners; only frameless windows need the inset
+    // border and client-area mask.
+    const bool windowed =
+        windowFlags().testFlag(Qt::FramelessWindowHint) && !isMaximized() && !isFullScreen();
+    const auto &sp = Th::c().spacing;
     if (_rightPanelLayout)
         _rightPanelLayout->setContentsMargins(0, 0, windowed ? sp.sm : 0, windowed ? sp.sm : 0);
     if (_loggedOutPageLayout)

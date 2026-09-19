@@ -13,7 +13,6 @@
 #include <functional>
 #include <QPoint>
 #include <QRect>
-#include <QList>
 #include <QTimer>
 #include <QHideEvent>
 
@@ -79,6 +78,10 @@ signals:
     void agentsAppsVisibilityChanged(bool visible);
     // Emitted when the "Show only unread conversations" toggle is saved.
     void unreadsOnlyChanged(bool on);
+    void linkPreviewsChanged(bool on);
+    // Emitted from show/hideEvent so chrome outside the overlay (the macOS
+    // unified header) can follow the dialog without sniffing app-wide events.
+    void visibilityChanged(bool visible);
     // Emitted when the composer's send key (Enter vs Ctrl+Enter) is saved with
     // a new value; the welcome screen's shortcut panel re-reads the registry.
     void sendKeyChanged();
@@ -109,6 +112,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
     void leaveEvent(QEvent *) override;
+    void showEvent(QShowEvent *e) override;
     void hideEvent(QHideEvent *e) override;
     bool eventFilter(QObject *obj, QEvent *e) override;
 
@@ -190,6 +194,7 @@ private:
     QCheckBox                *_showAgentsApps   = nullptr;
     QCheckBox                *_unreadsOnly      = nullptr;
     QCheckBox                *_ctrlEnterSends   = nullptr;
+    QCheckBox                *_showLinkPreviews = nullptr;
     QList<ThemePreviewCard *> _themeCards; // every preset + custom: light row then dark row
     QWidget                  *_customSection = nullptr; // heading + editor; shown when custom
     CustomThemeEditor        *_customEditor  = nullptr;

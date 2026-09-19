@@ -130,9 +130,15 @@ void SettingsDialog::open() {
     _tabs->setFocus();
 }
 
+void SettingsDialog::showEvent(QShowEvent *e) {
+    QWidget::showEvent(e);
+    emit visibilityChanged(true);
+}
+
 void SettingsDialog::hideEvent(QHideEvent *e) {
     _ramTimer->stop();
     QWidget::hideEvent(e);
+    emit visibilityChanged(false);
 }
 
 // ── Panel construction ────────────────────────────────────────────────────────
@@ -485,6 +491,22 @@ void SettingsDialog::buildPanel() {
     threadLayout->addWidget(_threadStandalone);
     threadLayout->addWidget(_threadInline);
     alay->addWidget(threadBox);
+
+    // ── Link previews ─────────────────────────────────────────────────
+    auto *linkHeading = new QLabel(tr("Link previews"), appearPage);
+    linkHeading->setObjectName("sectionHeading");
+    alay->addWidget(linkHeading);
+    _showLinkPreviews = new QCheckBox(tr("Show link previews"), appearPage);
+    alay->addWidget(_showLinkPreviews);
+    auto *linkDesc = new QLabel(
+        tr("Show previews of web links and load their images automatically.\n"
+           "When off, links stay clickable. This setting only affects your "
+           "client."),
+        appearPage
+    );
+    linkDesc->setObjectName("linkPreviewsDesc");
+    linkDesc->setWordWrap(true);
+    alay->addWidget(linkDesc);
 
     // ── Composer ──────────────────────────────────────────────────────
     auto *composerHeading = new QLabel(tr("Composer"), appearPage);
@@ -2074,6 +2096,7 @@ void SettingsDialog::applyTheme() {
     _ctrlEnterSends->setStyleSheet(checkQss);
     _showAgentsApps->setStyleSheet(checkQss);
     _unreadsOnly->setStyleSheet(checkQss);
+    _showLinkPreviews->setStyleSheet(checkQss);
     // The explicit colours here override the disabled palette, so the labels
     // that grey out with the activity window (see the unreads-only toggle) carry
     // their own :disabled rule.
@@ -2086,7 +2109,7 @@ void SettingsDialog::applyTheme() {
                              .arg(Th::qss(th.text.primary), Th::qss(th.text.tertiary)));
     }
     _relevantDays->setStyleSheet(spinQss);
-    for (const char *name : {"daysDesc", "unreadsDesc"}) {
+    for (const char *name : {"daysDesc", "unreadsDesc", "linkPreviewsDesc"}) {
         if (auto *w = _panel->findChild<QLabel *>(QLatin1String(name))) {
             w->setStyleSheet(QString(
                                  "QLabel { font-size: %1px; color: %2; }"
@@ -2292,6 +2315,9 @@ void SettingsDialog::loadAppearance() {
         QSettings("msga", "msga").value("appearance/unreadsOnly", false).toBool()
     );
     _ctrlEnterSends->setChecked(Ui::Shortcuts::ctrlEnterSends());
+    _showLinkPreviews->setChecked(
+        QSettings("msga", "msga").value("appearance/showLinkPreviews", true).toBool()
+    );
 
     auto &mgr = ThemeManager::instance();
     switch (mgr.mode()) {
@@ -2380,6 +2406,9 @@ void SettingsDialog::saveAppearance() {
     const bool unreadsOnly = _unreadsOnly->isChecked();
     QSettings("msga", "msga").setValue("appearance/unreadsOnly", unreadsOnly);
 
+    const bool showLinkPreviews = _showLinkPreviews->isChecked();
+    QSettings("msga", "msga").setValue("appearance/showLinkPreviews", showLinkPreviews);
+
     const bool ctrlEnter        = _ctrlEnterSends->isChecked();
     const bool sendKeyDidChange = ctrlEnter != Ui::Shortcuts::ctrlEnterSends();
     QSettings("msga", "msga").setValue(Ui::Shortcuts::kCtrlEnterSendsKey, ctrlEnter);
@@ -2399,6 +2428,7 @@ void SettingsDialog::saveAppearance() {
     emit threadDisplayChanged(inlineThreads);
     emit agentsAppsVisibilityChanged(showAgents);
     emit unreadsOnlyChanged(unreadsOnly);
+    emit linkPreviewsChanged(showLinkPreviews);
 }
 
 static QString formatBytes(qint64 bytes) {

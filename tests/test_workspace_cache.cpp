@@ -7,6 +7,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QStandardPaths>
 #include "cache/workspace_cache.h"
 
@@ -291,6 +294,70 @@ TEST_CASE_METHOD(
     CHECK(loaded[0].author.value.isEmpty());
     CHECK(loaded[0].botName == "Slack");
     CHECK(loaded[0].text.text == "Huddle happened");
+}
+
+TEST_CASE_METHOD(CacheFixture, "link preview classification survives caching", "[cache][msg]") {
+    const QString url = "https://example.com/article";
+    Message       message;
+    message.ts          = "300.000";
+    message.text        = TextWithEntities{url, {{EntityType::Link, 0, int(url.size()), url}}};
+    message.attachments = {
+        Attachment{.title = "Web preview", .titleLink = url, .isLinkPreview = true},
+        Attachment{.title = "Bot content", .titleLink = url},
+        Attachment{.title = "Shared message", .titleLink = url, .isMsgUnfurl = true},
+    };
+    const ConversationId conv{"C_PREVIEWS"};
+    cache.saveMessages(conv, {message});
+    auto loaded = cache.loadMessages(conv);
+    REQUIRE(loaded.size() == 1);
+    CHECK(loaded[0] == message);
+
+    // Upgrade a cache written before the unfurl flag existed. A linked title
+    // alone must not hide bot content, and shared-message cards stay visible.
+    const auto path = baseDir + "/messages/" + conv.value + ".json";
+    QFile      file(path);
+    REQUIRE(file.open(QIODevice::ReadOnly));
+    auto messages = QJsonDocument::fromJson(file.readAll()).array();
+    file.close();
+    auto msg         = messages[0].toObject();
+    auto attachments = msg["at"].toArray();
+    for (int i = 0; i < attachments.size(); ++i) {
+        auto attachment = attachments[i].toObject();
+        attachment.remove("lp");
+        // Slack canonicalises the unfurl target: host case, "www.", tracking
+        // params and a trailing slash must not defeat the backfill.
+        if (i == 0)
+            attachment["tl"] = "https://WWW.example.com/article/?utm_source=x";
+        if (i == 1)
+            attachment["tl"] = "https://example.com/build";
+        attachments[i] = attachment;
+    }
+    msg["at"]   = attachments;
+    messages[0] = msg;
+    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(QJsonDocument(messages).toJson());
+    file.close();
+    loaded = cache.loadMessages(conv);
+    REQUIRE(loaded.size() == 1);
+    REQUIRE(loaded[0].attachments.size() == 3);
+    CHECK(loaded[0].attachments[0].isLinkPreview);
+    CHECK_FALSE(loaded[0].attachments[1].isLinkPreview);
+    CHECK_FALSE(loaded[0].attachments[2].isLinkPreview);
+
+    // Legacy bot posts can repeat their attachment's URL in the body. Without
+    // explicit unfurl metadata, preserve their content until history refreshes.
+    for (const auto &key : {"bn", "st"}) {
+        auto bot    = msg;
+        bot[key]    = QString(key) == "bn" ? "Build bot" : "bot_message";
+        messages[0] = bot;
+        REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        file.write(QJsonDocument(messages).toJson());
+        file.close();
+        loaded = cache.loadMessages(conv);
+        REQUIRE(loaded.size() == 1);
+        REQUIRE(loaded[0].attachments.size() == 3);
+        CHECK_FALSE(loaded[0].attachments[0].isLinkPreview);
+    }
 }
 
 TEST_CASE_METHOD(CacheFixture, "saveMessages caps at 50 newest messages", "[cache][msg]") {

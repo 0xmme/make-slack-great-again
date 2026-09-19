@@ -1211,6 +1211,31 @@ TEST_CASE("toAttachment footer icon and integer ts", "[mappers][attachment]") {
     CHECK(!a.isMsgUnfurl);
 }
 
+TEST_CASE(
+    "toAttachment distinguishes link previews from message content", "[mappers][attachment]"
+) {
+    for (const auto &key : {"from_url", "original_url", "is_unfurl"}) {
+        CAPTURE(key);
+        QJsonObject attachment{{"title", "Preview"}};
+        attachment[key] =
+            QString(key).startsWith("is_") ? QJsonValue(true) : QJsonValue("https://example.com");
+        CHECK(JsonMappers::toAttachment(attachment).isLinkPreview);
+        attachment["is_msg_unfurl"] = true;
+        CHECK_FALSE(JsonMappers::toAttachment(attachment).isLinkPreview);
+        attachment.remove("is_msg_unfurl");
+        // Rich app cards (GitHub, Jira, Docs) are message content, not previews.
+        attachment["is_app_unfurl"] = true;
+        CHECK_FALSE(JsonMappers::toAttachment(attachment).isLinkPreview);
+    }
+    CHECK_FALSE(
+        JsonMappers::toAttachment(obj(R"({
+        "title": "Build failed", "title_link": "https://example.com/build",
+        "text": "Failure details", "image_url": "https://example.com/status.png"
+    })"))
+            .isLinkPreview
+    );
+}
+
 TEST_CASE("toAttachment image and thumb dimensions", "[mappers][attachment]") {
     auto a = JsonMappers::toAttachment(obj(R"({
         "image_url": "https://img.png", "image_width": 1200, "image_height": 630,

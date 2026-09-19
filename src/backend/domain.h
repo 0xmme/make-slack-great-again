@@ -802,6 +802,9 @@ struct Attachment {
     std::vector<Block>           blocks;  // Block Kit blocks embedded in this attachment
     std::vector<BotButton>       buttons; // legacy "actions" buttons (classic bot format)
 
+    // A web-link preview, distinct from bot content and shared Slack messages.
+    bool isLinkPreview = false;
+
     // --- Shared-message unfurl (Slack's `is_msg_unfurl`) ---
     // A message quoted into another conversation by pasting its permalink. The
     // fields above then describe the QUOTED message, not a link preview:

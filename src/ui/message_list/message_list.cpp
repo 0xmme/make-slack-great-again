@@ -737,6 +737,23 @@ void MessageListWidget::setThreadsInline(bool on) {
     viewport()->update();
 }
 
+void MessageListWidget::setLinkPreviewsEnabled(bool on) {
+    if (_showLinkPreviews == on)
+        return;
+    _showLinkPreviews = on;
+    _hoveredAttach    = {-1, -1};
+    releaseGifMovies();
+    invalidateAllDocs();
+    triggerMissingDownloads();
+}
+
+bool MessageListWidget::hasVisibleAttachments(const Message &msg) const {
+    for (int ai = 0; ai < (int)msg.attachments.size(); ++ai)
+        if (!isAttachmentHidden(msg, ai))
+            return true;
+    return false;
+}
+
 void MessageListWidget::setOpenThreadRoot(const Ts &root) {
     if (_openThreadRoot == root)
         return;
@@ -1034,14 +1051,20 @@ void MessageListWidget::onUserResolved(UserId id) {
 }
 
 void MessageListWidget::invalidateAllDocs() {
-    for (auto &item : _items) {
+    const auto invalidate = [](MessageItem &item) {
         item.textDoc.reset();
         item.attachDocs.clear();
         item.docWidth = -1;
         item.emojiUrls.clear();
-        item.emojiUrlsCollected = false;
-        item.fileImgBaseH       = -1;
-    }
+        item.emojiUrlsCollected  = false;
+        item.attachImgsRequested = false;
+        item.fileImgBaseH        = -1;
+    };
+    for (auto &item : _items)
+        invalidate(item);
+    for (auto &[root, thread] : _inlineThreads)
+        for (auto &reply : thread.replies)
+            invalidate(reply);
     rebuildLayout();
     viewport()->update();
 }
@@ -1074,7 +1097,7 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
     // MsgRender::toHtml render; ImageCache::get() also kicks off the download
     // for anything missing (the loaded() handler resets the docs to re-render).
     if (!item.emojiUrlsCollected) {
-        item.emojiUrls          = MsgRender::collectEmojiImageUrls(item.msg, _session);
+        item.emojiUrls = MsgRender::collectEmojiImageUrls(item.msg, _session, _showLinkPreviews);
         item.emojiUrlsCollected = true;
     }
     // Chevron pixmaps for image-block title lines ("GIF ▾") — only rendered
@@ -1085,8 +1108,9 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
         });
     };
     bool anyImageBlock = hasImageBlock(item.msg.blocks);
-    for (const auto &att : item.msg.attachments)
-        anyImageBlock = anyImageBlock || hasImageBlock(att.blocks);
+    for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai)
+        if (!isAttachmentHidden(item.msg, ai))
+            anyImageBlock = anyImageBlock || hasImageBlock(item.msg.attachments[ai].blocks);
 
     // Rasterization lives inside the lambda: it only runs when a doc is
     // actually (re)built below, while ensureDocLayout itself runs on every
@@ -1157,6 +1181,8 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
         item.attachDocs.resize(attachments.size());
 
     for (int ai = 0; ai < (int)attachments.size(); ++ai) {
+        if (isAttachmentHidden(item.msg, ai))
+            continue;
         const Attachment &att       = attachments[ai];
         auto             &ad        = item.attachDocs[ai];
         const int         attW      = attachDocWidth(att, w);
@@ -1224,10 +1250,12 @@ int MessageListWidget::rowHeight(int index) const {
     // Attachment heights (skip client-dismissed ones). Iterate msg.attachments
     // (not attachDocs, which only exist once measured) so the count is right for
     // estimated rows too; for measured rows the two are 1:1.
-    const int nAtt = (int)item.msg.attachments.size();
+    const int nAtt      = (int)item.msg.attachments.size();
+    bool      hasVisAtt = false;
     for (int ai = 0; ai < nAtt; ++ai) {
-        if (isDismissed(item.msg.ts, ai))
+        if (isAttachmentHidden(item.msg, ai))
             continue;
+        hasVisAtt = true;
         const int ah =
             measured ? attachTotalH(item, ai) : estimatedAttachHeight(item.msg.attachments[ai]);
         extraH += kAttachGap + std::max(ah, 0);
@@ -1243,14 +1271,14 @@ int MessageListWidget::rowHeight(int index) const {
         item.fileImgBaseH = layoutFileImages(item, kImgMaxW, false).height;
         item.fileImgGen   = _fileImagesGen;
     }
-    const bool hasContentAboveImages = docH > 0 || nAtt > 0;
+    const bool hasContentAboveImages = docH > 0 || hasVisAtt;
     const int  imgRegionH            = (item.fileImgBaseH > 0 && hasContentAboveImages)
                                            ? item.fileImgBaseH + kImgGap
                                            : item.fileImgBaseH;
     extraH += imgRegionH;
 
     // File chips (files without a preview)
-    const bool hasAboveChips = docH > 0 || nAtt > 0 || imgRegionH > 0;
+    const bool hasAboveChips = docH > 0 || hasVisAtt || imgRegionH > 0;
     bool       firstChip     = true;
     for (const auto &f : item.msg.files) {
         if (f.hasPreview())
@@ -1732,7 +1760,7 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
         // Check attachment text docs
         int ay = textTop + item.docHeight;
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-            if (isDismissed(item.msg.ts, ai))
+            if (isAttachmentHidden(item.msg, ai))
                 continue;
             ay += kAttachGap;
             const auto       &ad  = item.attachDocs[ai];
@@ -1906,8 +1934,8 @@ std::pair<int, int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos
         int y = rowTop + sep + padV + pinnedH + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
 
         for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
-            y += kAttachGap;
-            if (!isDismissed(item.msg.ts, ai)) {
+            if (!isAttachmentHidden(item.msg, ai)) {
+                y += kAttachGap;
                 // Table attachments are message content — not dismissable.
                 if (!MsgRender::attachIsTableOnly(item.msg.attachments[ai]) &&
                     QRect(btnX, y, kDismissW, kDismissW).contains(viewportPos))
@@ -1937,8 +1965,8 @@ QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
     int y = rowTop + sep + padV + pinnedH + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
 
     for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
-        y += kAttachGap;
-        if (!isDismissed(item.msg.ts, ai)) {
+        if (!isAttachmentHidden(item.msg, ai)) {
+            y += kAttachGap;
             if (ai == attachIdx)
                 return QRect(btnX, y, kDismissW, kDismissW);
             y += attachTotalH(item, ai);
@@ -1992,7 +2020,7 @@ MessageListWidget::TableHit MessageListWidget::tableHitAt(const QPoint &viewport
         // Attachment docs
         int ay = textTop + item.docHeight;
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-            if (isDismissed(item.msg.ts, ai))
+            if (isAttachmentHidden(item.msg, ai))
                 continue;
             ay += kAttachGap;
             const auto  &att = item.msg.attachments[ai];
@@ -3807,8 +3835,8 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
             const int  rtA   = _tops[newHoveredRow] - scrollY;
             int ay = rtA + sepA + pinHA + padVA + (collA ? 0 : kHdrH + kHdrGap) + item.docHeight;
             for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-                ay += kAttachGap;
-                if (!isDismissed(item.msg.ts, ai)) {
+                if (!isAttachmentHidden(item.msg, ai)) {
+                    ay += kAttachGap;
                     const int ah = attachTotalH(item, ai);
                     if (pos.y() >= ay && pos.y() < ay + ah) {
                         newHoveredAttach = {newHoveredRow, ai};

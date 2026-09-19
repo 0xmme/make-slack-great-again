@@ -18,6 +18,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QKeyEvent>
+#include <QBuffer>
 #include <QDir>
 #include <QEventLoop>
 #include <QMouseEvent>
@@ -36,6 +37,7 @@
 #include "backend/domain.h"
 #include "rpl/variable.h"
 #include "rpl/event_stream.h"
+#include "ui/image_cache.h"
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
@@ -57,6 +59,7 @@ struct StubBackend : Backend {
 
     // The page returned by a no-cursor loadHistory (the recent tail).
     std::vector<Message>   _historyPage;
+    std::vector<Message>   _threadPage;
     std::optional<QString> _olderCursor;
 
     rpl::producer<AuthState> authState() const override { return _authState.value(); }
@@ -86,7 +89,7 @@ struct StubBackend : Backend {
     }
     void deliverHistory() { _historyStream.fire(MessagePage{_historyPage, _olderCursor}); }
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
-        return rpl::variable<MessagePage>({}).value();
+        return rpl::variable<MessagePage>(MessagePage{_threadPage, std::nullopt}).value();
     }
 
     void sendMessage(ConversationId, OutgoingMessage, std::function<void(bool, QString)>) override {
@@ -766,4 +769,95 @@ TEST_CASE("a selection across messages copies and paints every row", "[message_l
     (void)list.grab();
     qInstallMessageHandler(prev);
     CHECK(g_outOfRangeWarnings == 0);
+}
+
+TEST_CASE(
+    "disabled link previews skip image loading and restore live", "[message_list][previews]"
+) {
+    Fixture     f;
+    QStringList requested;
+    QImage      image(40, 30, QImage::Format_ARGB32);
+    image.fill(Qt::blue);
+    QByteArray png;
+    QBuffer    buffer(&png);
+    REQUIRE(buffer.open(QIODevice::WriteOnly));
+    REQUIRE(image.save(&buffer, "PNG"));
+    ImageCache cache;
+    // All cache fetches, including sizeOf() during layout, consult this loader
+    // before the network. Supply bytes so this test needs no external service.
+    cache.setDiskCache(
+        [&](const QString &url) {
+            requested.append(url);
+            return png;
+        },
+        {}
+    );
+
+    auto message        = makeMrkdwnMessage("1000.000001", "<https://example.com/article|Article>");
+    message.attachments = {
+        Attachment{
+            .title      = "Web preview",
+            .titleLink  = "https://example.com/article",
+            .text       = TextWithEntities{QString("Preview details\n").repeated(12), {}},
+            .imageUrl   = "https://example.com/preview.png",
+            .faviconUrl = "https://example.com/favicon.png",
+            .footerIcon = "https://example.com/footer.png",
+            .blocks     = {Block{.typeStr = "image", .imageUrl = "https://example.com/block.png"}},
+            .isLinkPreview = true,
+        },
+        Attachment{.title = "Bot content", .imageUrl = "https://example.com/bot.png"},
+        Attachment{
+            .text        = TextWithEntities{"Shared Slack message", {}},
+            .isMsgUnfurl = true,
+            .authorIcon  = "https://example.com/author.png",
+        },
+    };
+    message.files        = {File{.name = "notes.txt", .mimeType = "text/plain"}};
+    f.stub->_historyPage = {message};
+    f.stub->_threadPage  = {message};
+
+    MessageListWidget list(f.session.get(), &cache);
+    list.resize(500, 160);
+    list.setLinkPreviewsEnabled(false);
+    SECTION("conversation") {
+        list.openConversation(kConv.id);
+    }
+    SECTION("standalone thread") {
+        list.openThread(kConv.id, message.ts);
+    }
+    list.show();
+    spin(300);
+    list.viewport()->grab();
+
+    const auto checkNoPreviews = [&] {
+        CHECK_FALSE(requested.contains("https://example.com/preview.png"));
+        CHECK_FALSE(requested.contains("https://example.com/favicon.png"));
+        CHECK_FALSE(requested.contains("https://example.com/footer.png"));
+        CHECK_FALSE(requested.contains("https://example.com/block.png"));
+    };
+    checkNoPreviews();
+    CHECK(requested.contains("https://example.com/bot.png"));
+    CHECK(requested.contains("https://example.com/author.png"));
+    const int hiddenHeight = list.verticalScrollBar()->maximum();
+    list.setLinkPreviewsEnabled(true);
+    spin(300);
+    list.verticalScrollBar()->setValue(0);
+    list.viewport()->grab();
+    CHECK(requested.contains("https://example.com/preview.png"));
+    CHECK(requested.contains("https://example.com/favicon.png"));
+    CHECK(requested.contains("https://example.com/footer.png"));
+    CHECK(requested.contains("https://example.com/block.png"));
+    CHECK(list.verticalScrollBar()->maximum() > hiddenHeight);
+
+    list.setLinkPreviewsEnabled(false);
+    spin(300);
+    list.viewport()->grab();
+    CHECK(list.verticalScrollBar()->maximum() == hiddenHeight);
+    // Hiding previews must never strip them or uploaded files from the message
+    // model: re-enabling works without fetching history again.
+    const auto stored = list.lastOwnMessage(UserId{"U1"});
+    REQUIRE(stored.has_value());
+    CHECK(stored->attachments == message.attachments);
+    CHECK(stored->files == message.files);
+    CHECK(stored->text == message.text);
 }

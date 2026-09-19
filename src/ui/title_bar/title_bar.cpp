@@ -6,15 +6,22 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
+#ifdef Q_OS_MACOS
+#include "mac_title_bar.h"
+#endif
+
 #include <QApplication>
+#include <QContextMenuEvent>
 #include <QCursor>
 #include <QEnterEvent>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QShowEvent>
+#include <QStackedLayout>
 #include <QStyle>
 #include <QTimer>
 #include <QWindow>
@@ -22,10 +29,28 @@
 static constexpr QSize kBtnIconSize{12, 12};
 
 TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
+#ifdef Q_OS_MACOS
+    setFixedHeight(52);
+#else
     setFixedHeight(22);
+#endif
     setObjectName("titleBar");
     setAttribute(Qt::WA_StyledBackground);
 
+#ifdef Q_OS_MACOS
+    _contentLayout = new QStackedLayout(this);
+    _contentLayout->setContentsMargins(0, 0, 0, 0);
+    _contentLayout->setStackingMode(QStackedLayout::StackAll);
+    // Leave the native traffic lights clear; symmetric margins keep the
+    // fallback workspace title centered in the whole window.
+    _titleLabel = new QLabel(this);
+    _titleLabel->setContentsMargins(112, 0, 112, 0);
+    _titleLabel->setMinimumWidth(0);
+    _titleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    _titleLabel->setAlignment(Qt::AlignCenter);
+    _titleLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    _contentLayout->addWidget(_titleLabel);
+#else
     _tooltip = new PopupTooltip(this);
 
     auto *layout = new QHBoxLayout(this);
@@ -68,6 +93,7 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     _closeBtn->installEventFilter(this);
     connect(_closeBtn, &QPushButton::clicked, this, [this] { window()->close(); });
     layout->addWidget(_closeBtn);
+#endif
 
     applyTheme();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, &TitleBar::applyTheme);
@@ -76,9 +102,44 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     );
 }
 
-void TitleBar::setTitle(const QString &) {}
+void TitleBar::setTitle(const QString &title) {
+    if (_titleLabel)
+        _titleLabel->setText(title.isEmpty() ? tr("msga") : title);
+}
+
+void TitleBar::setContent(QWidget *content) {
+    if (!_contentLayout || !content)
+        return;
+    // The fallback title remains visible whenever the conversation header hides.
+    _contentLayout->addWidget(content);
+    _contentLayout->setCurrentWidget(content);
+}
+
+void TitleBar::contextMenuEvent(QContextMenuEvent *e) {
+#ifdef Q_OS_MACOS
+    // Keep the existing always-on-top feature available without adding a
+    // fourth control beside macOS's native traffic lights.
+    QMenu menu(this);
+    auto *pin = menu.addAction(tr("Pin window on top"));
+    pin->setCheckable(true);
+    pin->setChecked(_pinned);
+    if (menu.exec(e->globalPos()) == pin)
+        togglePin();
+#else
+    QWidget::contextMenuEvent(e);
+#endif
+}
 
 void TitleBar::applyTheme() {
+#ifdef Q_OS_MACOS
+    setStyleSheet(QString("QWidget#titleBar { background: %1; border-bottom: 1px solid %2; }")
+                      .arg(Th::qss(Th::c().surface.content), Th::qss(Th::c().divider.subtle)));
+    _titleLabel->setStyleSheet(QString("color: %1; font-size: %2px; font-weight: 600;")
+                                   .arg(Th::qss(Th::c().text.primary))
+                                   .arg(Th::c().fonts.xl));
+    if (window()->windowHandle())
+        configureMacTitleBar(window());
+#else
     setStyleSheet(
         QString("QWidget#titleBar { background: %1; }").arg(Th::qss(Th::c().titleBar.bg))
     );
@@ -93,6 +154,7 @@ void TitleBar::applyTheme() {
                                  "border-top-right-radius: 8px; }"
     )
                                  .arg(Th::qss(Th::c().titleBar.controlClose)));
+#endif
 }
 
 void TitleBar::updateMaxButton() {
@@ -104,6 +166,10 @@ void TitleBar::updateMaxButton() {
 
 void TitleBar::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton) {
+#ifdef Q_OS_MACOS
+        if (auto *h = window()->windowHandle())
+            h->startSystemMove();
+#else
         if (QGuiApplication::platformName() == "wayland") {
             if (auto *h = window()->windowHandle()) {
                 _systemMovePending = true;
@@ -113,6 +179,7 @@ void TitleBar::mousePressEvent(QMouseEvent *e) {
             _dragging   = true;
             _dragOffset = e->globalPosition().toPoint() - window()->pos();
         }
+#endif
         e->accept();
         return;
     }
@@ -174,7 +241,13 @@ void TitleBar::refreshHoverState() {
 
 void TitleBar::mouseDoubleClickEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton) {
+#ifdef Q_OS_MACOS
+        // AppKit owns the frame here: honour the system "Double-click a
+        // window's title bar to" preference instead of always zooming.
+        performMacTitleBarDoubleClick(window());
+#else
         window()->isMaximized() ? window()->showNormal() : window()->showMaximized();
+#endif
         e->accept();
         return;
     }
@@ -183,13 +256,24 @@ void TitleBar::mouseDoubleClickEvent(QMouseEvent *e) {
 
 void TitleBar::showEvent(QShowEvent *e) {
     QWidget::showEvent(e);
-    if (auto *h = window()->windowHandle(); h && !_windowConnected) {
-        _windowConnected = true;
-        connect(h, &QWindow::windowStateChanged, this, [this](Qt::WindowState) {
-            updateMaxButton();
-        });
-    }
+#ifdef Q_OS_MACOS
+    configureMacTitleBar(window());
+#endif
+    connectWindowHandle();
     updateMaxButton();
+}
+
+void TitleBar::connectWindowHandle() {
+    auto *h = window()->windowHandle();
+    if (!h || _windowConnected)
+        return;
+    _windowConnected = true;
+    connect(h, &QWindow::windowStateChanged, this, [this](Qt::WindowState) {
+#ifdef Q_OS_MACOS
+        configureMacTitleBar(window());
+#endif
+        updateMaxButton();
+    });
 }
 
 bool TitleBar::eventFilter(QObject *watched, QEvent *e) {
@@ -243,8 +327,13 @@ void TitleBar::togglePin() {
         flags |= Qt::WindowStaysOnTopHint;
     else
         flags &= ~Qt::WindowStaysOnTopHint;
+    // setWindowFlags() destroys and recreates the top-level QWindow, taking the
+    // windowStateChanged connection with it. Reconnect to the fresh handle.
+    _windowConnected = false;
     w->setWindowFlags(flags);
     w->show();
+    connectWindowHandle();
+    updateMaxButton();
     updatePinButton();
 }
 
