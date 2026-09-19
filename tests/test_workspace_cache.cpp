@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
-#include "cache/workspace_cache.h"
+#include <catch2/catch_session.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -10,8 +11,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
-#include <catch2/catch_session.hpp>
-#include <catch2/catch_test_macros.hpp>
+#include "cache/workspace_cache.h"
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
@@ -34,8 +34,7 @@ struct CacheFixture {
     ~CacheFixture() { QDir(baseDir).removeRecursively(); }
 };
 
-// ── Conversations
-// ─────────────────────────────────────────────────────────────
+// ── Conversations ─────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "loadConversations returns empty when no file", "[cache][conv]") {
     CHECK(cache.loadConversations().empty());
@@ -111,8 +110,7 @@ TEST_CASE_METHOD(CacheFixture, "conversation star survives a round-trip", "[cach
     CHECK(loaded[1].isStarred == false);
 }
 
-// ── Users
-// ─────────────────────────────────────────────────────────────────────
+// ── Users ─────────────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "loadUsers returns empty when no file", "[cache][user]") {
     CHECK(cache.loadUsers().empty());
@@ -145,8 +143,7 @@ TEST_CASE_METHOD(CacheFixture, "users round-trip preserves all fields", "[cache]
     CHECK(loaded[1] == input[1]);
 }
 
-// ── Messages
-// ──────────────────────────────────────────────────────────────────
+// ── Messages ──────────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "loadMessages returns empty when no file", "[cache][msg]") {
     CHECK(cache.loadMessages(ConversationId{"C1"}).empty());
@@ -164,35 +161,35 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
     m.subtype    = QString{"bot_message"};
     m.reactions  = {Reaction{"thumbsup", 2, {UserId{"U1"}, UserId{"U2"}}}};
     m.files      = {File{
-        .id                 = "F1",
-        .name               = "img.png",
-        .mimeType           = "image/png",
-        .urlPrivate         = "https://files.slack.com/img.png",
-        .urlPrivateDownload = "https://files.slack.com/download/img.png",
-        .thumbUrl           = "https://thumb.example.com/img.png",
-        .imageWidth         = 640,
-        .imageHeight        = 480,
-        .size               = 12345,
-        .thumbs =
-            {FileThumb{360, 270, "https://thumb.example.com/img_360.png"},
-             FileThumb{480, 360, "https://thumb.example.com/img_480.png"}},
-        .durationMs        = 5041,
-        .aacUrl            = "https://files.slack.com/files-tmb/T1-F1/img_audio.mp4",
-        .subtype           = "slack_audio",
-        .transcriptStatus  = "complete",
-        .transcriptPreview = "Test, test, battery.",
-        .transcriptVttUrl  = "https://files.slack.com/files-tmb/T1-F1/file.vtt",
+             .id                 = "F1",
+             .name               = "img.png",
+             .mimeType           = "image/png",
+             .urlPrivate         = "https://files.slack.com/img.png",
+             .urlPrivateDownload = "https://files.slack.com/download/img.png",
+             .thumbUrl           = "https://thumb.example.com/img.png",
+             .imageWidth         = 640,
+             .imageHeight        = 480,
+             .size               = 12345,
+             .thumbs =
+                 {FileThumb{360, 270, "https://thumb.example.com/img_360.png"},
+                  FileThumb{480, 360, "https://thumb.example.com/img_480.png"}},
+             .durationMs        = 5041,
+             .aacUrl            = "https://files.slack.com/files-tmb/T1-F1/img_audio.mp4",
+             .subtype           = "slack_audio",
+             .transcriptStatus  = "complete",
+             .transcriptPreview = "Test, test, battery.",
+             .transcriptVttUrl  = "https://files.slack.com/files-tmb/T1-F1/file.vtt",
     }};
     m.blocks     = {
         Block{
-            .typeStr = "section",
-            .text    = TextWithEntities{"block text", {TextEntity{EntityType::Italic, 0, 5, ""}}},
+                .typeStr = "section",
+                .text    = TextWithEntities{"block text", {TextEntity{EntityType::Italic, 0, 5, ""}}},
         },
         Block{
-            .typeStr   = "table",
-            .tableRows = {
+                .typeStr   = "table",
+                .tableRows = {
                 {TextWithEntities{"Header", {TextEntity{EntityType::Bold, 0, 6, ""}}},
-                 TextWithEntities{"", {}}},
+                     TextWithEntities{"", {}}},
                 {TextWithEntities{"cell", {}}, TextWithEntities{"18.2", {}}}
             },
         },
@@ -211,8 +208,8 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
         // back to the plain `fallback` string (and lost its emoji images).
         .fields      = {
             AttachmentField{
-                .title = "Lunch",
-                .value =
+                     .title = "Lunch",
+                     .value =
                     TextWithEntities{
                         "pick :no-lunch:", {TextEntity{EntityType::Emoji, 5, 10, "no-lunch"}}
                     },
@@ -264,11 +261,11 @@ TEST_CASE_METHOD(CacheFixture, "message unfurl survives a cache round trip", "[c
         .channelId     = "C0401QDC20K",
         .msgDate       = 1787145280873039LL,
         .files         = {File{
-            .name       = "file.txt.json",
-            .mimeType   = "text/plain",
-            .prettyType = "JSON",
-            .permalink  = "https://team.slack.com/files/U1/F1/file.txt.json",
-            .size       = 375,
+                    .name       = "file.txt.json",
+                    .mimeType   = "text/plain",
+                    .prettyType = "JSON",
+                    .permalink  = "https://team.slack.com/files/U1/F1/file.txt.json",
+                    .size       = 375,
         }},
     }};
 
@@ -392,8 +389,7 @@ TEST_CASE_METHOD(CacheFixture, "saveMessages with fewer than 50 keeps all", "[ca
     CHECK(cache.loadMessages(conv).size() == 10);
 }
 
-// ── LastConv
-// ──────────────────────────────────────────────────────────────────
+// ── LastConv ──────────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "loadLastConv returns empty pair when no file", "[cache][meta]") {
     auto [conv, name] = cache.loadLastConv();
@@ -408,8 +404,7 @@ TEST_CASE_METHOD(CacheFixture, "lastConv round-trip", "[cache][meta]") {
     CHECK(name == "general");
 }
 
-// ── MeUserId
-// ──────────────────────────────────────────────────────────────────
+// ── MeUserId ──────────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "loadMeUserId returns empty when no file", "[cache][meta]") {
     CHECK(cache.loadMeUserId().value.isEmpty());
@@ -429,8 +424,7 @@ TEST_CASE_METHOD(CacheFixture, "meUserId does not clobber other meta keys", "[ca
     CHECK(cache.loadMeUserId() == UserId{"U777"});
 }
 
-// ── Message reminders
-// ─────────────────────────────────────────────────────────
+// ── Message reminders ─────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "loadReminders returns empty when no file", "[cache][reminder]") {
     CHECK(cache.loadReminders().empty());
@@ -504,8 +498,7 @@ TEST_CASE_METHOD(CacheFixture, "reminders do not clobber other meta keys", "[cac
     CHECK(cache.loadReminders().size() == 1);
 }
 
-// ── Images
-// ────────────────────────────────────────────────────────────────────
+// ── Images ────────────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "image round-trip", "[cache][img]") {
     const QByteArray data = "\x89PNG_BYTES_HERE";
@@ -546,8 +539,7 @@ TEST_CASE_METHOD(
     CHECK(QFileInfo(blobPath).lastModified().secsTo(QDateTime::currentDateTimeUtc()) < 60);
 }
 
-// ── Bots
-// ──────────────────────────────────────────────────────────────────────
+// ── Bots ──────────────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "loadBots returns empty when no file", "[cache][bot]") {
     CHECK(cache.loadBots().empty());
@@ -589,8 +581,7 @@ TEST_CASE_METHOD(CacheFixture, "saveBots with empty map writes nothing to load",
 }
 
 TEST_CASE_METHOD(CacheFixture, "loadBots skips entries with empty id", "[cache][bot]") {
-    // Write one valid and one id-less entry directly, then verify only valid one
-    // loads.
+    // Write one valid and one id-less entry directly, then verify only valid one loads.
     QHash<QString, User> bots;
     bots["B001"] = User{UserId{"B001"}, "bot1", "Bot One", "", true};
     cache.saveBots(bots);

@@ -2,58 +2,58 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "settings_dialog.h"
 #include "network/gif_search.h"
-#include "app_credentials.h"
-#include "backend/slack/slack_auth.h"
-#include "cache/cache_evictor.h"
-#include "llm/llm_provider.h"
-#include "llm/llm_service.h"
-#include "llm/llm_wire.h"
 #include "theme_preview_card.h"
 #include "custom_theme_editor.h"
 #include "backend/domain.h"
 #include "ui/dropdown/dropdown.h"
 #include "ui/icon_button/icon_button.h"
-#include "ui/session_import_dialog/session_import_dialog.h"
-#include "ui/shortcuts.h"
+#include "ui/update_checker/update_checker.h"
 #include "ui/styled_button/styled_button.h"
 #include "ui/styled_line_edit/styled_line_edit.h"
+#include "ui/shortcuts.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
+#include "app_credentials.h"
+#include "llm/llm_service.h"
+#include "llm/llm_provider.h"
+#include "llm/llm_wire.h"
+#include "cache/cache_evictor.h"
 #include "util/presence_settings.h"
 #include "util/time_format.h"
 #include "util/process_stats.h"
 #include "util/sound_player.h"
+#include "backend/slack/slack_auth.h"
 #include "backend/teams/teams_auth.h"
-#include "ui/update_checker/update_checker.h"
+#include "ui/session_import_dialog/session_import_dialog.h"
 
-#include <QButtonGroup>
-#include <QCheckBox>
-#include <QCoreApplication>
-#include <QDateTime>
-#include <QDesktopServices>
-#include <QDirIterator>
+#include <QPainter>
+#include <QPaintEvent>
+#include <QMouseEvent>
+#include <QShortcut>
+#include <QResizeEvent>
 #include <QFrame>
 #include <QListWidget>
 #include <QStackedWidget>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QVBoxLayout>
-#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QLineEdit>
-#include <QMouseEvent>
-#include <QPaintEvent>
-#include <QPainter>
-#include <QPushButton>
+#include <QCheckBox>
 #include <QRadioButton>
-#include <QResizeEvent>
+#include <QButtonGroup>
+#include <QPushButton>
 #include <QSettings>
-#include <QShortcut>
+#include <QGroupBox>
 #include <QSpinBox>
-#include <QStandardPaths>
-#include <QUrl>
+#include <QLineEdit>
 #include <algorithm>
+#include <QDirIterator>
+#include <QStandardPaths>
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QUrl>
 
 static constexpr int kPanelW    = 720; // fits the four theme cards per row without a scrollbar
 static constexpr int kPanelH    = 540;
@@ -141,8 +141,7 @@ void SettingsDialog::hideEvent(QHideEvent *e) {
     emit visibilityChanged(false);
 }
 
-// ── Panel construction
-// ────────────────────────────────────────────────────────
+// ── Panel construction ────────────────────────────────────────────────────────
 
 void SettingsDialog::buildPanel() {
     _panel = new QFrame(this);
@@ -791,8 +790,7 @@ void SettingsDialog::buildPanel() {
 
     auto *stateDesc = new QLabel(
         tr("Sidebar visit history used to decide which conversations are shown.\n"
-           "Clear this to let the app re-analyse activity from scratch on next "
-           "load."),
+           "Clear this to let the app re-analyse activity from scratch on next load."),
         storagePage
     );
     stateDesc->setObjectName("stateDesc");
@@ -846,8 +844,7 @@ void SettingsDialog::buildPanel() {
     updLayout->addWidget(_autoUpdates);
 
     auto *autoUpdDesc = new QLabel(
-        tr("When off, msga never contacts the update "
-           "server on its own — use the\n"
+        tr("When off, msga never contacts the update server on its own — use the\n"
            "button below to look for a new version."),
         updBox
     );
@@ -877,8 +874,7 @@ void SettingsDialog::buildPanel() {
     // lets minimize do the same instead of parking the window in the taskbar.
     // Not offered on macOS, where minimize goes to the Dock and hiding the
     // window would be surprising. On Wayland the compositor minimizes without
-    // telling Qt, so the toggle has no effect there (see
-    // MainWindow::changeEvent).
+    // telling Qt, so the toggle has no effect there (see MainWindow::changeEvent).
     auto *winHeading = new QLabel(tr("Window"), sysPage);
     winHeading->setObjectName("sectionHeading");
     sylay->addWidget(winHeading);
@@ -899,8 +895,7 @@ void SettingsDialog::buildPanel() {
     winLayout->addWidget(_minimizeToTray);
 
     auto *minTrayDesc = new QLabel(
-        tr("When on, minimizing hides the window to "
-           "the tray instead of the taskbar.\n"
+        tr("When on, minimizing hides the window to the tray instead of the taskbar.\n"
            "Click the tray icon to bring it back."),
         winBox
     );
@@ -1014,8 +1009,7 @@ void SettingsDialog::buildPanel() {
     sessLay->setContentsMargins(0, 0, 0, 0);
     sessLay->setSpacing(sp.sm);
     auto *sessDesc = new QLabel(
-        tr("Add a workspace using your existing Slack session. New "
-           "messages arrive by "
+        tr("Add a workspace using your existing Slack session. New messages arrive by "
            "polling — there's no live push in this mode."),
         _sessionBox
     );
@@ -1043,8 +1037,7 @@ void SettingsDialog::buildPanel() {
     }
     if (oauthSlackCount > 0) {
         auto *migDesc = new QLabel(
-            tr("You still have %n Slack workspace(s) on app "
-               "keys. Convert them to session "
+            tr("You still have %n Slack workspace(s) on app keys. Convert them to session "
                "so no workspace uses Socket Mode.",
                nullptr,
                oauthSlackCount),
@@ -1089,8 +1082,7 @@ void SettingsDialog::buildPanel() {
     );
     connect(credLink, &QPushButton::clicked, this, [] {
         QDesktopServices::openUrl(QUrl(QStringLiteral(
-            "https://github.com/punarinta/make-slack-great-again/"
-            "blob/master/docs/SETUP_SLACK.md"
+            "https://github.com/punarinta/make-slack-great-again/blob/master/docs/SETUP_SLACK.md"
         )));
     });
     auto *credLinkRow = new QHBoxLayout;
@@ -1139,10 +1131,9 @@ void SettingsDialog::buildPanel() {
     akLay->addWidget(credBox);
     sylay->addWidget(_appKeysBox);
 
-    // Initialize the switch from the persisted mode, then wire the toggle.
-    // Changing the mode persists immediately and shows a "restart to apply" note
-    // (the socket gate + backends are decided at launch, same convention as the
-    // language note).
+    // Initialize the switch from the persisted mode, then wire the toggle. Changing
+    // the mode persists immediately and shows a "restart to apply" note (the socket
+    // gate + backends are decided at launch, same convention as the language note).
     _buildingSlackMode  = true;
     _startupSessionMode = (slack::connectionMode() == slack::ConnectionMode::Session);
     (_startupSessionMode ? _modeSession : _modeAppKeys)->setChecked(true);
@@ -1357,10 +1348,9 @@ void SettingsDialog::buildPanel() {
     auto *licenseLink =
         new StyledButton(tr("View full license"), StyledButton::Variant::Link, aboutPage);
     connect(licenseLink, &QPushButton::clicked, this, [] {
-        QDesktopServices::openUrl(QUrl(
-            "https://github.com/punarinta/make-slack-great-again/blob/master/"
-            "LICENSE"
-        ));
+        QDesktopServices::openUrl(
+            QUrl("https://github.com/punarinta/make-slack-great-again/blob/master/LICENSE")
+        );
     });
     auto *licenseLinkRow = new QHBoxLayout;
     licenseLinkRow->addWidget(licenseLink);
@@ -1429,8 +1419,7 @@ QWidget *SettingsDialog::buildAiPage() {
 
     auto *desc = new QLabel(
         tr("Connect an AI provider to enable assistant features.\n"
-           "API keys are stored on this computer and sent only to the "
-           "provider you configure."),
+           "API keys are stored on this computer and sent only to the provider you configure."),
         page
     );
     desc->setObjectName("aiDesc");
@@ -2500,8 +2489,7 @@ void SettingsDialog::saveAppCredentials() {
         _credClientSecret->text().trimmed(),
         _credXapp->text().trimmed(),
     };
-    // No-op saves shouldn't kill the session — only restart when something
-    // changed.
+    // No-op saves shouldn't kill the session — only restart when something changed.
     const slack::PersonalAppCredentials cur = slack::personalAppCredentials();
     if (next.clientId == cur.clientId && next.clientSecret == cur.clientSecret &&
         next.xapp == cur.xapp) {
@@ -2671,8 +2659,7 @@ Qt::CursorShape SettingsDialog::cursorFor(Dir d) {
     }
 }
 
-// ── Painting & events
-// ─────────────────────────────────────────────────────────
+// ── Painting & events ─────────────────────────────────────────────────────────
 
 void SettingsDialog::paintEvent(QPaintEvent *) {
     QPainter p(this);

@@ -1,28 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "message_list.h"
-#include "backend/backend.h"
-#include "llm/llm_service.h"
 #include "message_render.h"
 #include "session/session.h"
-#include "text/link_labels.h"
-#include "ui/context_menu/context_menu.h"
-#include "ui/delete_message_dialog/delete_message_dialog.h"
-#include "ui/emoji_picker/emoji_picker_popup.h"
-#include "ui/file_dialog_utils.h"
+#include "backend/backend.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 #include "ui/icon_utils.h"
+#include "ui/file_dialog_utils.h"
 #include "ui/image_cache.h"
-#include "ui/image_viewer/image_viewer.h"
+#include "ui/context_menu/context_menu.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
+#include "ui/emoji_picker/emoji_picker_popup.h"
+#include "ui/user_profile_card/user_profile_card.h"
+#include "ui/image_viewer/image_viewer.h"
+#include "ui/table_viewer/table_viewer.h"
+#include "ui/delete_message_dialog/delete_message_dialog.h"
 #include "ui/reminder_dialog/reminder_dialog.h"
 #include "ui/summary_dialog/summarize_job.h"
 #include "ui/summary_dialog/summary_dialog.h"
 #include "ui/transcript_dialog/transcript_dialog.h"
 #include "util/time_format.h"
-#include "ui/table_viewer/table_viewer.h"
-#include "ui/theme.h"
-#include "ui/theme_manager.h"
-#include "ui/user_profile_card/user_profile_card.h"
+#include "llm/llm_service.h"
+#include "text/link_labels.h"
 #include "util/background_tasks.h"
 #include "util/clipboard.h"
 #include "util/mailto_link.h"
@@ -31,45 +31,44 @@
 #include "media/audio_player.h"
 #include "cache/cache_evictor.h"
 
+#include <QBuffer>
+#include <QImage>
+#include <QMovie>
+#include <QThreadPool>
+#include <QPainter>
+#include <QPaintEvent>
+#include <QResizeEvent>
+#include <QMouseEvent>
+#include <QScrollBar>
+#include <QTextDocument>
+#include <QTextBlock>
+#include <QTextCursor>
+#include <QTextCharFormat>
+#include <QTextLayout>
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
-#include <QBuffer>
-#include <QClipboard>
-#include <QCursor>
-#include <QDesktopServices>
-#include <QDir>
-#include <QFile>
-#include <QFontMetrics>
-#include <QImage>
-#include <QMessageBox>
-#include <QMouseEvent>
-#include <QMovie>
-#include <QPaintEvent>
-#include <QPainter>
-#include <QResizeEvent>
-#include <QScrollBar>
-#include <QTextBlock>
-#include <QTextCharFormat>
-#include <QTextCursor>
-#include <QTextDocument>
-#include <QTextLayout>
 #include <QGuiApplication>
 #include <QScreen>
+#include <QFontMetrics>
+#include <QDesktopServices>
+#include <QClipboard>
 #include <QCryptographicHash>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QPointer>
 #include <QSaveFile>
 #include <QStandardPaths>
+#include <QMessageBox>
 #include <QUrl>
-#include <QThreadPool>
 #include <QTimer>
+#include <QCursor>
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-// ── MessageListWidget
-// ─────────────────────────────────────────────────────────
+// ── MessageListWidget ─────────────────────────────────────────────────────────
 
 MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWidget *parent)
     : VirtualListWidget(parent), _session(session), _imgCache(imgCache) {
@@ -221,8 +220,7 @@ void MessageListWidget::resizeEvent(QResizeEvent *event) {
     applyPendingScroll();
 }
 
-// ── Data model
-// ────────────────────────────────────────────────────────────────
+// ── Data model ────────────────────────────────────────────────────────────────
 
 std::optional<Message> MessageListWidget::lastOwnMessage(UserId me) const {
     for (int i = static_cast<int>(_items.size()) - 1; i >= 0; --i) {
@@ -310,8 +308,7 @@ void MessageListWidget::setSession(Session *session) {
     // Snapshot the loaded messages first (same as openConversation): if the user
     // scrolled up, the view holds paginated *older* messages that aren't in the
     // plain cache. Without this, returning to the workspace can't find the saved
-    // anchor (it's older than the no-cursor history page) and falls to the
-    // bottom.
+    // anchor (it's older than the no-cursor history page) and falls to the bottom.
     if (!_currentConv.value.isEmpty() && _session && !_isThreadMode && !_items.empty()) {
         std::vector<Message> msgs;
         msgs.reserve(_items.size());
@@ -397,8 +394,7 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
         if (cached.empty())
             return false;
         appendMessages(cached);
-        // Pre-warm the image pixel cache from disk so images appear without
-        // download.
+        // Pre-warm the image pixel cache from disk so images appear without download.
         for (const auto &item : _items) {
             for (const auto &f : item.msg.files) {
                 if (!f.hasPreview())
@@ -450,11 +446,11 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                 }
 
                 if (hasCached) {
-                    // Merge: network data may differ slightly (edits, reactions) but
-                    // is mostly the same as the cached view, so the update is
-                    // imperceptible. Runs even for an empty page so a conversation
-                    // whose only/last message was deleted elsewhere clears instead of
-                    // showing the stale cached copy.
+                    // Merge: network data may differ slightly (edits, reactions) but is
+                    // mostly the same as the cached view, so the update is imperceptible.
+                    // Runs even for an empty page so a conversation whose only/last
+                    // message was deleted elsewhere clears instead of showing the stale
+                    // cached copy.
                     const bool wasAtBottom =
                         verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
                     const bool retarget = _scrollToBottomPending || !_pendingJumpTs.isEmpty();
@@ -570,9 +566,8 @@ void MessageListWidget::applyPendingScroll() {
 int MessageListWidget::loadOlderMargin() const {
     // One viewport height, floored so a tiny window still prefetches a screenful
     // ahead of the top. A small fixed margin (the old 200px) let a fast scroll or
-    // a coarse wheel step reach the very top before the trigger crossed it, so
-    // the fetch sometimes never fired; prefetching a full screen early hides the
-    // load.
+    // a coarse wheel step reach the very top before the trigger crossed it, so the
+    // fetch sometimes never fired; prefetching a full screen early hides the load.
     return std::max(400, viewport()->height());
 }
 
@@ -1011,8 +1006,7 @@ bool MessageListWidget::applyPendingJump() {
     return true;
 }
 
-// ── Layout
-// ────────────────────────────────────────────────────────────────────
+// ── Layout ────────────────────────────────────────────────────────────────────
 
 bool MessageListWidget::needsDateSep(int index) const {
     if (index < 0 || index >= (int)_items.size())
@@ -1325,10 +1319,9 @@ int MessageListWidget::bannersH(const MessageItem &item) const {
     return h;
 }
 
-// "Laid out at the current width" — the cheap proxy for "measured".
-// ensureDocLayout sets docWidth to the layout width; invalidation resets it to
-// -1/0. System rows carry a fixed height and never need a QTextDocument, so
-// treat them as measured.
+// "Laid out at the current width" — the cheap proxy for "measured". ensureDocLayout
+// sets docWidth to the layout width; invalidation resets it to -1/0. System rows
+// carry a fixed height and never need a QTextDocument, so treat them as measured.
 bool MessageListWidget::rowMeasured(const MessageItem &item) const {
     if (isSystemEvent(item.msg))
         return true;
@@ -1336,10 +1329,10 @@ bool MessageListWidget::rowMeasured(const MessageItem &item) const {
     return w > 0 && item.docWidth == w;
 }
 
-// Rough pixel height of `text` at the current column width, without laying out
-// a QTextDocument: wrap each hard line to the average character count. Only
-// used for off-screen rows, where being approximate is fine — the value is
-// replaced by the real height the moment the row is measured.
+// Rough pixel height of `text` at the current column width, without laying out a
+// QTextDocument: wrap each hard line to the average character count. Only used for
+// off-screen rows, where being approximate is fine — the value is replaced by the
+// real height the moment the row is measured.
 int MessageListWidget::estimatedTextHeight(const QString &text) const {
     if (text.isEmpty())
         return 0;
@@ -1446,11 +1439,10 @@ int MessageListWidget::firstVisibleRow(int docY) const {
     return std::max(0, static_cast<int>(it - _tops.begin()) - 1);
 }
 
-// Lay out the rows currently on screen for real before they're painted. Called
-// at the top of doPaint: off-screen rows reach paint with only an estimate, and
-// the visible ones must be exact. If measuring corrects any height,
-// rebuildLayout() fixes _tops and re-pins the anchor so the visible content
-// doesn't jump.
+// Lay out the rows currently on screen for real before they're painted. Called at
+// the top of doPaint: off-screen rows reach paint with only an estimate, and the
+// visible ones must be exact. If measuring corrects any height, rebuildLayout()
+// fixes _tops and re-pins the anchor so the visible content doesn't jump.
 bool MessageListWidget::measureVisibleRows() {
     const int w = textAreaWidth();
     if (w <= 0 || _items.empty() || _tops.size() != _items.size())
@@ -1506,8 +1498,7 @@ void MessageListWidget::measureLayoutChunk() {
             ++done;
         }
     if (done > 0) {
-        rebuildLayout(); // re-pins the anchor; reschedules the next chunk via its
-                         // tail
+        rebuildLayout(); // re-pins the anchor; reschedules the next chunk via its tail
         // The docs were built only to take exact heights — rows far from the
         // viewport don't need them for painting, so release them right away
         // instead of accumulating one live QTextDocument per row ever measured.
@@ -1541,8 +1532,7 @@ void MessageListWidget::trimOffscreenDocs() {
     }
 }
 
-// ── Attachment height helpers
-// ─────────────────────────────────────────────────
+// ── Attachment height helpers ─────────────────────────────────────────────────
 
 int MessageListWidget::attachImageH(const Attachment &att) const {
     const QString imgUrl = attachPreviewUrl(att);
@@ -1573,8 +1563,7 @@ int MessageListWidget::attachTotalH(const MessageItem &item, int ai) const {
     return h;
 }
 
-// ── Animated images (GIF / animated WebP)
-// ─────────────────────────────────────
+// ── Animated images (GIF / animated WebP) ─────────────────────────────────────
 
 QMovie *MessageListWidget::gifMovieFor(const QString &url) const {
     const auto it = _gifMovies.constFind(url);
@@ -1733,8 +1722,7 @@ static QString collectLinkText(QTextDocument *doc, const QString &url) {
     return text;
 }
 
-// ── Mouse handling
-// ────────────────────────────────────────────────────────────
+// ── Mouse handling ────────────────────────────────────────────────────────────
 
 QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
     const PaintContext ctx      = makePaintContext();
@@ -1802,8 +1790,7 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
 }
 
 QRect MessageListWidget::userAnchorVpRect(const QPoint &viewportPos, const QString &href) const {
-    // Fallback anchors the card to the cursor (e.g. mentions inside attachment
-    // docs).
+    // Fallback anchors the card to the cursor (e.g. mentions inside attachment docs).
     const QRect fallback(viewportPos - QPoint(8, 8), QSize(16, 16));
     if (href.isEmpty())
         return fallback;
@@ -1878,8 +1865,7 @@ QString MessageListWidget::avatarUserAt(const QPoint &viewportPos, QRect *outVpR
             return {};
 
         // Mirror the avatar geometry from paintRow(): the square sits at
-        // (kPadH, contTop + 2) where contTop = rowTop + sepH + pinnedBannerH +
-        // kPadV.
+        // (kPadH, contTop + 2) where contTop = rowTop + sepH + pinnedBannerH + kPadV.
         const auto &item    = _items[i];
         const int   sepH    = needsDateSep(i) ? kSepH : 0;
         const int   pinnedH = bannersH(item);
@@ -1911,8 +1897,7 @@ void MessageListWidget::showProfileCardFor(const QString &userIdStr, const QRect
     const QRect globalRect(viewport()->mapToGlobal(anchorVpRect.topLeft()), anchorVpRect.size());
     const bool  hasPresence = _session->capabilities().presence;
     _profileCard->showFor(*user, avatar, globalRect, hasPresence);
-    // Refresh the presence dot; the result arrives as EvPresenceChanged in
-    // handleEvent.
+    // Refresh the presence dot; the result arrives as EvPresenceChanged in handleEvent.
     if (hasPresence)
         _session->requestPresence(user->id);
 }
@@ -2125,18 +2110,16 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
     hideProfileCard();
 
     // Triple-click: Qt reports the third click as a plain press shortly after the
-    // double-click, so detect it by closeness in time and space and select the
-    // whole line.
+    // double-click, so detect it by closeness in time and space and select the whole line.
     const bool maybeTriple = _lastDblClickTs != 0 &&
                              event->timestamp() - _lastDblClickTs <=
                                  (unsigned long)QApplication::doubleClickInterval() &&
                              (event->pos() - _lastDblClickPos).manhattanLength() <= 4;
-    _lastDblClickTs        = 0;
+    _lastDblClickTs = 0;
     if (maybeTriple && tryHandleTripleClick(event->pos()))
         return;
 
-    // Clear any existing selection; it may be re-established below if the press
-    // lands on text.
+    // Clear any existing selection; it may be re-established below if the press lands on text.
     clearSelection();
 
     if (tryHandleScrollbarPress(event->pos()))
@@ -2197,15 +2180,13 @@ void MessageListWidget::doMouseDoubleClick(QMouseEvent *event) {
                 viewport()->update();
             }
         }
-        // Remember this double-click so a follow-up press is recognised as a
-        // triple-click.
+        // Remember this double-click so a follow-up press is recognised as a triple-click.
         _lastDblClickTs  = event->timestamp();
         _lastDblClickPos = event->pos();
         return;
     }
 
-    // Off-text: treat as another press so rapid clicks (reactions, etc.)
-    // register.
+    // Off-text: treat as another press so rapid clicks (reactions, etc.) register.
     VirtualListWidget::doMouseDoubleClick(event);
 }
 
@@ -2317,7 +2298,7 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
     // Delete needs backend support, then: any message if the backend says so
     // (email — it's your mailbox), else your own messages or the admin path.
     const bool         canDelete = caps.deleteMessage && (caps.deleteAnyMessage || isOwnMessage ||
-                                                          (_session && _session->meIsAdmin()));
+                                                  (_session && _session->meIsAdmin()));
     const QString      linkUrl   = firstLinkInMessage(msg);
 
     auto *menu = new ContextMenu(this);
@@ -2594,8 +2575,7 @@ void MessageListWidget::startSummarizeDown(const Ts &fromTs) {
     // fetches — just the notice with a deep link to Settings → AI assistance.
     if (!LlmService::instance().isAvailable()) {
         auto *dlg = new SummaryDialog(
-            tr("Summaries need an AI provider. Connect "
-               "one in Settings → AI assistance."),
+            tr("Summaries need an AI provider. Connect one in Settings → AI assistance."),
             SummaryDialog::Kind::NoProvider,
             window()
         );
@@ -2649,10 +2629,9 @@ void MessageListWidget::showReactionTooltip(int mi, int ri, const QRect &chipVpR
     const auto emoji = MsgRender::resolveEmojiRich(r.name, _session);
     QPixmap    img =
         (!emoji.imageUrl.isEmpty() && _imgCache) ? _imgCache->get(emoji.imageUrl) : QPixmap();
-    // For an animated custom emoji, prefer the live animation frame over the
-    // still first frame (which is often an odd pose — see paintReactions). The
-    // pill's movie is already running, so this shows the current
-    // clinked/mid-motion frame.
+    // For an animated custom emoji, prefer the live animation frame over the still
+    // first frame (which is often an odd pose — see paintReactions). The pill's movie
+    // is already running, so this shows the current clinked/mid-motion frame.
     if (!emoji.imageUrl.isEmpty()) {
         if (QMovie *mv = gifMovieFor(emoji.imageUrl)) {
             const QPixmap frame = mv->currentPixmap();
@@ -2840,10 +2819,8 @@ bool MessageListWidget::tryShowLinkContextMenu(const QPoint &pos) {
         url = SlackLinks::messagePermalink(ref);
     else if (MsgRender::isBotButtonAnchor(anchor))
         url = MsgRender::botButtonUrlFromAnchor(anchor);
-    else if (
-        MsgRender::userIdFromAnchor(anchor).isEmpty() &&
-        MsgRender::channelIdFromAnchor(anchor).isEmpty() && !MsgRender::isToggleAnchor(anchor)
-    )
+    else if (MsgRender::userIdFromAnchor(anchor).isEmpty() &&
+             MsgRender::channelIdFromAnchor(anchor).isEmpty() && !MsgRender::isToggleAnchor(anchor))
         url = anchor;
     if (url.isEmpty())
         return false;
@@ -2922,8 +2899,7 @@ bool MessageListWidget::openAnchorTarget(const QString &anchor, const QPoint &po
         constexpr int kToastMs = 2600;
         const QPoint  gPos     = viewport()->mapToGlobal(pos);
         _tooltip->showAbove(
-            tr("Slack doesn't let third-party apps press bot "
-               "buttons, we are working on a "
+            tr("Slack doesn't let third-party apps press bot buttons, we are working on a "
                "workaround"),
             QRect(gPos - QPoint(0, 2), QSize(1, 4))
         );
@@ -3003,11 +2979,10 @@ void MessageListWidget::downloadFileToUser(const File &file) {
 
 namespace {
 // Decode the image bytes on a thread-pool worker — a multi-megapixel decode can
-// take tens of ms and would otherwise hitch the GUI thread — then hop back to
-// the GUI thread for the clipboard set (QClipboard is GUI-thread-only) and to
-// clear the background task. Routed through qApp, not the widget, so the copy
-// still completes and the spinner still clears even if the message list is gone
-// by then.
+// take tens of ms and would otherwise hitch the GUI thread — then hop back to the
+// GUI thread for the clipboard set (QClipboard is GUI-thread-only) and to clear
+// the background task. Routed through qApp, not the widget, so the copy still
+// completes and the spinner still clears even if the message list is gone by then.
 void decodeImageToClipboardAsync(QByteArray data, int task) {
     QThreadPool::globalInstance()->start([data = std::move(data), task]() mutable {
         QImage     img;
@@ -3041,8 +3016,7 @@ void MessageListWidget::copyFullImageToClipboard(const File &file) {
         return;
     }
 
-    // Already downloaded in full once (e.g. opened in the viewer) — use the
-    // cache.
+    // Already downloaded in full once (e.g. opened in the viewer) — use the cache.
     if (_session) {
         const auto cached = _session->cachedImage(file.urlPrivate);
         if (!cached.isEmpty()) {
@@ -3434,9 +3408,9 @@ void MessageListWidget::startTranscription(const File &file, const Message &msg)
     // Hand the bytes to the AI layer. The dialog is the callbacks' context: a
     // closed dialog drops them, the transcript is still cached for next time.
     const QPointer<MessageListWidget> self(this);
-    const QString provider = LlmService::instance().activeProvider()
-                                 ? LlmService::instance().activeProvider()->displayName()
-                                 : QString();
+    const QString                     provider = LlmService::instance().activeProvider()
+                                                     ? LlmService::instance().activeProvider()->displayName()
+                                                     : QString();
     auto run = [guard, self, provider, file](const QByteArray &data, const QString &sourceUrl) {
         if (!guard)
             return;
@@ -3634,8 +3608,7 @@ bool MessageListWidget::isOnScrollThumb(int vpY) const {
     return VirtualListWidget::isOnScrollThumb(vpY, _totalH);
 }
 
-// ── Text selection
-// ────────────────────────────────────────────────────────────
+// ── Text selection ────────────────────────────────────────────────────────────
 
 TextPos MessageListWidget::textHitTest(const QPoint &viewportPos) const {
     if (_items.empty() || _tops.empty())
@@ -3755,8 +3728,7 @@ void MessageListWidget::doMouseRelease(QMouseEvent *event) {
     }
     if (_selDragging) {
         _selDragging = false;
-        // If the cursor never moved off the anchor position, treat as a plain click
-        // — no selection.
+        // If the cursor never moved off the anchor position, treat as a plain click — no selection.
         if (_selAnchor == _selFocus) {
             _selAnchor = {};
             _selFocus  = {};
@@ -3879,8 +3851,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const int newHoveredReplyRow   = replyBarIndexAt(pos);
     const Ts  newHoveredThreadFoot = inlineFooterAt(pos);
 
-    // Detect which file chip or image (if any) the cursor is over, and which
-    // action bar button.
+    // Detect which file chip or image (if any) the cursor is over, and which action bar button.
     std::pair<int, int> newHoveredFile    = {-1, -1};
     int                 newHoveredFileBtn = -1;
     if (newHoveredRow >= 0) {
@@ -3969,8 +3940,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         viewport()->update();
     }
 
-    // Mention / avatar hover → profile card (after a short delay); leaving →
-    // grace hide
+    // Mention / avatar hover → profile card (after a short delay); leaving → grace hide
     QRect         avatarVpRect;
     const QString avatarUid = isUserAnchor ? QString() : avatarUserAt(pos, &avatarVpRect);
     if (isUserAnchor || !avatarUid.isEmpty()) {
@@ -4065,8 +4035,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const bool overDismiss =
         dMI >= 0 && _hoveredAttach.first == dMI && _hoveredAttach.second == dAI;
     const bool overTablePill = _hoveredTable.valid() && tablePillRect(_hoveredTable).contains(pos);
-    // File action bar buttons take priority — keep arrow cursor over them even if
-    // a chip is below.
+    // File action bar buttons take priority — keep arrow cursor over them even if a chip is below.
     const bool overFileBar   = newHoveredFileBtn >= 0;
     const bool overLink =
         !overFileBar && (!anchor.isEmpty() || fileChipAt(pos) || previewFileAt(pos) ||
@@ -4085,8 +4054,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         viewport()->setCursor(Qt::ArrowCursor);
 }
 
-// ── Live event handling
-// ───────────────────────────────────────────────────────
+// ── Live event handling ───────────────────────────────────────────────────────
 
 void MessageListWidget::handleEvent(const Event &e) {
     const bool wasAtBottom = verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
@@ -4198,8 +4166,7 @@ void MessageListWidget::handleEvent(const Event &e) {
         const int i = findByTs(ev->ts);
         if (i >= 0) {
             _items.erase(_items.begin() + i);
-            // Row indices shifted — drop hover state; the next mouse move recomputes
-            // it.
+            // Row indices shifted — drop hover state; the next mouse move recomputes it.
             _hoveredRow      = -1;
             _hoveredToolBtn  = -1;
             _hoveredAttach   = {-1, -1};
@@ -4391,8 +4358,8 @@ void MessageListWidget::refreshOpenThread(
 void MessageListWidget::mergeHeadPage(
     const ConversationId &conv, const std::vector<Message> &messages, bool authoritative
 ) {
-    // Conversation changed out from under an in-flight fetch. (Channel history
-    // and thread replies must never be merged into each other's view; that's the
+    // Conversation changed out from under an in-flight fetch. (Channel history and
+    // thread replies must never be merged into each other's view; that's the
     // caller's job — see the EvHeadRefresh branch in handleEvent.)
     if (_currentConv != conv)
         return;
@@ -4400,17 +4367,15 @@ void MessageListWidget::mergeHeadPage(
     // A no-cursor (head) fetch is authoritative for the head, so it also
     // reconciles deletions missed during the socket gap.
     mergeNetworkMessages(messages, /*fromHeadPage=*/authoritative);
-    // Channel head only: cacheMessages REPLACES the conversation's cached page,
-    // so writing a thread's replies under the same key would clobber the
-    // channel's history with them — the channel would reopen showing nothing but
-    // replies.
+    // Channel head only: cacheMessages REPLACES the conversation's cached page, so
+    // writing a thread's replies under the same key would clobber the channel's
+    // history with them — the channel would reopen showing nothing but replies.
     if (_session && !_isThreadMode) {
         std::vector<Message> msgs(messages.begin(), messages.end());
         _session->cacheMessages(conv, msgs);
     }
-    // Reveal anything that landed during the gap, but only if the user was
-    // already pinned to the bottom (don't yank them out of scrollback they're
-    // reading).
+    // Reveal anything that landed during the gap, but only if the user was already
+    // pinned to the bottom (don't yank them out of scrollback they're reading).
     if (wasAtBottom)
         QTimer::singleShot(0, this, [this, conv] {
             if (_currentConv == conv)

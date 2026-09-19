@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "title_bar.h"
-#include "ui/icon_utils.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
+#include "ui/icon_utils.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
@@ -56,6 +56,7 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     auto *layout = new QHBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
+
     layout->addStretch(1);
 
     auto makeBtn = [&](const QString &svgPath, const char *name) {

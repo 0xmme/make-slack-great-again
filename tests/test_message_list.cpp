@@ -2,15 +2,14 @@
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 //
 // Regression tests for MessageListWidget scroll-position persistence across
-// conversation and workspace switches. Requires QApplication (QWidget
-// subclass).
+// conversation and workspace switches. Requires QApplication (QWidget subclass).
 //
-// The decisive bug these guard against: switching workspaces leaves the chat
-// via setSession(), which used to clear the list WITHOUT snapshotting the
-// loaded messages. When the user had scrolled up, the view held paginated
-// *older* messages that aren't in the plain (no-cursor) history page, so on
-// return the saved scroll anchor couldn't be found and the list fell back to
-// the bottom. setSession() must cache the loaded messages first, exactly like
+// The decisive bug these guard against: switching workspaces leaves the chat via
+// setSession(), which used to clear the list WITHOUT snapshotting the loaded
+// messages. When the user had scrolled up, the view held paginated *older*
+// messages that aren't in the plain (no-cursor) history page, so on return the
+// saved scroll anchor couldn't be found and the list fell back to the bottom.
+// setSession() must cache the loaded messages first, exactly like
 // openConversation() does — so the anchor message survives the round-trip.
 
 #include <catch2/catch_session.hpp>
@@ -36,8 +35,8 @@
 #include "session/session.h"
 #include "backend/backend.h"
 #include "backend/domain.h"
-#include "rpl/event_stream.h"
 #include "rpl/variable.h"
+#include "rpl/event_stream.h"
 #include "ui/image_cache.h"
 
 int main(int argc, char **argv) {
@@ -47,9 +46,8 @@ int main(int argc, char **argv) {
     return Catch::Session().run(argc, argv);
 }
 
-// ── StubBackend
-// ─────────────────────────────────────────────────────────────── Minimal
-// controllable backend. loadHistory returns _historyPage synchronously
+// ── StubBackend ───────────────────────────────────────────────────────────────
+// Minimal controllable backend. loadHistory returns _historyPage synchronously
 // (rpl::variable fires on subscription), modelling the no-cursor history fetch.
 
 struct StubBackend : Backend {
@@ -76,8 +74,7 @@ struct StubBackend : Backend {
 
     // When set, a no-cursor loadHistory answers nothing until deliverHistory()
     // is called — the "conversation opened, its first page still in flight"
-    // window that a plain rpl::variable (which fires on subscription) can't
-    // model.
+    // window that a plain rpl::variable (which fires on subscription) can't model.
     bool                           _deferHistory = false;
     rpl::event_stream<MessagePage> _historyStream;
 
@@ -177,12 +174,10 @@ struct Fixture {
     }
 };
 
-// ── Tests
-// ─────────────────────────────────────────────────────────────────────
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 TEST_CASE(
-    "setSession snapshots scrolled-up older messages so the anchor "
-    "survives a workspace switch",
+    "setSession snapshots scrolled-up older messages so the anchor survives a workspace switch",
     "[message_list][scroll]"
 ) {
     Fixture f;
@@ -250,8 +245,7 @@ TEST_CASE("threadRoots lists only loaded roots, newest first", "[message_list][m
 }
 
 // Snapshot the live view back through the cache: setSession(nullptr) writes
-// _items to the cache, so what comes back is exactly what the widget is
-// showing.
+// _items to the cache, so what comes back is exactly what the widget is showing.
 static std::vector<Message>
 liveView(MessageListWidget &list, Session *session, const ConversationId &conv) {
     list.setSession(nullptr);
@@ -358,8 +352,7 @@ TEST_CASE(
     const auto view = liveView(list, f.session.get(), kConv.id);
     REQUIRE(view.size() == 1);
     CHECK(view[0].text.text == "new text");
-    CHECK(view[0].blocks.empty()); // stale rich_text dropped → doc renders the
-                                   // new text
+    CHECK(view[0].blocks.empty()); // stale rich_text dropped → doc renders the new text
     CHECK(view[0].edited);
     REQUIRE(view[0].reactions.size() == 1); // merge keeps the row's reactions
     CHECK(view[0].reactions[0].name == "thumbsup");
@@ -380,8 +373,8 @@ TEST_CASE(
     MessageListWidget list(f.session.get(), nullptr);
     list.openConversation(kConv.id);
 
-    // The socket delivers message_deleted for the newest message; it flows
-    // through the session to the list and the row must vanish immediately.
+    // The socket delivers message_deleted for the newest message; it flows through
+    // the session to the list and the row must vanish immediately.
     f.stub->_events.fire(Event{EvMessageDeleted{kConv.id, "1000.000003", std::nullopt}});
 
     const auto view = liveView(list, f.session.get(), kConv.id);
@@ -454,8 +447,7 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "duplicate reaction_removed echo does not double-decrement others' "
-    "reactions",
+    "duplicate reaction_removed echo does not double-decrement others' reactions",
     "[message_list][reactions]"
 ) {
     Fixture f;
@@ -501,8 +493,7 @@ TEST_CASE(
     CHECK(r->count == 2);
 }
 
-// ── Message links
-// ─────────────────────────────────────────────────────────────
+// ── Message links ─────────────────────────────────────────────────────────────
 
 // Permalink to the message posted at `ts` in the fixture's channel.
 static QString permalinkTo(const QString &ts) {

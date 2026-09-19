@@ -29,12 +29,10 @@ public:
     // it logs out, so the same team re-added later starts clean.
     void purgeDrafts(const QString &teamId);
     void openThread(ConversationId conv, Ts rootTs);
-    // Move the focus to one reply of the open thread (see
-    // MessageListWidget::jumpToTs).
+    // Move the focus to one reply of the open thread (see MessageListWidget::jumpToTs).
     void jumpToTs(const Ts &ts);
     void close();
-    // Repaint the embedded message list, e.g. after the time-format setting
-    // changed.
+    // Repaint the embedded message list, e.g. after the time-format setting changed.
     void refreshTimestamps();
     void setLinkPreviewsEnabled(bool on);
     // Stop the embedded list's GIF decoding (host window minimized).

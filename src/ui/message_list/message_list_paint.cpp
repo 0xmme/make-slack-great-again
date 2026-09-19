@@ -4,6 +4,7 @@
 #include "message_render.h"
 #include "session/session.h"
 #include "text/mrkdwn_parser.h"
+#include "ui/theme.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 
@@ -12,29 +13,27 @@
 #include <QThreadPool>
 #include <QTimer>
 #include "ui/paint_utils.h"
-#include "ui/theme.h"
 #include "ui/user_avatar.h"
 #include "util/emoji_font.h"
 #include "util/emoji_pixmap.h"
 #include "util/time_format.h"
 
-#include <QAbstractTextDocumentLayout>
-#include <QApplication>
 #include <QMovie>
-#include <QPaintEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPaintEvent>
 #include <QScrollBar>
-#include <QTextCursor>
 #include <QTextDocument>
+#include <QAbstractTextDocumentLayout>
+#include <QTextCursor>
+#include <QApplication>
 #include <QUrl>
 #include <QtMath>
 
 #include <algorithm>
 #include <cmath>
 
-// ── PaintContext
-// ──────────────────────────────────────────────────────────────
+// ── PaintContext ──────────────────────────────────────────────────────────────
 
 PaintContext MessageListWidget::makePaintContext() const {
     const int vw       = viewport()->width();
@@ -48,8 +47,7 @@ PaintContext MessageListWidget::makePaintContext() const {
     };
 }
 
-// ── Paint entry point
-// ─────────────────────────────────────────────────────────
+// ── Paint entry point ─────────────────────────────────────────────────────────
 
 void MessageListWidget::doPaint(QPaintEvent *event) {
     // Partial paints come from per-frame GIF updates (watchGifMovie) and OS
@@ -74,8 +72,7 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     p.fillRect(event->rect(), Th::c().surface.content);
 
     if ((_loading || _waiting) && _items.empty()) {
-        // Nothing visible — make sure gif players from the previous conversation
-        // stop.
+        // Nothing visible — make sure gif players from the previous conversation stop.
         _visibleGifs.clear();
         _gifRects.clear();
         syncGifPlayback();
@@ -87,13 +84,10 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
             QString      hint;
             if (ms >= 15000)
                 hint =
-                    tr("Oh my gosh, I really apologize, but your company is a "
-                       "reaaaly active "
+                    tr("Oh my gosh, I really apologize, but your company is a reaaaly active "
                        "Slack user. Still loading...");
             else if (ms >= 5000)
-                hint =
-                    tr("Oh, you must have a lot of co-workers and messages! Still "
-                       "loading...");
+                hint = tr("Oh, you must have a lot of co-workers and messages! Still loading...");
             else if (ms >= 1000)
                 hint = tr("Loading your stuff...");
 
@@ -204,8 +198,7 @@ void MessageListWidget::paintRow(
     ensureDocLayout(item);
     const bool collapsed = isCollapsed(index);
 
-    // Paint date separator at the top of the row if needed, then shift content
-    // down.
+    // Paint date separator at the top of the row if needed, then shift content down.
     const int sepH = needsDateSep(index) ? kSepH : 0;
     if (sepH > 0)
         paintDateSep(p, rowTop, ctx.vw, item.msg.date);
@@ -480,8 +473,7 @@ void MessageListWidget::paintRow(
         paintHoverToolbar(p, index, rowTop, rh);
 }
 
-// ── Avatar / presence
-// ─────────────────────────────────────────────────────────
+// ── Avatar / presence ─────────────────────────────────────────────────────────
 
 void MessageListWidget::triggerMissingAvatarDownloads() {
     if (!_session || !_imgCache)
@@ -717,8 +709,7 @@ void MessageListWidget::paintMessageHeader(
     }
 }
 
-// ── Attachments
-// ───────────────────────────────────────────────────────────────
+// ── Attachments ───────────────────────────────────────────────────────────────
 
 QPoint MessageListWidget::attachDocOffset(const Attachment &att) const {
     if (!att.isMsgUnfurl)
@@ -756,8 +747,7 @@ QRect MessageListWidget::attachFileChipRect(
 }
 
 int MessageListWidget::unfurlHeaderH() const {
-    // The avatar, or the two text lines beside it when the font makes them
-    // taller.
+    // The avatar, or the two text lines beside it when the font makes them taller.
     const QFontMetrics nameFm(msgNameFont());
     const QFontMetrics subFm(msgTsFont());
     return std::max(kAvSize, nameFm.height() + 2 + subFm.height());
@@ -786,8 +776,7 @@ void MessageListWidget::paintUnfurlHeader(
     p.drawText(QRect(textX, box.y(), nameW, nameFm.height()), Qt::AlignVCenter, elided);
     int x = textX + nameFm.horizontalAdvance(elided) + 6;
 
-    // author_subname is set only for app posts — the same "APP" tag bot names
-    // get.
+    // author_subname is set only for app posts — the same "APP" tag bot names get.
     if (!att.authorSubname.isEmpty())
         x = paintTagBadge(
             p,
@@ -902,9 +891,8 @@ void MessageListWidget::paintAttachments(
             p.restore();
         }
 
-        // Favicon: draw 16×16 to the left of the title, only if it loaded
-        // successfully. We indent the text doc by 20px horizontally so the text
-        // starts right of the icon.
+        // Favicon: draw 16×16 to the left of the title, only if it loaded successfully.
+        // We indent the text doc by 20px horizontally so the text starts right of the icon.
         int textIndent = 0;
         if (!imageOnly && !att.faviconUrl.isEmpty() && _imgCache) {
             const QPixmap fav = _imgCache->get(att.faviconUrl);
@@ -979,8 +967,7 @@ void MessageListWidget::paintAttachments(
     }
 }
 
-// ── Inline file images
-// ────────────────────────────────────────────────────────
+// ── Inline file images ────────────────────────────────────────────────────────
 
 QSize MessageListWidget::filePreviewSize(const File &f, int maxW) const {
     // Original dimensions first: geometry must not depend on which thumbnail
@@ -1024,8 +1011,7 @@ MessageListWidget::layoutFileImages(const MessageItem &item, int width, bool has
     const int lead = hasAbove ? kImgGap : 0;
 
     // Single preview: the classic filename-label-above-image layout (kImgNameH is
-    // always reserved, even when the name is empty, so geometry is
-    // unconditional).
+    // always reserved, even when the name is empty, so geometry is unconditional).
     if (idx.size() == 1) {
         const int   fi = idx[0];
         const QSize sz = filePreviewSize(item.msg.files[fi], width);
@@ -1278,8 +1264,7 @@ void MessageListWidget::paintFileImages(
             p.setPen(Th::c().message.imagePlaceholderBorder);
             p.setBrush(Th::c().message.imagePlaceholderBg);
             p.drawRect(rect);
-            // The single-image box is wide enough for the label; gallery tiles
-            // aren't.
+            // The single-image box is wide enough for the label; gallery tiles aren't.
             if (!layout.gallery) {
                 p.setPen(Th::c().text.tertiary);
                 p.drawText(rect, Qt::AlignCenter, tr("Loading image…"));
@@ -1452,8 +1437,7 @@ void MessageListWidget::requestItemImages(MessageItem &item) {
             }
         }
 
-        // Attachment preview images and favicons (public CDN URLs → via shared
-        // ImageCache).
+        // Attachment preview images and favicons (public CDN URLs → via shared ImageCache).
         if (!item.attachImgsRequested && _imgCache) {
             item.attachImgsRequested = true;
             for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
@@ -1470,8 +1454,7 @@ void MessageListWidget::requestItemImages(MessageItem &item) {
     }
 }
 
-// ── Reactions
-// ─────────────────────────────────────────────────────────────────
+// ── Reactions ─────────────────────────────────────────────────────────────────
 
 // Chip sizing: color emoji fonts report advance width ≈ 2× pixelSize, so we use
 // a fixed slot for the glyph and measure only the count with the regular font.
@@ -1548,11 +1531,10 @@ void MessageListWidget::paintReactions(
             QPixmap px = _imgCache ? _imgCache->get(emoji.imageUrl) : QPixmap();
             // Animate custom-emoji GIFs (e.g. :beer_cheers:) like Slack does. Without
             // this the pill shows only the still first frame, which for many animated
-            // emoji is an odd mid-motion pose (beer_cheers frame 0 = the two mugs
-            // apart, read as a "cut/swapped" glyph). gifMovieFor() is non-null only
-            // for animated images; the get() above has populated the bytes it needs.
-            // syncGifPlayback() (end of doPaint) starts/pauses movies by _visibleGifs
-            // membership.
+            // emoji is an odd mid-motion pose (beer_cheers frame 0 = the two mugs apart,
+            // read as a "cut/swapped" glyph). gifMovieFor() is non-null only for animated
+            // images; the get() above has populated the bytes it needs. syncGifPlayback()
+            // (end of doPaint) starts/pauses movies by _visibleGifs membership.
             if (QMovie *mv = gifMovieFor(emoji.imageUrl)) {
                 markGifVisible(emoji.imageUrl, chip);
                 const QPixmap frame = mv->currentPixmap();
@@ -1599,8 +1581,7 @@ void MessageListWidget::paintReactions(
     p.restore();
 }
 
-// ── File chips
-// ────────────────────────────────────────────────────────────────
+// ── File chips ────────────────────────────────────────────────────────────────
 
 void MessageListWidget::paintFileChips(
     QPainter &p, const MessageItem &item, const PaintContext &ctx, int top
@@ -1659,8 +1640,7 @@ MessageListWidget::fileChipAt(const QPoint &viewportPos, QRect *chipRect, int *m
         if (!hasChips)
             continue;
 
-        // Reproduce the contentY tracking from paintRow up to the file chips
-        // section.
+        // Reproduce the contentY tracking from paintRow up to the file chips section.
         ensureDocLayout(item);
         const bool collapsed = isCollapsed(i);
         const int  padV      = collapsed ? kPadVCollapsed : kPadV;
@@ -1740,11 +1720,9 @@ const File *MessageListWidget::previewFileAt(const QPoint &viewportPos) const {
     return &f;
 }
 
-// ── Reply bar
-// ─────────────────────────────────────────────────────────────────
+// ── Reply bar ─────────────────────────────────────────────────────────────────
 
-// Small rounded-square avatar used in the reply bar (matches Slack's official
-// client).
+// Small rounded-square avatar used in the reply bar (matches Slack's official client).
 static void paintReplyAvatar(
     QPainter      &p,
     const QPixmap &px,
@@ -1856,8 +1834,7 @@ void MessageListWidget::paintReplyBar(
     p.setFont(normF);
     p.setPen(Th::c().text.secondary);
 
-    // Open state: inline expanded for this root, or shown in the standalone
-    // panel.
+    // Open state: inline expanded for this root, or shown in the standalone panel.
     const bool open = _threadsInline
                           ? (_inlineThreads.count(item.msg.ts) > 0)
                           : (!_openThreadRoot.isEmpty() && _openThreadRoot == item.msg.ts);
@@ -2211,8 +2188,7 @@ Ts MessageListWidget::inlineFooterAt(const QPoint &pos) const {
     return {};
 }
 
-// ── Reaction hit-test
-// ─────────────────────────────────────────────────────────
+// ── Reaction hit-test ─────────────────────────────────────────────────────────
 
 std::pair<int, int>
 MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) const {
@@ -2284,8 +2260,7 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
     return {-1, -1};
 }
 
-// ── Hover toolbar
-// ─────────────────────────────────────────────────────────────
+// ── Hover toolbar ─────────────────────────────────────────────────────────────
 
 QRect MessageListWidget::toolbarButtonRect(int btn, int rowTop, int rowH) const {
     // Toolbar card sits at the top-right of the row, vertically centered.
@@ -2372,8 +2347,7 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
     (void)index;
 }
 
-// ── File action bar
-// ───────────────────────────────────────────────────────────
+// ── File action bar ───────────────────────────────────────────────────────────
 
 QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
     if (msgIdx < 0 || msgIdx >= (int)_items.size())
@@ -2412,8 +2386,7 @@ QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
         return QRect(left + r.x(), contentY + r.y(), r.width(), r.height());
     }
 
-    // Walk file chips (same logic as paintFileChips), starting past the image
-    // region.
+    // Walk file chips (same logic as paintFileChips), starting past the image region.
     int        y             = contentY + layout.height;
     const bool hasAboveChips = hasAbove || layout.height > 0;
     bool       firstChip     = true;
@@ -2506,8 +2479,7 @@ void MessageListWidget::paintFileActionBar(QPainter &p, const QRect &fileRect) c
     p.restore();
 }
 
-// ── Date separator painting
-// ───────────────────────────────────────────────────
+// ── Date separator painting ───────────────────────────────────────────────────
 
 void MessageListWidget::paintDateSep(QPainter &p, int top, int vw, qint64 dateMicros) const {
     const QString label = MsgRender::formatDateLabel(dateMicros);

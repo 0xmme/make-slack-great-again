@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
-#include "backend/slack/json_mappers.h"
-#include "util/slack_links.h"
-#include <QJsonArray>
+#include <catch2/catch_test_macros.hpp>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <catch2/catch_test_macros.hpp>
+#include <QJsonArray>
+#include "backend/slack/json_mappers.h"
+#include "util/slack_links.h"
 
 using namespace slack;
 
@@ -40,9 +40,8 @@ TEST_CASE("toUser full profile — real_name preferred over display_name", "[map
 TEST_CASE(
     "toUser enterprise slug: real_name wins over AD-provisioned display_name", "[mappers][user]"
 ) {
-    // Enterprise workspaces often auto-provision display_name from AD as a
-    // username slug (e.g. "john.doe.dept") while real_name holds the
-    // human-readable full name.
+    // Enterprise workspaces often auto-provision display_name from AD as a username
+    // slug (e.g. "john.doe.dept") while real_name holds the human-readable full name.
     auto u = JsonMappers::toUser(obj(R"({
         "id": "U1", "name": "john.doe.eng",
         "profile": {"display_name": "john.doe.eng", "real_name": "John Doe", "image_72": ""}
@@ -126,10 +125,10 @@ TEST_CASE(
     "[mappers][user][status]"
 ) {
     // Slack encodes a skin-toned emoji as ":baby::skin-tone-3:". After stripping
-    // outer colons we get "baby::skin-tone-3". The skin-tone suffix must be
-    // removed so that the base name "baby" resolves to the 👶 glyph instead of
-    // falling back to the literal string ":baby::skin-tone-3:" which squeezes the
-    // user name out of the conv-list row entirely.
+    // outer colons we get "baby::skin-tone-3". The skin-tone suffix must be removed
+    // so that the base name "baby" resolves to the 👶 glyph instead of falling back
+    // to the literal string ":baby::skin-tone-3:" which squeezes the user name out
+    // of the conv-list row entirely.
     auto u = JsonMappers::toUser(obj(R"({
         "id": "U1", "name": "u1",
         "profile": {"display_name": "Petter", "real_name": "", "image_72": "",
@@ -217,9 +216,9 @@ TEST_CASE("toConversation ended huddle (has_ended) is not active", "[mappers][co
 TEST_CASE(
     "toConversation ended huddle (string date_end) is not active", "[mappers][conv][huddle]"
 ) {
-    // Slack sends date_end as a JSON string in some payloads;
-    // QJsonValue::toDouble yields 0 for a string, which used to read as "still
-    // live" and stranded the huddle banner forever after an end-edit arrived.
+    // Slack sends date_end as a JSON string in some payloads; QJsonValue::toDouble
+    // yields 0 for a string, which used to read as "still live" and stranded the
+    // huddle banner forever after an end-edit arrived.
     auto c = JsonMappers::toConversation(obj(R"({
         "id": "C1", "name": "general",
         "is_private": false, "is_im": false, "is_mpim": false,
@@ -386,8 +385,7 @@ TEST_CASE("toConversation unread uses unread_count when non-zero", "[mappers][co
 }
 
 TEST_CASE(
-    "toConversation unread falls back to 1 when latestTs > lastRead and "
-    "count is 0",
+    "toConversation unread falls back to 1 when latestTs > lastRead and count is 0",
     "[mappers][conv][unread]"
 ) {
     auto c = JsonMappers::toConversation(obj(R"({
@@ -570,8 +568,7 @@ TEST_CASE("toMessage edited flag set when 'edited' key present", "[mappers][mess
     CHECK(m.edited);
 }
 
-// ── toFile
-// ────────────────────────────────────────────────────────────────────
+// ── toFile ────────────────────────────────────────────────────────────────────
 
 TEST_CASE("toFile basic fields", "[mappers][file]") {
     auto f = JsonMappers::toFile(obj(R"({
@@ -727,8 +724,7 @@ TEST_CASE("non-PDF document ignores thumb_pdf for preview", "[mappers][file]") {
     CHECK(!f.hasPreview());
 }
 
-// ── toBlock
-// ───────────────────────────────────────────────────────────────────
+// ── toBlock ───────────────────────────────────────────────────────────────────
 
 TEST_CASE("toBlock divider has typeStr only", "[mappers][block]") {
     auto b = JsonMappers::toBlock(obj(R"({"type":"divider"})"));
@@ -945,8 +941,7 @@ TEST_CASE("toBlock rich_text section plain text", "[mappers][block]") {
 TEST_CASE("toBlock rich_text text run resolves embedded Slack tokens", "[mappers][block]") {
     // Outlook Calendar reminders arrive as a rich_text "text" element whose raw
     // text still carries <!date^…> and <url|label> tokens (Slack's text→rich_text
-    // conversion doesn't structure them). They must resolve, not render
-    // literally.
+    // conversion doesn't structure them). They must resolve, not render literally.
     auto b = JsonMappers::toBlock(obj(R"({
         "type": "rich_text",
         "elements": [{
@@ -1141,8 +1136,7 @@ TEST_CASE("toBlock rich_text ordered list", "[mappers][block]") {
     CHECK(b.text.text == "1. first\n2. second");
 }
 
-// ── toAttachment
-// ──────────────────────────────────────────────────────────────
+// ── toAttachment ──────────────────────────────────────────────────────────────
 
 TEST_CASE("toAttachment all fields", "[mappers][attachment]") {
     auto a = JsonMappers::toAttachment(obj(R"({
@@ -1321,8 +1315,7 @@ TEST_CASE("section block with only fields and no text", "[mappers][block]") {
     CHECK(b.text.text == "solo");
 }
 
-// ── toSearchResult
-// ────────────────────────────────────────────────────────────
+// ── toSearchResult ────────────────────────────────────────────────────────────
 
 TEST_CASE("toSearchResult extracts conv from nested channel object", "[mappers][search]") {
     auto r = JsonMappers::toSearchResult(obj(R"({
@@ -1335,8 +1328,7 @@ TEST_CASE("toSearchResult extracts conv from nested channel object", "[mappers][
     CHECK(r.msg.text.text == "found it");
 }
 
-// ── toSelfPresence
-// ────────────────────────────────────────────────────────────
+// ── toSelfPresence ────────────────────────────────────────────────────────────
 
 TEST_CASE("toSelfPresence active with a connected client", "[mappers][presence]") {
     auto sp = JsonMappers::toSelfPresence(obj(R"({
@@ -1384,8 +1376,7 @@ TEST_CASE("toSelfPresence idle auto-away while online is not phantom away", "[ma
     CHECK_FALSE(sp.phantomAway());
 }
 
-// ── Batch helpers
-// ─────────────────────────────────────────────────────────────
+// ── Batch helpers ─────────────────────────────────────────────────────────────
 
 TEST_CASE("toUsers skips entries with empty id", "[mappers][batch]") {
     auto users = JsonMappers::toUsers(arr(R"([
@@ -1444,8 +1435,7 @@ TEST_CASE("toSearchResults skips entries with empty conv id", "[mappers][batch]"
     CHECK(results[0].conv == ConversationId{"C1"});
 }
 
-// ── is_starred
-// ────────────────────────────────────────────────────────────────
+// ── is_starred ────────────────────────────────────────────────────────────────
 
 TEST_CASE("toConversation is_starred true", "[mappers][conv][star]") {
     auto c = JsonMappers::toConversation(obj(R"({
@@ -1464,8 +1454,7 @@ TEST_CASE("toConversation is_starred absent defaults to false", "[mappers][conv]
     CHECK(c.isStarred == false);
 }
 
-// ── toStarredConversationIds (stars.list)
-// ─────────────────────────────────────
+// ── toStarredConversationIds (stars.list) ─────────────────────────────────────
 
 TEST_CASE("toStarredConversationIds keeps every conversation kind", "[mappers][star]") {
     auto ids = JsonMappers::toStarredConversationIds(arr(R"([
@@ -1502,8 +1491,7 @@ TEST_CASE("toStarredConversationIds skips entries with no channel", "[mappers][s
     CHECK(ids.empty());
 }
 
-// ── notification_preference
-// ───────────────────────────────────────────────────
+// ── notification_preference ───────────────────────────────────────────────────
 
 TEST_CASE("toConversation notification_preference=everything → All", "[mappers][conv][notif]") {
     auto c = JsonMappers::toConversation(obj(R"({
@@ -1540,8 +1528,7 @@ TEST_CASE("toConversation notification_preference absent → Default", "[mappers
     CHECK(c.notifLevel == NotificationLevel::Default);
 }
 
-// ── Mpim members
-// ──────────────────────────────────────────────────────────────
+// ── Mpim members ──────────────────────────────────────────────────────────────
 
 TEST_CASE("toConversation Mpim parses members array", "[mappers][conv][mpim]") {
     auto c = JsonMappers::toConversation(obj(R"({
@@ -1566,8 +1553,7 @@ TEST_CASE("toConversation non-Mpim ignores members array", "[mappers][conv][mpim
     CHECK(c.members.empty());
 }
 
-// ── num_members / memberCount
-// ─────────────────────────────────────────────────
+// ── num_members / memberCount ─────────────────────────────────────────────────
 
 TEST_CASE("toConversation num_members maps to memberCount", "[mappers][conv][members]") {
     auto c = JsonMappers::toConversation(obj(R"({
@@ -1586,8 +1572,7 @@ TEST_CASE("toConversation num_members absent defaults to 0", "[mappers][conv][me
     CHECK(c.memberCount == 0);
 }
 
-// ── toSlashCommands
-// ───────────────────────────────────────────────────────────
+// ── toSlashCommands ───────────────────────────────────────────────────────────
 
 TEST_CASE("toSlashCommands parses an array of command objects", "[mappers][commands]") {
     auto cmds = JsonMappers::toSlashCommands(arr(R"([
@@ -1651,8 +1636,7 @@ TEST_CASE("toConvCounts reads all three conversation groups", "[mappers][counts]
     CHECK(counts[1].unread == 0);
     CHECK(counts[1].mentionCount == 0);
 
-    // has_unreads with no count: 1 stands in for "some" (only compared, never
-    // shown).
+    // has_unreads with no count: 1 stands in for "some" (only compared, never shown).
     CHECK(counts[2].id.value == "G1");
     CHECK(counts[2].unread == 1);
 

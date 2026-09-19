@@ -15,8 +15,7 @@
 #include <QUrl>
 #include <algorithm>
 
-// ── JSON serialization helpers
-// ────────────────────────────────────────────────
+// ── JSON serialization helpers ────────────────────────────────────────────────
 
 static QJsonObject toJson(const TextEntity &e) {
     QJsonObject o;
@@ -498,8 +497,7 @@ static Conversation convFromJson(const QJsonObject &o) {
     return c;
 }
 
-// ── WorkspaceCache
-// ────────────────────────────────────────────────────────────
+// ── WorkspaceCache ────────────────────────────────────────────────────────────
 
 WorkspaceCache::WorkspaceCache(const QString &handle) {
     const QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
