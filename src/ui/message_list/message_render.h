@@ -13,6 +13,7 @@
 #include <QSet>
 #include <QUrl>
 #include <QVector>
+#include <algorithm>
 #include <vector>
 
 class QPainter;
@@ -120,6 +121,15 @@ QString notificationText(const TextWithEntities &twe, const Session *session);
 // bot posts (CodePipeline, Amazon Q, GitHub, …) that leave `text` empty still
 // show their content in the OS toast instead of a bare "Bot:".
 QString notificationPreview(const Message &msg, const Session *session);
+
+// User ids notificationPreview() would print raw ("@U0C3E7HGZHS") because the
+// mention carries no label of its own — the caller resolves the ones the user
+// cache doesn't know (Slack Connect / system / deactivated accounts users.list
+// omits) before building a toast. A labeled mention ("<@U7|alice>") already
+// reads as a name and is left out. Covers the pre-parsed texts (body, Block Kit
+// blocks, attachment text and fields); mentions inside an attachment's
+// pretext/fallback are parsed only while the preview is built and stay out.
+std::vector<UserId> notificationRawMentions(const Message &msg);
 
 // Geometry (doc coordinates, margins excluded) of every ``` code-block table in a
 // laid-out message document.

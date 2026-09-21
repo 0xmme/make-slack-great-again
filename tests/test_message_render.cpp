@@ -1168,6 +1168,32 @@ TEST_CASE(
     CHECK(MsgRender::notificationPreview(msg, nullptr).isEmpty());
 }
 
+TEST_CASE("notificationRawMentions collects every bare mentioned id once", "[render][notif]") {
+    // The channel_join shape that showed up raw in a toast, plus mentions from
+    // the block/attachment texts the preview also flattens.
+    Message msg;
+    msg.text = MrkdwnParser::parse("<@U0C3E7HGZHS> has joined the channel");
+    Block section;
+    section.typeStr = "section";
+    section.text    = MrkdwnParser::parse("cc <@U7> and <@U0C3E7HGZHS>");
+    msg.blocks      = {section};
+    Attachment att;
+    att.text = MrkdwnParser::parse("owner <@U9>");
+    msg.attachments.push_back(att);
+
+    const auto ids = MsgRender::notificationRawMentions(msg);
+    REQUIRE(ids.size() == 3);
+    CHECK(ids[0] == UserId{"U0C3E7HGZHS"});
+    CHECK(ids[1] == UserId{"U7"});
+    CHECK(ids[2] == UserId{"U9"});
+}
+
+TEST_CASE("notificationRawMentions skips a labeled mention and plain text", "[render][notif]") {
+    Message msg;
+    msg.text = MrkdwnParser::parse("deploy finished :tada: cc <@U9|bob>");
+    CHECK(MsgRender::notificationRawMentions(msg).empty());
+}
+
 // ── Audio chip ────────────────────────────────────────────────────────────────
 
 TEST_CASE(

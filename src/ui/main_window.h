@@ -150,7 +150,18 @@ private:
     // Tray
     void setupTray();
     void restoreFromTray();
-    void maybeNotify(const QString &teamId, const EvMessageNew &ev);
+    // `allowDefer` is false only on the self-scheduled retry below: a message
+    // whose author or @mentions users.list omits is held back until users.info
+    // resolves them, so the toast reads "Julian Bevan" and not "Someone:
+    // @U0C3E7HGZHS".
+    void maybeNotify(const QString &teamId, const EvMessageNew &ev, bool allowDefer = true);
+    // Re-runs maybeNotify once every id in `pending` is known, or once the wait
+    // budget (kNotifyResolveTries × kNotifyResolveStepMs) runs out — whichever
+    // comes first. Re-entered with allowDefer = false, so a toast is never
+    // deferred twice.
+    void notifyWhenUsersResolve(
+        const QString &teamId, const EvMessageNew &ev, std::vector<UserId> pending, int tries
+    );
     // Popup notification (with a "Join" action button) when a huddle starts in a
     // non-muted conversation, even while the window is hidden to the tray.
     void maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged &ev);

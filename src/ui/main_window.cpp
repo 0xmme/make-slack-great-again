@@ -93,6 +93,7 @@
 #include <QScreen>
 #include <QShowEvent>
 
+#include <algorithm>
 #include <memory>
 
 static constexpr int kResizeBorder = 6;
@@ -2317,7 +2318,7 @@ static QPixmap roundedNotifIcon(const QPixmap &src, int side = 64) {
     return out;
 }
 
-void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
+void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev, bool allowDefer) {
     // Too old to announce: a reconnect backfill, a cache replay or a history
     // sweep can surface month-old messages as fresh EvMessageNew. Drop those
     // silently — no toast, no sound (see kMaxNotifyAgeDays). Before every other
@@ -2386,6 +2387,34 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     const NotificationLevel lvl = effectiveNotifLevel(*conv, globalDefaultNotifLevel());
     if (lvl != NotificationLevel::All && !isImportant)
         return;
+
+    // Names first: a Slack Connect / system / deactivated account is absent from
+    // users.list, so its message would announce itself as "Someone: @U0C3E7HGZHS
+    // has joined the channel". users.info can resolve both the author and the
+    // @mentions, but only asynchronously — so start the fetches and re-run this
+    // once they land (bounded wait; whatever is still raw by then is shown as
+    // it is). Only ids the backend can actually look up are waited on, so a bot
+    // post (author "B…", never in the user cache) still notifies immediately.
+    if (allowDefer) {
+        std::vector<UserId> pending;
+        auto                need = [&](const UserId &id) {
+            if (id.value.isEmpty() || session->findUser(id))
+                return;
+            if (!session->backend() || !session->backend()->isUserId(id))
+                return;
+            if (std::find(pending.begin(), pending.end(), id) == pending.end())
+                pending.push_back(id);
+        };
+        need(ev.msg.author);
+        for (const auto &uid : MsgRender::notificationRawMentions(ev.msg))
+            need(uid);
+        if (!pending.empty()) {
+            for (const auto &uid : pending)
+                session->fetchUserIfNeeded(uid);
+            notifyWhenUsersResolve(teamId, ev, std::move(pending), 0);
+            return;
+        }
+    }
 
     // Build title and body
     const auto *sender = session->findUser(ev.msg.author);
@@ -2474,6 +2503,36 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
         Sound::Player::instance().play(
             s.value("notifications/soundId", Sound::Player::defaultId()).toString()
         );
+}
+
+// How long a notification waits for users.info to put names to the ids it
+// mentions: polled in short steps so the toast fires as soon as the last one
+// lands, and capped so a lookup that never answers only delays it by ~1.5 s.
+static constexpr int kNotifyResolveStepMs = 150;
+static constexpr int kNotifyResolveTries  = 10;
+
+void MainWindow::notifyWhenUsersResolve(
+    const QString &teamId, const EvMessageNew &ev, std::vector<UserId> pending, int tries
+) {
+    QTimer::singleShot(kNotifyResolveStepMs, this, [this, teamId, ev, pending, tries]() mutable {
+        // The workspace may be gone (signed out / removed) by now; maybeNotify
+        // re-checks that itself, along with every other gate — including the
+        // "conversation is on screen" one, which the user may have satisfied
+        // while we waited.
+        const auto it = _sessions.find(teamId);
+        if (it == _sessions.end())
+            return;
+        Session *session = it->second.session.get();
+
+        std::erase_if(pending, [session](const UserId &id) {
+            return session->findUser(id) != nullptr;
+        });
+        if (pending.empty() || tries + 1 >= kNotifyResolveTries) {
+            maybeNotify(teamId, ev, false);
+            return;
+        }
+        notifyWhenUsersResolve(teamId, ev, std::move(pending), tries + 1);
+    });
 }
 
 void MainWindow::maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged &ev) {

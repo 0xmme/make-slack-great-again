@@ -517,6 +517,37 @@ QString notificationPreview(const Message &msg, const Session *session) {
     return pieces.join(QStringLiteral(" · "));
 }
 
+std::vector<UserId> notificationRawMentions(const Message &msg) {
+    std::vector<UserId> ids;
+    auto                add = [&](const TextWithEntities &twe) {
+        for (const auto &e : twe.entities) {
+            if (e.type != EntityType::UserMention || e.data.isEmpty())
+                continue;
+            // "<@U7|alice>" baked its own label into the text — nothing to look
+            // up, and waiting on users.info for it would only delay the toast.
+            if (!twe.text.mid(e.offset, e.length).contains(e.data))
+                continue;
+            const UserId id{e.data};
+            if (std::find(ids.begin(), ids.end(), id) == ids.end())
+                ids.push_back(id);
+        }
+    };
+    auto addBlocks = [&](const std::vector<Block> &blocks) {
+        for (const auto &b : blocks)
+            add(b.text);
+    };
+
+    add(msg.text);
+    addBlocks(msg.blocks);
+    for (const auto &att : msg.attachments) {
+        add(att.text);
+        for (const auto &f : att.fields)
+            add(f.value);
+        addBlocks(att.blocks);
+    }
+    return ids;
+}
+
 static QString escapeAndBr(const QString &s) {
     return s.toHtmlEscaped().replace("\n", "<br>");
 }
