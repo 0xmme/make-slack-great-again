@@ -96,6 +96,9 @@ public:
     ConversationId                 conversationId(int row) const;
     // Visual row for a given id; -1 if not found or section is collapsed.
     int                            rowForId(ConversationId id) const;
+    // Viewport rectangle of a row (empty for an invalid row). Rows are virtual, so
+    // this is the only way to point at one from outside (tests, the demo tour).
+    QRect                          rowViewportRect(int row) const;
     // Programmatically select a row; emits conversationSelected.
     void                           selectRow(int row);
     // Select a conversation even if it is currently hidden by the relevance

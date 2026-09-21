@@ -92,8 +92,16 @@ struct TextPos {
 // Zero-widget virtual message list.
 // Stores MessageItems, paints only visible rows in a single QPainter pass.
 // No QLabel/QWidget per message — scales to thousands of rows without stutter.
+#if defined(MSGA_DEMO)
+namespace demo {
+class Tour;
+}
+#endif
 class MessageListWidget : public VirtualListWidget {
     Q_OBJECT
+#if defined(MSGA_DEMO)
+    friend class demo::Tour; // the scripted demo drives real widgets (--demo-tour)
+#endif
 public:
     explicit MessageListWidget(Session *session, ImageCache *imgCache, QWidget *parent = nullptr);
     // Hands cache-owned animated players back to ImageCache (releaseGifMovies)
@@ -147,7 +155,11 @@ public:
     // (authoritative) page doesn't contain the message: reaching further back
     // would need a history fetch centred on the ts, which Slack's cursor
     // pagination doesn't offer.
-    void jumpToTs(const Ts &ts);
+    void  jumpToTs(const Ts &ts);
+    // Viewport rectangle of the row showing `ts` (empty when it isn't loaded).
+    // May lie outside the viewport when scrolled away; rows are painted, not
+    // widgets, so this is how tests and the demo tour point at a message.
+    QRect rowViewportRect(const Ts &ts) const;
 
     // Stop animated-image (GIF) decoding while nothing is on screen. Called by
     // the host window on minimize — children get no hideEvent/paint then, so the

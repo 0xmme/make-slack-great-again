@@ -744,6 +744,12 @@ void ConvListWidget::wheelEvent(QWheelEvent *event) {
 
 // ── Mouse ─────────────────────────────────────────────────────────────────────
 
+QRect ConvListWidget::rowViewportRect(int row) const {
+    if (row < 0 || row >= static_cast<int>(_rows.size()))
+        return {};
+    return QRect(0, rowTopView(row), viewport()->width(), _rowH);
+}
+
 int ConvListWidget::rowAt(int viewportY) const {
     const int docY = viewportY + verticalScrollBar()->value() - kTopPad;
     if (docY < 0) // inside the top inset — no row there

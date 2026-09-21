@@ -23,6 +23,12 @@ std::unique_ptr<AuthStrategy> makeAuthStrategy(Service service, QObject *parent)
         // Email (imap-backend-plan §5). The strategy is Widgets-free; the add-
         // account dialog is injected via imap::AuthStrategy::setPrompt at startup.
         return std::make_unique<imap::AuthStrategy>(parent);
+#if defined(MSGA_DEMO)
+    case Service::Demo:
+        // Seeded from a fixture by `--demo`; nothing to sign in to. Also absent
+        // from registeredAuthServices() so the picker never offers it.
+        return nullptr;
+#endif
     }
     return nullptr;
 }

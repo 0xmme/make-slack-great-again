@@ -25,7 +25,19 @@ static constexpr char kBase[]      = "https://api.giphy.com/v1/gifs/";
 // one-word change if a deployment wants it.
 static constexpr char kRating[] = "pg-13";
 
+#if defined(MSGA_DEMO)
+static QString s_demoBase; // "http://127.0.0.1:PORT/v1/gifs/" while the demo runs
+
+void GifSearch::setDemoEndpoint(const QString &baseUrl) {
+    s_demoBase = baseUrl.isEmpty() ? QString() : baseUrl + QStringLiteral("/v1/gifs/");
+}
+#endif
+
 QString GifSearch::apiKey() {
+#if defined(MSGA_DEMO)
+    if (!s_demoBase.isEmpty())
+        return QStringLiteral("demo");
+#endif
     const QString user = userApiKey();
     if (!user.isEmpty())
         return user;
@@ -68,8 +80,13 @@ QString GifSearch::errorMessage(int httpStatus) {
 QString GifSearch::requestUrl(const QString &query, int limit, const QString &key) {
     const QString trimmed  = query.trimmed();
     const bool    trending = trimmed.isEmpty();
-    QUrl          url(QString::fromUtf8(kBase) + (trending ? "trending" : "search"));
-    QUrlQuery     q;
+    QString       base     = QString::fromUtf8(kBase);
+#if defined(MSGA_DEMO)
+    if (!s_demoBase.isEmpty())
+        base = s_demoBase;
+#endif
+    QUrl      url(base + (trending ? "trending" : "search"));
+    QUrlQuery q;
     q.addQueryItem(QStringLiteral("api_key"), key);
     if (!trending)
         // GIPHY caps the search term at 50 characters and 400s past it.

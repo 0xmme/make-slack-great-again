@@ -6,6 +6,10 @@
 #include "backend/imap/imap_auth_strategy.h" // IMAP add-account prompt hook
 #include "ui/imap_add_account/imap_add_account_dialog.h"
 #include "app/crash_handler.h"
+#if defined(MSGA_DEMO)
+#include "backend/demo/demo_mode.h" // `--demo <dir>`: fixture workspace, Debug builds only
+#include "backend/demo/demo_tour.h" // `--demo-tour <file>`: scripted walkthrough for recording
+#endif
 #include "app/single_instance.h"
 #include "util/desktop_integration.h"
 #include "util/time_format.h"
@@ -27,6 +31,7 @@
 #include <QUrlQuery>
 
 #if defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
+#include <cstdio>
 #include <unistd.h>
 #elif defined(Q_OS_WIN)
 #include <QProcess>
@@ -95,6 +100,18 @@ static QFont detectSystemFont() {
 #endif
 
 int main(int argc, char *argv[]) {
+#if defined(MSGA_DEMO)
+    // Must run before QApplication: it redirects HOME/XDG_* for QSettings and
+    // QStandardPaths, which read them on first use.
+    const QString demoDir = demo::fixtureDirFromArgs(argc, argv);
+    if (!demoDir.isEmpty()) {
+        QString err;
+        if (!demo::isolateState(&err)) {
+            fprintf(stderr, "msga --demo: %s\n", qPrintable(err));
+            return 2;
+        }
+    }
+#endif
     // We always set PassThrough so nothing silently rounds the scale factor in a
     // way that up-sizes the UI; the actual scale we render at is decided on Wayland
     // by whether the fractional-scale protocol is enabled (below).
@@ -241,6 +258,15 @@ int main(int argc, char *argv[]) {
     // Dev bridge (Phase 1): also seed an IMAP workspace from IMAP_* env vars when
     // set, so email can be exercised without the dialog. No-op when unset.
     imap::seedDevWorkspaceFromEnv();
+#if defined(MSGA_DEMO)
+    if (!demoDir.isEmpty()) {
+        QString err;
+        if (!demo::seedWorkspace(demoDir, &err)) {
+            fprintf(stderr, "msga --demo: %s\n", qPrintable(err));
+            return 2;
+        }
+    }
+#endif
 
     MainWindow window;
     // Dispatch incoming msga:// URLs: notification-click activation (Windows
@@ -318,6 +344,21 @@ int main(int argc, char *argv[]) {
     // On freedesktop systems, (re)install the .desktop launcher + icon and the
     // msga:// scheme handler in the background. No-op on macOS/Windows.
     DesktopIntegration::installIfSupported();
+
+#if defined(MSGA_DEMO)
+    if (!demoDir.isEmpty()) {
+        if (const QString tourPath = demo::tourPathFromArgs(argc, argv); !tourPath.isEmpty()) {
+            QString err;
+            auto    script = demo::loadTour(tourPath, &err);
+            if (!script) {
+                fprintf(stderr, "msga --demo-tour: %s\n", qPrintable(err));
+                return 2;
+            }
+            auto *tour = new demo::Tour(&window, std::move(*script), &window);
+            tour->start();
+        }
+    }
+#endif
 
 #if defined(MSGA_HANG_WATCHDOG)
     // Pet the hang watchdog from the event loop. While the main thread keeps

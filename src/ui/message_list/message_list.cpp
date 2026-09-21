@@ -981,6 +981,14 @@ int MessageListWidget::findByTs(const Ts &ts) const {
     return -1;
 }
 
+QRect MessageListWidget::rowViewportRect(const Ts &ts) const {
+    const int i = findByTs(ts);
+    if (i < 0 || i >= static_cast<int>(_tops.size()))
+        return {};
+    const int top = _tops[i] - verticalScrollBar()->value();
+    return QRect(0, top, viewport()->width(), rowHeight(i));
+}
+
 void MessageListWidget::flashTs(const Ts &ts) {
     _newMsgTs.insert(ts);
     _highlightAnim.stop();

@@ -16,9 +16,26 @@
 #include <QApplication>
 #include <QFontMetrics>
 
+#if defined(MSGA_DEMO)
+static bool s_flatPopups = false;
+
+void ContextMenu::setFlatPopups(bool on) {
+    s_flatPopups = on;
+}
+#endif
+
+int ContextMenu::shadowPad() const {
+#if defined(MSGA_DEMO)
+    if (s_flatPopups)
+        return 0;
+#endif
+    return kShadow;
+}
+
 ContextMenu::ContextMenu(QWidget *parent)
     : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint) {
-    setAttribute(Qt::WA_TranslucentBackground);
+    if (shadowPad() > 0)
+        setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_DeleteOnClose);
     setMouseTracking(true);
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { update(); });
@@ -109,7 +126,8 @@ int ContextMenu::totalItemsH() const {
 }
 
 QRect ContextMenu::menuRect() const {
-    return QRect(kShadow, kShadow, width() - 2 * kShadow, height() - 2 * kShadow);
+    const int pad = shadowPad();
+    return QRect(pad, pad, width() - 2 * pad, height() - 2 * pad);
 }
 
 QRect ContextMenu::itemRect(int i) const {
@@ -139,8 +157,8 @@ void ContextMenu::updateGeometry(const QPoint &globalPos) {
     }
 
     const int h      = 2 * kPadV + totalItemsH();
-    const int totalW = w + 2 * kShadow;
-    const int totalH = h + 2 * kShadow;
+    const int totalW = w + 2 * shadowPad();
+    const int totalH = h + 2 * shadowPad();
 
     // Anchor: prefer below-right of the click point; flip if near screen edge.
     QScreen *screen = QGuiApplication::screenAt(globalPos);
@@ -199,13 +217,21 @@ void ContextMenu::paintEvent(QPaintEvent *) {
     const QRect  mr = menuRect();
     const QRectF mrf(mr);
 
-    // ── Soft shadow (concentric translucent halos) ────────────────────────
-    Paint::dropShadow(p, mrf, kRadius, kShadow, 2, 2, /*minLayer*/ 1);
+    if (shadowPad() > 0) {
+        // ── Soft shadow (concentric translucent halos) ────────────────────
+        Paint::dropShadow(p, mrf, kRadius, kShadow, 2, 2, /*minLayer*/ 1);
 
-    // ── Menu card ─────────────────────────────────────────────────────────
-    p.setBrush(Th::c().contextMenu.bg);
-    p.setPen(Qt::NoPen);
-    p.drawRoundedRect(mrf, kRadius, kRadius);
+        // ── Menu card ─────────────────────────────────────────────────────
+        p.setBrush(Th::c().contextMenu.bg);
+        p.setPen(Qt::NoPen);
+        p.drawRoundedRect(mrf, kRadius, kRadius);
+    } else {
+        // Flat (no compositor): opaque card, hairline border instead of a halo.
+        p.fillRect(rect(), Th::c().contextMenu.bg);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(Th::c().contextMenu.border, 1));
+        p.drawRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5));
+    }
 
     // ── Items ─────────────────────────────────────────────────────────────
     const QFont baseFont   = QApplication::font();

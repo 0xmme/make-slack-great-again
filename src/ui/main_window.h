@@ -51,9 +51,19 @@ class QShowEvent;
 namespace auth {
 class AuthStrategy;
 }
+#if defined(MSGA_DEMO)
+namespace demo {
+class Tour;
+}
+#endif
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
+#if defined(MSGA_DEMO)
+    // The scripted demo tour (--demo-tour) drives the real widgets — it reads
+    // their geometry and calls the same private entry points the UI does.
+    friend class demo::Tour;
+#endif
 public:
     // main() checks for this exit code after app.exec() to trigger a clean re-exec.
     static constexpr int kRestartExitCode = 64;

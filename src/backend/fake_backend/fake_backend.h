@@ -116,7 +116,9 @@ public:
     };
     std::vector<RanCommand> ranCommands;
 
-private:
+protected:
+    // Fixture state, exposed to subclasses that populate it from data instead of
+    // the hardcoded dev fixture (demo::DemoBackend).
     rpl::variable<AuthState>                          _authState;
     rpl::variable<std::vector<Conversation>>          _conversations;
     rpl::variable<std::vector<User>>                  _users;

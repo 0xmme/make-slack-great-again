@@ -39,8 +39,16 @@ class UndoSendPill;
 // Enter sends and Shift+Enter inserts a newline — or, with the "send with
 // Ctrl+Enter" option (Ui::Shortcuts::ctrlEnterSends), Ctrl+Enter sends and
 // Enter inserts the newline. Ctrl+Enter sends in both modes.
+#if defined(MSGA_DEMO)
+namespace demo {
+class Tour;
+}
+#endif
 class ComposerWidget : public QWidget {
     Q_OBJECT
+#if defined(MSGA_DEMO)
+    friend class demo::Tour; // the scripted demo drives real widgets (--demo-tour)
+#endif
 public:
     explicit ComposerWidget(QWidget *parent = nullptr);
 

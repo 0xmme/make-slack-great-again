@@ -60,6 +60,10 @@ public:
     static bool    configured() { return !apiKey().isEmpty(); }
     // Where to send a user who needs to create a key.
     static QString apiKeyUrl();
+#if defined(MSGA_DEMO)
+    // Demo mode: point the API at the local stand-in (and count as configured).
+    static void setDemoEndpoint(const QString &baseUrl);
+#endif
     // Attribution mark. GIPHY's API terms require apps to "conspicuously
     // display" it wherever the API is used, so the picker always shows it.
     static QString attributionText();

@@ -670,6 +670,26 @@ if(Qt6LinguistTools_FOUND)
     )
 endif()
 
+# Demo mode (`msga --demo <fixture dir>`): a fixture-driven fake workspace and a
+# scripted tour for recording the README demo (demo/README.md). OPT-IN ONLY:
+# nothing under src/backend/demo/ (nor the fake backend) is compiled, and
+# Service::Demo does not exist, unless -DMSGA_DEMO=ON is passed — which only
+# scripts/demo-video.sh does, into its own build-demo/ tree. Release builds and
+# the public mirror (which has no demo/ directory) never see any of it.
+option(MSGA_DEMO "Compile the fixture-driven demo workspace + tour (--demo, --demo-tour)" OFF)
+if(MSGA_DEMO)
+    target_sources(msga PRIVATE
+        src/backend/fake_backend/fake_backend.cpp
+        src/backend/demo/demo_fixture.cpp
+        src/backend/demo/demo_backend.cpp
+        src/backend/demo/demo_mode.cpp
+        src/backend/demo/demo_services.cpp
+        src/backend/demo/demo_tour_script.cpp
+        src/backend/demo/demo_tour.cpp
+    )
+    target_compile_definitions(msga PRIVATE MSGA_DEMO)
+endif()
+
 option(MSGA_BUILD_TESTS "Build unit tests" OFF)
 if(MSGA_BUILD_TESTS)
     enable_testing()

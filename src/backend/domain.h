@@ -67,7 +67,16 @@ inline qint64 decimalTsToMicros(const QString &ts) {
 
 // The messaging services this app can host. Only Slack today; Telegram/Teams/…
 // are added here as backends land. Keep minimal.
-enum class Service { Slack, Teams, Imap /*, Telegram, … */ };
+enum class Service {
+    Slack,
+    Teams,
+    Imap /*, Telegram, … */
+#if defined(MSGA_DEMO)
+    ,
+    Demo // fixture-driven fake workspace (`--demo`), Debug builds only — see demo/README.md.
+         // Every reference to it MUST sit under #if defined(MSGA_DEMO).
+#endif
+};
 
 // Stable serialization token for a Service. NEVER serialize the enum's integer
 // — reordering the enum later must not corrupt stored workspace handles.
@@ -79,6 +88,10 @@ inline QString serviceToken(Service s) {
         return QStringLiteral("teams");
     case Service::Imap:
         return QStringLiteral("imap");
+#if defined(MSGA_DEMO)
+    case Service::Demo:
+        return QStringLiteral("demo");
+#endif
     }
     return QStringLiteral("slack");
 }
@@ -89,6 +102,10 @@ inline std::optional<Service> serviceFromToken(const QString &t) {
         return Service::Teams;
     if (t == QStringLiteral("imap"))
         return Service::Imap;
+#if defined(MSGA_DEMO)
+    if (t == QStringLiteral("demo"))
+        return Service::Demo;
+#endif
     return std::nullopt;
 }
 
@@ -101,6 +118,10 @@ inline QString serviceDisplayName(Service s) {
         return QStringLiteral("Microsoft Teams");
     case Service::Imap:
         return QStringLiteral("Email (IMAP)");
+#if defined(MSGA_DEMO)
+    case Service::Demo:
+        return QStringLiteral("Demo");
+#endif
     }
     return QStringLiteral("Slack");
 }

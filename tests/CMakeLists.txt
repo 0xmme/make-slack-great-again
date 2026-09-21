@@ -366,6 +366,29 @@ add_msga_test(test_fake_backend
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
 
+# --demo fixture loader, tour script parser and demo backend. Only where the
+# fixture exists (the private repo): the public mirror ships no demo/ directory
+# and must build without any demo-mode code.
+if(EXISTS "${CMAKE_SOURCE_DIR}/demo/fixture.json")
+    add_msga_test(test_demo_fixture
+        test_demo_fixture.cpp
+        ${CMAKE_SOURCE_DIR}/src/backend/demo/demo_fixture.cpp
+        ${CMAKE_SOURCE_DIR}/src/backend/demo/demo_backend.cpp
+        ${CMAKE_SOURCE_DIR}/src/backend/demo/demo_tour_script.cpp
+        ${CMAKE_SOURCE_DIR}/src/backend/demo/demo_services.cpp
+        ${CMAKE_SOURCE_DIR}/src/network/gif_search.cpp
+        ${CMAKE_SOURCE_DIR}/src/llm/llm_wire.cpp
+        ${CMAKE_SOURCE_DIR}/src/backend/fake_backend/fake_backend.cpp
+        ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+        ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+        ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+        ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+    )
+    target_link_libraries(test_demo_fixture PRIVATE Qt6::Gui Qt6::Network)
+    target_compile_definitions(test_demo_fixture PRIVATE
+        MSGA_DEMO_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/demo")
+endif()
+
 add_msga_qt_test(test_session
     test_session.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp

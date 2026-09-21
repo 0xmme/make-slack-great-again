@@ -10,8 +10,16 @@
 // Telegram-styled floating context menu.
 // Frameless, translucent, with soft painted shadow and 8px rounded corners.
 // Dismisses on click-outside (Qt::Popup behaviour).
+#if defined(MSGA_DEMO)
+namespace demo {
+class Tour;
+}
+#endif
 class ContextMenu : public QWidget {
     Q_OBJECT
+#if defined(MSGA_DEMO)
+    friend class demo::Tour; // the scripted demo drives real widgets (--demo-tour)
+#endif
 public:
     struct Item {
         QString               text;
@@ -63,6 +71,13 @@ public:
     // Flips direction automatically if near screen edge.
     void popup(const QPoint &globalPos);
 
+#if defined(MSGA_DEMO)
+    // Demo recordings run on a bare Xvfb with no compositor, where a translucent
+    // popup's alpha renders black. Flat mode draws the menu opaque with a hairline
+    // border and no shadow halo. Never set outside --demo.
+    static void setFlatPopups(bool on);
+#endif
+
     static constexpr int kIconSize = 16; // icon square size (public for use in .cpp)
     static constexpr int kCheckW = 16; // checkmark zone width (reserved when any item is selected)
 
@@ -81,6 +96,7 @@ private:
     int   hoveredAt(const QPoint &widgetPos) const; // index or -1
     QRect itemRect(int i) const;                    // in widget coords (inside shadow padding)
     QRect menuRect() const;                         // white menu rect in widget coords
+    int   shadowPad() const;                        // kShadow, or 0 in flat (demo) mode
     void  updateGeometry(const QPoint &globalPos);
 
     std::vector<Item> _items;
