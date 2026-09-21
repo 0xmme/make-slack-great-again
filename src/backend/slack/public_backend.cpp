@@ -395,6 +395,9 @@ Capabilities PublicBackend::capabilities() const {
     // the Session may re-fetch it daily to pick up renames/avatars on a session
     // that never restarts (the only other refresh path, user_change, needs push).
     c.rosterRefresh    = true;
+    // "Remove preview" rides the internal chat.deleteAttachment, session-token
+    // only like the rest of that family; OAuth workspaces keep the local hide.
+    c.removePreview    = _sessionAuth;
     return c;
 }
 
@@ -1707,6 +1710,37 @@ void PublicBackend::deleteMessageAttempt(ConversationId conv, Ts ts, int attempt
                 }
             }
             qWarning() << "deleteMessage error:" << e;
+        }
+    );
+}
+
+void PublicBackend::deleteAttachment(
+    ConversationId conv, Ts ts, int attachmentId, std::function<void(bool, QString)> done
+) {
+    // The official client's "Remove preview": the internal chat.deleteAttachment
+    // (channel, ts, attachment = the 1-based positional id — Slack renumbers the
+    // rest afterwards). Own messages only; anyone else's answers
+    // cant_delete_message. A session (xoxc) token only, like the other internal
+    // methods — capabilities() gates the UI accordingly. POST like every write:
+    // an auto-retransmitted GET would address a renumbered attachment.
+    QUrlQuery params;
+    params.addQueryItem("channel", conv.value);
+    params.addQueryItem("ts", ts);
+    params.addQueryItem("attachment", QString::number(attachmentId));
+    _api->callNonIdempotent(
+        "chat.deleteAttachment",
+        params,
+        [done](QJsonObject) {
+            if (done)
+                done(true, {});
+        },
+        [done](QString e) {
+            // No transport retry: a mid-flight loss is ambiguous and a re-send
+            // could hit a renumbered id. The user sees the failure and can click
+            // again once the row has refreshed.
+            qWarning() << "deleteAttachment error:" << e;
+            if (done)
+                done(false, e);
         }
     );
 }

@@ -235,6 +235,17 @@ public:
     )                                                              = 0;
     virtual void editMessage(ConversationId, Ts, TextWithEntities) = 0;
     virtual void deleteMessage(ConversationId, Ts)                 = 0;
+    // Remove one attachment (a link preview) from an own message server-side,
+    // for everyone — the official client's "Remove preview". `attachmentId` is
+    // the service's positional id (Attachment::id). `done` reports the outcome
+    // once; the caller (Session) fires EvAttachmentRemoved on success. Default:
+    // unsupported — gate the UI on Capabilities::removePreview.
+    virtual void deleteAttachment(
+        ConversationId, Ts, int /*attachmentId*/, std::function<void(bool ok, QString err)> done
+    ) {
+        if (done)
+            done(false, QStringLiteral("unsupported"));
+    }
 
     // In Model-D email, channels represent labels/folders, so "forwarding" a
     // message to a channel *labels* the original rather than re-posting its text

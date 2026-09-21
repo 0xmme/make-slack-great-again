@@ -97,6 +97,9 @@ public:
     ) override;
     void editMessage(ConversationId, Ts, TextWithEntities) override;
     void deleteMessage(ConversationId, Ts) override;
+    void deleteAttachment(
+        ConversationId, Ts, int attachmentId, std::function<void(bool ok, QString err)> done
+    ) override;
     void addReaction(ConversationId, Ts, QString emoji) override;
     void removeReaction(ConversationId, Ts, QString emoji) override;
     void markRead(ConversationId, Ts) override;

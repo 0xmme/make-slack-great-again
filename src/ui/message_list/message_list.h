@@ -647,6 +647,13 @@ private:
                 _dismissedAttachments.contains(msg.ts + "/" + QString::number(ai)));
     }
     bool hasVisibleAttachments(const Message &msg) const;
+    // Whether the × on a preview removes it server-side, for everyone (an own
+    // message on a backend with Capabilities::removePreview) — otherwise it
+    // only hides the card locally, for this session.
+    bool removesPreviewServerSide(const Message &msg) const;
+    // Forget every local dismissal on the message `ts`: its cards now come in
+    // the server's shape, so index-keyed hides would land on the wrong ones.
+    void clearDismissedAttachments(const Ts &ts);
 
     // Layout constants (all in logical pixels)
     static constexpr int kPadH            = 16; // horizontal margin on both sides

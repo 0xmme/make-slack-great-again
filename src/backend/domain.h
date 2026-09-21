@@ -217,6 +217,11 @@ struct Capabilities {
                                 // avatars reach a long-running session (Slack: users.list). Off
                                 // for a backend whose loadUsers re-downloads per-member data
                                 // (Teams fetches every photo) or is purely local (IMAP).
+    bool removePreview = false; // deleteAttachment(): strip a link preview from an OWN message
+                                // server-side, for everyone — the official client's "Remove
+                                // preview" (Slack: the internal chat.deleteAttachment, served to
+                                // a session token only). Without it the × on a preview only
+                                // hides the card locally, for this session.
     bool operator==(const Capabilities &) const = default;
 };
 
@@ -808,6 +813,9 @@ struct AttachmentField {
 };
 
 struct Attachment {
+    // Slack's positional attachment id: 1-based, renumbered by the server when
+    // one is removed (chat.deleteAttachment). 0 when the service sent none.
+    int                          id = 0;
     QString                      fallback;
     QString                      color; // "#rrggbb" left-border accent; may be empty
     QString                      pretext;
@@ -1054,6 +1062,20 @@ struct EvMessageDeleted {
     // channel list can drop the root's reply count. Empty for root/plain msgs.
     std::optional<Ts> threadRoot;
 };
+// One attachment of an own message was removed server-side ("Remove preview",
+// Session::removeAttachment). Fired from the HTTP response, like the delete and
+// edit confirmations: the realtime message_changed echo may never arrive on a
+// stalled socket and never arrives at all on a poll-only workspace. It carries
+// the removed attachment itself rather than its positional id, because Slack
+// renumbers the remaining ones and the echo (or a head refresh) may land before
+// this event: a handler drops the attachment equal to `attachment` if the row
+// still has one, and does nothing otherwise — so applying it after the echo is
+// harmless, while an id would then address the wrong (renumbered) card.
+struct EvAttachmentRemoved {
+    ConversationId conv;
+    Ts             ts;
+    Attachment     attachment;
+};
 // The realtime safety poll re-fetched the open conversation's head page. Unlike
 // EvMessageNew — which the poll fires only for messages NEWER than the latest ts
 // we already hold — this carries the WHOLE head page so the open MessageList can
@@ -1234,6 +1256,7 @@ using Event = std::variant<
     EvMessageNew,
     EvMessageChanged,
     EvMessageDeleted,
+    EvAttachmentRemoved,
     EvHeadRefresh,
     EvReactionAdded,
     EvReactionRemoved,

@@ -624,3 +624,25 @@ TEST_CASE_METHOD(CacheFixture, "user probe times round-trip", "[cache][user]") {
     CHECK(cache.loadUserProbeTimes().size() == 2);
     CHECK(cache.loadDeadConvIds() == QStringList{"C_DEAD"});
 }
+
+TEST_CASE_METHOD(CacheFixture, "attachment ids survive caching", "[cache][msg]") {
+    // Positional ids address chat.deleteAttachment; a cached copy without them
+    // (or from a service that sends none) reads back as 0, never as garbage.
+    Message message;
+    message.ts          = "310.000";
+    message.text        = TextWithEntities{"links", {}};
+    message.attachments = {
+        Attachment{.id = 1, .title = "First", .isLinkPreview = true},
+        Attachment{.id = 2, .title = "Second", .isLinkPreview = true},
+        Attachment{.title = "No id"},
+    };
+    const ConversationId conv{"C_ATTACH_IDS"};
+    cache.saveMessages(conv, {message});
+    const auto loaded = cache.loadMessages(conv);
+    REQUIRE(loaded.size() == 1);
+    CHECK(loaded[0] == message);
+    REQUIRE(loaded[0].attachments.size() == 3);
+    CHECK(loaded[0].attachments[0].id == 1);
+    CHECK(loaded[0].attachments[1].id == 2);
+    CHECK(loaded[0].attachments[2].id == 0);
+}

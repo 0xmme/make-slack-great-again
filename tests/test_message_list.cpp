@@ -63,7 +63,8 @@ struct StubBackend : Backend {
     std::optional<QString> _olderCursor;
 
     rpl::producer<AuthState> authState() const override { return _authState.value(); }
-    Capabilities             capabilities() const override { return {}; }
+    Capabilities             caps;
+    Capabilities             capabilities() const override { return caps; }
     void                     connectRealtime() override {}
     void                     disconnectRealtime() override {}
 
@@ -100,6 +101,20 @@ struct StubBackend : Backend {
     }
     void editMessage(ConversationId, Ts, TextWithEntities) override {}
     void deleteMessage(ConversationId, Ts) override {}
+    // deleteAttachment calls with their outcome callbacks: the test plays the
+    // server, so the list's optimistic hide and the confirmation can be told apart.
+    struct AttachmentDelete {
+        ConversationId                     conv;
+        Ts                                 ts;
+        int                                id;
+        std::function<void(bool, QString)> done;
+    };
+    std::vector<AttachmentDelete> attachmentDeletes;
+    void                          deleteAttachment(
+                                 ConversationId c, Ts ts, int id, std::function<void(bool, QString)> done
+                             ) override {
+        attachmentDeletes.push_back({c, ts, id, std::move(done)});
+    }
     void addReaction(ConversationId, Ts, QString) override {}
     void removeReaction(ConversationId, Ts, QString) override {}
     void markRead(ConversationId, Ts) override {}
@@ -1085,4 +1100,146 @@ TEST_CASE("later requests can refresh rows changed by earlier responses", "[mess
     const auto view = liveView(list, f.session.get(), kConv.id);
     REQUIRE(view.size() == 1);
     CHECK(view.front().text.text == "second refresh");
+}
+
+// ── "Remove preview" (the × on an attachment) ─────────────────────────────────
+
+namespace {
+
+Message previewMessage(const UserId &author) {
+    auto m        = makeMrkdwnMessage("1000.000001", "two links");
+    m.author      = author;
+    m.attachments = {
+        Attachment{
+            .id            = 1,
+            .title         = "Alpha",
+            .titleLink     = "https://example.com/alpha",
+            .text          = TextWithEntities{"Alpha preview body", {}},
+            .isLinkPreview = true,
+        },
+        Attachment{
+            .id            = 2,
+            .title         = "Bravo",
+            .titleLink     = "https://example.com/bravo",
+            .text          = TextWithEntities{"Bravo preview body", {}},
+            .isLinkPreview = true,
+        },
+    };
+    return m;
+}
+
+// Press (and release) every point of a grid over the left gutter of the row
+// showing `ts` — where the × of a preview sits — top to bottom, until `hit`
+// says the press landed. Top to bottom, so the FIRST card's × is met first.
+template <typename Hit>
+void pressGutterUntil(MessageListWidget &list, const Ts &ts, Hit hit) {
+    QWidget    *vp  = list.viewport();
+    const QRect row = list.rowViewportRect(ts);
+    REQUIRE(!row.isEmpty());
+    for (int y = row.top(); y <= row.bottom() && !hit(); y += 2) {
+        for (int x = 0; x < 120 && !hit(); x += 2) {
+            const QPointF p(x, y);
+            sendMouse(vp, QEvent::MouseButtonPress, p, Qt::LeftButton);
+            sendMouse(vp, QEvent::MouseButtonRelease, p, Qt::LeftButton);
+        }
+    }
+    REQUIRE(hit());
+}
+
+} // namespace
+
+TEST_CASE(
+    "the × on an own preview hides it at once and removes it server-side on confirmation",
+    "[message_list][preview]"
+) {
+    Fixture f;
+    f.stub->caps.removePreview = true;
+    const auto message         = previewMessage(UserId{"U1"}); // me
+    f.stub->_historyPage       = {message};
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.resize(600, 400);
+    list.openConversation(kConv.id);
+    list.show();
+    spin(300);
+    list.viewport()->grab();
+    const int fullH = list.rowViewportRect(message.ts).height();
+
+    pressGutterUntil(list, message.ts, [&] { return !f.stub->attachmentDeletes.empty(); });
+    REQUIRE(f.stub->attachmentDeletes.size() == 1);
+    CHECK(f.stub->attachmentDeletes[0].conv == kConv.id);
+    CHECK(f.stub->attachmentDeletes[0].ts == message.ts);
+    CHECK(f.stub->attachmentDeletes[0].id == 1); // the first card, Slack's positional id
+    // Hidden right away — but only hidden: the model keeps both cards until the
+    // server confirms, so a failure can't lose anything.
+    list.viewport()->grab();
+    const int oneCardH = list.rowViewportRect(message.ts).height();
+    CHECK(oneCardH < fullH);
+    REQUIRE(list.lastOwnMessage(UserId{"U1"})->attachments.size() == 2);
+
+    SECTION("confirmed: the card is dropped and the rest renumbered, nothing else hidden") {
+        f.stub->attachmentDeletes[0].done(true, {});
+        list.viewport()->grab();
+        const auto stored = list.lastOwnMessage(UserId{"U1"});
+        REQUIRE(stored->attachments.size() == 1);
+        CHECK(stored->attachments[0].title == "Bravo");
+        CHECK(stored->attachments[0].id == 1); // mirrors Slack's renumbering for the next click
+        // Bravo now sits at index 0 — the index the hide was keyed on. It must
+        // still be visible: the row shows exactly one card, as right after the press.
+        CHECK(list.rowViewportRect(message.ts).height() == oneCardH);
+    }
+
+    SECTION("the realtime echo landing first doesn't cost a second card") {
+        auto echoed              = message;
+        echoed.attachments       = {message.attachments[1]};
+        echoed.attachments[0].id = 1;
+        f.stub->_events.fire(Event{EvMessageChanged{kConv.id, echoed, /*textOnly=*/false}});
+        f.stub->attachmentDeletes[0].done(true, {});
+        list.viewport()->grab();
+        const auto stored = list.lastOwnMessage(UserId{"U1"});
+        REQUIRE(stored->attachments.size() == 1);
+        CHECK(stored->attachments[0].title == "Bravo");
+        CHECK(list.rowViewportRect(message.ts).height() == oneCardH);
+    }
+
+    SECTION("refused: the card stays hidden here, the model keeps it, the user is told") {
+        QString       err;
+        rpl::lifetime lt;
+        f.session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+        f.stub->attachmentDeletes[0].done(false, "cant_delete_message");
+        list.viewport()->grab();
+        CHECK(list.lastOwnMessage(UserId{"U1"})->attachments.size() == 2);
+        CHECK(list.rowViewportRect(message.ts).height() == oneCardH);
+        CHECK(err.contains("cant_delete_message"));
+    }
+}
+
+TEST_CASE(
+    "the × only hides a preview locally when it can't be removed for everyone",
+    "[message_list][preview]"
+) {
+    Fixture f;
+    Message message;
+    SECTION("someone else's message") {
+        f.stub->caps.removePreview = true;
+        message                    = previewMessage(UserId{"U2"});
+    }
+    SECTION("a backend without removePreview") {
+        message = previewMessage(UserId{"U1"});
+    }
+    f.stub->_historyPage = {message};
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.resize(600, 400);
+    list.openConversation(kConv.id);
+    list.show();
+    spin(300);
+    list.viewport()->grab();
+    const int fullH = list.rowViewportRect(message.ts).height();
+
+    pressGutterUntil(list, message.ts, [&] {
+        list.viewport()->grab();
+        return list.rowViewportRect(message.ts).height() < fullH;
+    });
+    CHECK(f.stub->attachmentDeletes.empty());
 }

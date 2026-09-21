@@ -1782,3 +1782,13 @@ TEST_CASE("app unfurl metadata alone identifies a link preview", "[mappers][atta
     );
     CHECK(JsonMappers::toAttachment(QJsonObject{{"is_msg_unfurl", true}}).isLinkPreview);
 }
+
+TEST_CASE("toAttachment keeps Slack's positional attachment id", "[mappers][attachment]") {
+    // The 1-based id is what chat.deleteAttachment ("Remove preview") addresses.
+    auto a = JsonMappers::toAttachment(obj(R"({
+        "id": 3, "title": "Preview", "original_url": "https://example.com/a"
+    })"));
+    CHECK(a.id == 3);
+    CHECK(a.isLinkPreview);
+    CHECK(JsonMappers::toAttachment(obj(R"({"title": "No id"})")).id == 0);
+}

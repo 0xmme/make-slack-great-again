@@ -2158,6 +2158,20 @@ void Session::editMessage(ConversationId conv, Ts ts, const QString &newText) {
     _backend->editMessage(conv, ts, TextWithEntities{newText, {}});
 }
 
+void Session::removeAttachment(ConversationId conv, Ts ts, Attachment attachment) {
+    _backend->deleteAttachment(
+        conv, ts, attachment.id, [this, conv, ts, attachment](bool ok, QString err) {
+            if (ok) {
+                _eventHub.fire(EvAttachmentRemoved{conv, ts, attachment});
+                return;
+            }
+            _errorHub.fire(
+                QCoreApplication::translate("Session", "Couldn't remove the preview (%1).").arg(err)
+            );
+        }
+    );
+}
+
 void Session::sendTyping(ConversationId conv) {
     _backend->sendTyping(conv);
 }

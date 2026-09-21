@@ -2710,11 +2710,39 @@ bool MessageListWidget::tryHandleDismissPress(const QPoint &pos) {
     const auto [dMsgIdx, dAi] = dismissButtonAt(pos);
     if (dMsgIdx < 0)
         return false;
-    const auto &ts = _items[dMsgIdx].msg.ts;
-    _dismissedAttachments.insert(ts + "/" + QString::number(dAi));
+    const auto &msg = _items[dMsgIdx].msg;
+    // Hide the card right away either way. For an own message that is the
+    // optimistic half of a server-side removal: EvAttachmentRemoved then drops
+    // the attachment for good and forgets this index-keyed hide (the remaining
+    // cards shift); if the call fails, the banner says so and the card stays
+    // hidden here, exactly like a local dismissal.
+    _dismissedAttachments.insert(msg.ts + "/" + QString::number(dAi));
+    if (removesPreviewServerSide(msg)) {
+        Attachment att = msg.attachments[dAi];
+        if (att.id <= 0)
+            att.id = dAi + 1; // Slack's ids are positional; a pre-id cache copy lacks them
+        _session->removeAttachment(_currentConv, msg.ts, std::move(att));
+    }
     rebuildLayout();
     viewport()->update();
     return true;
+}
+
+bool MessageListWidget::removesPreviewServerSide(const Message &msg) const {
+    return _session && !msg.pending && _session->capabilities().removePreview &&
+           !_session->meUserId().value.isEmpty() && msg.author == _session->meUserId();
+}
+
+void MessageListWidget::clearDismissedAttachments(const Ts &ts) {
+    if (_dismissedAttachments.isEmpty())
+        return;
+    const QString prefix = ts + "/";
+    for (auto it = _dismissedAttachments.begin(); it != _dismissedAttachments.end();) {
+        if (it->startsWith(prefix))
+            it = _dismissedAttachments.erase(it);
+        else
+            ++it;
+    }
 }
 
 bool MessageListWidget::tryHandleReplyBarPress(const QPoint &pos) {
@@ -4040,7 +4068,10 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         if (attachHovered) {
             const QRect btnLocal = dismissButtonVpRect(dMsgIdx, dAi);
             const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
-            _tooltip->showAbove(tr("Remove preview"), btnGlobal);
+            // Own message + server support strips it for everyone; otherwise the
+            // × only hides the card in this session, and the hint says so.
+            const bool  forAll = removesPreviewServerSide(_items[dMsgIdx].msg);
+            _tooltip->showAbove(forAll ? tr("Remove preview") : tr("Hide preview"), btnGlobal);
         } else {
             _tooltip->hide();
         }
@@ -4092,6 +4123,9 @@ void MessageListWidget::handleEvent(const Event &e) {
         record(ev->conv, ev->ts, true);
         if (ev->threadRoot && findByTs(*ev->threadRoot) >= 0)
             record(ev->conv, *ev->threadRoot, true);
+    } else if (const auto *ev = std::get_if<EvAttachmentRemoved>(&e)) {
+        if (findByTs(ev->ts) >= 0)
+            record(ev->conv, ev->ts, true);
     } else if (const auto *ev = std::get_if<EvReactionAdded>(&e)) {
         if (findByTs(ev->ts) >= 0)
             record(ev->conv, ev->ts, true);
@@ -4182,6 +4216,43 @@ void MessageListWidget::handleEvent(const Event &e) {
             _session->applyAiTranscripts(_items[i].msg);
         }
         _items[i].textDoc.reset(); // invalidate rendered docs
+        _items[i].docWidth = 0;
+        _items[i].attachDocs.clear();
+        _items[i].fileImgsRequested = false;
+        _items[i].fileImgBaseH      = -1;
+        rebuildLayout();
+        viewport()->update();
+
+    } else if (auto *ev = std::get_if<EvAttachmentRemoved>(&e)) {
+        if (ev->conv != _currentConv)
+            return;
+        const int i = findByTs(ev->ts);
+        if (i < 0)
+            return;
+        // The server has this message in its new shape now, so index-keyed hides
+        // on it (the optimistic half of this removal) would land on the wrong,
+        // shifted cards — forget them. Then drop the attachment itself, unless a
+        // message_changed echo or head refresh already replaced the row (then
+        // it is gone already and the remaining ids are the server's). Matched by
+        // content, ids aside: they are positional and renumber on removal.
+        clearDismissedAttachments(ev->ts);
+        auto      &atts     = _items[i].msg.attachments;
+        const auto sameCard = [](Attachment a, Attachment b) {
+            a.id = b.id = 0;
+            return a == b;
+        };
+        const auto it = std::find_if(atts.begin(), atts.end(), [&](const Attachment &a) {
+            return sameCard(a, ev->attachment);
+        });
+        if (it != atts.end()) {
+            const int removedId = it->id > 0 ? it->id : int(it - atts.begin()) + 1;
+            atts.erase(it);
+            for (auto &a : atts) // mirror Slack's renumbering for the next click
+                if (a.id > removedId)
+                    --a.id;
+        }
+        _hoveredAttach = {-1, -1};
+        _items[i].textDoc.reset();
         _items[i].docWidth = 0;
         _items[i].attachDocs.clear();
         _items[i].fileImgsRequested = false;

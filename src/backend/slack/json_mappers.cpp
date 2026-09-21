@@ -620,6 +620,7 @@ Attachment toAttachment(const QJsonObject &o) {
             files.push_back(toFile(fv.toObject()));
 
     return Attachment{
+        .id            = o.value("id").toInt(),
         .fallback      = o.value("fallback").toString(),
         .color         = o.value("color").toString(),
         .pretext       = o.value("pretext").toString(),

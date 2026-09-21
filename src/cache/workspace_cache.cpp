@@ -198,6 +198,8 @@ static Block blockFromJson(const QJsonObject &o) {
 
 static QJsonObject toJson(const Attachment &a) {
     QJsonObject o;
+    if (a.id > 0)
+        o["id"] = a.id; // positional id, what chat.deleteAttachment addresses
     o["fb"] = a.fallback;
     o["co"] = a.color;
     o["pt"] = a.pretext;
@@ -259,6 +261,7 @@ static QJsonObject toJson(const Attachment &a) {
 }
 static Attachment attachmentFromJson(const QJsonObject &o) {
     Attachment a;
+    a.id            = o["id"].toInt();
     a.fallback      = o["fb"].toString();
     a.color         = o["co"].toString();
     a.pretext       = o["pt"].toString();

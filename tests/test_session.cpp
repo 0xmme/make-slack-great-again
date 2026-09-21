@@ -209,6 +209,20 @@ struct StubBackend : Backend {
     }
     std::vector<std::pair<ConversationId, Ts>> deleted;
     void deleteMessage(ConversationId c, Ts ts) override { deleted.emplace_back(c, ts); }
+    // Every deleteAttachment call with its outcome callback, so a test can
+    // deliver the server's verdict (removeAttachment confirms from it).
+    struct AttachmentDelete {
+        ConversationId                     conv;
+        Ts                                 ts;
+        int                                id;
+        std::function<void(bool, QString)> done;
+    };
+    std::vector<AttachmentDelete> attachmentDeletes;
+    void                          deleteAttachment(
+                                 ConversationId c, Ts ts, int id, std::function<void(bool, QString)> done
+                             ) override {
+        attachmentDeletes.push_back({c, ts, id, std::move(done)});
+    }
     void editMessage(ConversationId, Ts, TextWithEntities) override {}
     void addReaction(ConversationId, Ts, QString) override {}
     void removeReaction(ConversationId, Ts, QString) override {}
@@ -5698,4 +5712,45 @@ TEST_CASE(
     CHECK(saved.value("W0EXT1") > 1000);
 
     QDir(baseDir).removeRecursively();
+}
+
+// ── removeAttachment ("Remove preview") ───────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "removeAttachment confirms from the response and reports a failure",
+    "[session][preview]"
+) {
+    const Attachment att{
+        .id            = 2,
+        .title         = "Preview",
+        .titleLink     = "https://example.com/article",
+        .isLinkPreview = true,
+    };
+    auto    c = collectEvents();
+    QString err;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, c.lt);
+
+    session->removeAttachment(ConversationId{"C1"}, "1000.000001", att);
+    REQUIRE(stub->attachmentDeletes.size() == 1);
+    CHECK(stub->attachmentDeletes[0].conv == ConversationId{"C1"});
+    CHECK(stub->attachmentDeletes[0].ts == "1000.000001");
+    CHECK(stub->attachmentDeletes[0].id == 2);
+    // Nothing is announced before the server answers.
+    CHECK(c.events.empty());
+
+    stub->attachmentDeletes[0].done(true, {});
+    REQUIRE(c.events.size() == 1);
+    const auto *ev = std::get_if<EvAttachmentRemoved>(&c.events[0]);
+    REQUIRE(ev != nullptr);
+    CHECK(ev->conv == ConversationId{"C1"});
+    CHECK(ev->ts == "1000.000001");
+    CHECK(ev->attachment == att); // the card itself, not just its (renumbering) id
+    CHECK(err.isEmpty());
+
+    session->removeAttachment(ConversationId{"C1"}, "1000.000002", att);
+    REQUIRE(stub->attachmentDeletes.size() == 2);
+    stub->attachmentDeletes[1].done(false, "cant_delete_message");
+    CHECK(c.events.size() == 1); // no removal announced
+    CHECK(err.contains("cant_delete_message"));
 }

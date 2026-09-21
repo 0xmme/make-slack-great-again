@@ -74,6 +74,13 @@ public:
     // Edit an existing message.
     void editMessage(ConversationId conv, Ts ts, const QString &newText);
 
+    // "Remove preview": strip `attachment` from an own message server-side, for
+    // everyone (Capabilities::removePreview). Confirms from the HTTP response
+    // with EvAttachmentRemoved — carrying the attachment, not its positional id,
+    // see the event — and reports a failure through errors(). Requires
+    // attachment.id (the service's positional id) to be set.
+    void removeAttachment(ConversationId conv, Ts ts, Attachment attachment);
+
     // "Move to thread": re-post `msg` as a reply under `rootTs` in the same
     // conversation, then delete the original. No chat API re-parents a message
     // or posts on someone else's behalf, so the copy goes out as `me`;
