@@ -494,7 +494,7 @@ void Tour::moveCursor(QPoint global, Done done) {
 
 void Tour::click(QPoint global, Done done, Qt::MouseButton button) {
     moveCursor(global, [this, global, button, done] {
-        after(120, [this, global, button, done] {
+        after(90, [this, global, button, done] {
             dispatchMouse(global, true, button);
             after(70, [this, global, button, done] {
                 dispatchMouse(global, false, button);
