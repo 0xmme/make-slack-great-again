@@ -845,6 +845,11 @@ endfunction()
 # the union of what test_message_list and test_composer already need.
 add_msga_widget_test(test_thread_panel
     test_thread_panel.cpp
+    # Forwarding shares the thread composer's message-rendering dependencies.
+    test_forward_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/forward_dialog/forward_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/conv_selector/conv_selector_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/conv_list/named_conversation.cpp
     ${MSGA_AUDIO_SRCS}
     ${CMAKE_SOURCE_DIR}/src/ui/shortcuts.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list.cpp
