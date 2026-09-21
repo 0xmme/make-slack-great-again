@@ -604,51 +604,52 @@ void MessageListWidget::loadOlderMessages() {
     // restore the cursor and let the next scroll retry.
     auto gotPage = std::make_shared<bool>(false);
 
-    std::move(producer) | rpl::on_next_done(
-                              [this, conv, gotPage, revision](MessagePage page) {
-                                  *gotPage = true;
-                                  if (_currentConv != conv) {
-                                      _loadingOlder = false;
-                                      return;
-                                  }
+    std::move(producer) |
+        rpl::on_next_done(
+            [this, conv, gotPage, revision](MessagePage page) {
+                *gotPage = true;
+                if (_currentConv != conv) {
+                    _loadingOlder = false;
+                    return;
+                }
 
-                                  _olderCursor  = page.olderCursor;
-                                  _loadingOlder = false;
+                _olderCursor  = page.olderCursor;
+                _loadingOlder = false;
 
-                                  if (page.messages.empty()) {
-                                      maybeFillViewport();
-                                      return;
-                                  }
+                if (page.messages.empty()) {
+                    maybeFillViewport();
+                    return;
+                }
 
-                                  // Inserting older messages at the top shifts row indices —
-                                  // drop any in-progress selection to avoid stale positions.
-                                  _selAnchor   = {};
-                                  _selFocus    = {};
-                                  _selDragging = false;
+                // Inserting older messages at the top shifts row indices —
+                // drop any in-progress selection to avoid stale positions.
+                _selAnchor   = {};
+                _selFocus    = {};
+                _selDragging = false;
 
-                                  // rebuildLayout (inside the merge) keeps the topmost visible
-                                  // message anchored while rows are inserted above; just stop
-                                  // any running scroll animation, whose absolute target the
-                                  // insert invalidated.
-                                  const int prevTotalH = _totalH;
-                                  // Cursored older page: a middle slice, not the head,
-                                  // so deletion reconciliation is capped at its window.
-                                  mergeNetworkMessages(page.messages, /*fromHeadPage=*/false, revision);
-                                  if (_totalH != prevTotalH)
-                                      _scrollAnim.stop();
-                                  maybeFillViewport();
-                              },
-                              [this, conv, cur, gotPage] {
-                                  if (*gotPage)
-                                      return;
-                                  // Fetch failed without delivering a page — restore the cursor so
-                                  // a later scroll-up retries instead of pagination dying for good.
-                                  _loadingOlder = false;
-                                  if (_currentConv == conv)
-                                      _olderCursor = cur;
-                              },
-                              _olderLoadLifetime
-                          );
+                // rebuildLayout (inside the merge) keeps the topmost visible
+                // message anchored while rows are inserted above; just stop
+                // any running scroll animation, whose absolute target the
+                // insert invalidated.
+                const int prevTotalH = _totalH;
+                // Cursored older page: a middle slice, not the head,
+                // so deletion reconciliation is capped at its window.
+                mergeNetworkMessages(page.messages, /*fromHeadPage=*/false, revision);
+                if (_totalH != prevTotalH)
+                    _scrollAnim.stop();
+                maybeFillViewport();
+            },
+            [this, conv, cur, gotPage] {
+                if (*gotPage)
+                    return;
+                // Fetch failed without delivering a page — restore the cursor so
+                // a later scroll-up retries instead of pagination dying for good.
+                _loadingOlder = false;
+                if (_currentConv == conv)
+                    _olderCursor = cur;
+            },
+            _olderLoadLifetime
+        );
 }
 
 void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {

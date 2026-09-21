@@ -154,11 +154,11 @@ struct StubBackend : Backend {
     }
     // Controllable head page for the realtime safety-net poll. Mutate between
     // ticks to model a message deleted from another client.
-    std::vector<Message>       historyPage;
-    int                        loadHistoryCalls = 0;
-    ConversationId             lastHistoryConv;
-    QList<QString>             historyConvIds; // every conversation fetched, in order
-    bool                       deferHistory = false;
+    std::vector<Message> historyPage;
+    int                  loadHistoryCalls = 0;
+    ConversationId       lastHistoryConv;
+    QList<QString>       historyConvIds; // every conversation fetched, in order
+    bool                 deferHistory = false;
     std::vector<std::shared_ptr<rpl::event_stream<MessagePage>>> historyRequests;
     rpl::producer<MessagePage> loadHistory(ConversationId c, std::optional<QString>) override {
         ++loadHistoryCalls;

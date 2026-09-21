@@ -895,24 +895,24 @@ private:
     // Shared request/live-update clock; completed polls cannot run backwards.
     quint64                    _messageRevision       = 0;
     QHash<QString, quint64>    _completedHistoryPolls;
-    qint64                     _lastForegroundPollMs  = 0;
+    qint64                     _lastForegroundPollMs = 0;
     // Cadence for the background-workspace stall poll (no conversation open). Much
     // slower than the foreground poll: it's a safety net for a workspace the user
     // isn't looking at, and one history call per workspace per window is plenty to
     // catch a silently-stalled shared socket without risking rate limits.
-    static constexpr qint64    kBackgroundPollGapMs   = 2 * 60'000;
-    qint64                     _lastBackgroundPollMs  = 0;
+    static constexpr qint64    kBackgroundPollGapMs  = 2 * 60'000;
+    qint64                     _lastBackgroundPollMs = 0;
     // Cadence of the DM-partner presence sweep (pollDmPresence). Each round polls
     // the kPresenceHotCount most-recently-active partners (the ones the chats list
     // shows near the top) plus a rotating window of kPresenceRotateCount over the
     // rest, so a quiet partner is still covered eventually. users.getPresence is
     // Tier 3 and the calls ride the 1.2 s-paced background lane, so ~20 calls a
     // minute leaves room for the conversations.info sweeps sharing it.
-    static constexpr qint64    kPresencePollGapMs     = 60'000;
-    static constexpr int       kPresenceHotCount      = 12;
-    static constexpr int       kPresenceRotateCount   = 8;
-    qint64                     _lastPresencePollMs    = 0;
-    int                        _presencePollIdx       = 0;
+    static constexpr qint64    kPresencePollGapMs    = 60'000;
+    static constexpr int       kPresenceHotCount     = 12;
+    static constexpr int       kPresenceRotateCount  = 8;
+    qint64                     _lastPresencePollMs   = 0;
+    int                        _presencePollIdx      = 0;
     // Users whose sweep probe the API refused (user_not_found for a roster
     // member with no visible presence). Skipped by later sweeps; cleared by any
     // probe that does answer. See requestPresence.
