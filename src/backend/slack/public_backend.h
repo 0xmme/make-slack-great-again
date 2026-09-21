@@ -66,6 +66,7 @@ public:
     rpl::producer<UserId>                    loadMe() override;
     rpl::producer<std::vector<Conversation>> loadConversations() override;
     rpl::producer<std::vector<User>>         loadUsers() override;
+    rpl::producer<std::vector<Usergroup>>    loadUsergroups() override;
     rpl::producer<bool>                      loadPresence(UserId) override;
     rpl::producer<bool>                      loadPresenceBackground(UserId) override;
     rpl::producer<SelfPresence>              loadSelfPresence() override;

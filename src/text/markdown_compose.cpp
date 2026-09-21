@@ -238,8 +238,8 @@ void emitLink(QJsonArray &out, const QString &url, const QString &label, const S
 }
 
 void emitCommand(QJsonArray &out, const QString &data, const QString &label, const Style &st) {
-    // <!here> and <!channel> come with empty data; <!everyone> and
-    // <!subteam^S…|@team> arrive as "subteam or unknown" with the raw command.
+    // <!here> and <!channel> come with empty data; <!everyone> arrives as an
+    // unknown command with the raw command as data.
     QString range;
     if (data.isEmpty() || data == QLatin1String("here"))
         range = QStringLiteral("here");
@@ -247,13 +247,6 @@ void emitCommand(QJsonArray &out, const QString &data, const QString &label, con
         range = data;
     if (!range.isEmpty()) {
         out.append(QJsonObject{{"type", "broadcast"}, {"range", range}});
-        return;
-    }
-    if (data.startsWith(QLatin1String("subteam^"))) {
-        const QString id = data.mid(8).section('|', 0, 0);
-        QJsonObject   o{{"type", "usergroup"}, {"usergroup_id", id}};
-        withStyle(o, st, /*allowCode=*/false);
-        out.append(o);
         return;
     }
     emitText(out, label, st); // an unknown command shows as its label
@@ -338,6 +331,13 @@ void walk(
             emitCommand(out, e.data, span, st);
             skipChildren();
             break;
+        case EntityType::UsergroupMention: {
+            QJsonObject o{{"type", "usergroup"}, {"usergroup_id", e.data}};
+            withStyle(o, st, /*allowCode=*/false);
+            out.append(o);
+            skipChildren();
+            break;
+        }
         case EntityType::ChannelCommand:
             out.append(QJsonObject{{"type", "broadcast"}, {"range", "channel"}});
             skipChildren();

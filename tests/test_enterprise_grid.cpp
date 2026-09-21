@@ -116,6 +116,34 @@ TEST_CASE("conversations.list carries team_id", "[grid]") {
     CHECK(server.requestTargets[0].contains("team_id=T1"));
 }
 
+TEST_CASE("usergroups.list carries team_id and asks for members", "[grid]") {
+    // A Grid user group belongs to the org; without the member workspace's
+    // team_id the list comes back empty and <!subteam^S…> mentions stay raw.
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":true,"usergroups":[
+        {"id":"S1","handle":"eng-oncall","name":"Engineering on-call","users":["U1"]}]})");
+
+    PublicBackend backend{sessionCreds(""), kTestApp};
+    backend.setApiBaseUrlForTests(server.baseUrl());
+
+    std::optional<std::vector<Usergroup>> got;
+    bool                                  done = false;
+    rpl::lifetime                         lt;
+    backend.loadUsergroups() |
+        rpl::on_next_done(
+            [&](std::vector<Usergroup> g) { got = std::move(g); }, [&] { done = true; }, lt
+        );
+    REQUIRE(waitFor([&] { return done; }));
+    REQUIRE(server.requestTargets.size() == 1);
+    CHECK(server.requestTargets[0].contains("usergroups.list"));
+    CHECK(server.requestTargets[0].contains("team_id=T1"));
+    CHECK(server.requestTargets[0].contains("include_users=1"));
+    REQUIRE(got);
+    REQUIRE(got->size() == 1);
+    CHECK((*got)[0].handle == "eng-oncall");
+    CHECK((*got)[0].users == std::vector<UserId>{UserId{"U1"}});
+}
+
 TEST_CASE("enterprise_is_restricted falls back to client.userBoot + im.list", "[grid]") {
     FakeHttpServer server;
     server.enqueue(R"({"ok":false,"error":"enterprise_is_restricted"})");

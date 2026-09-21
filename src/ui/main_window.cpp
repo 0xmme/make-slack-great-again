@@ -2370,7 +2370,7 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev, bool
     // A thread the user muted suppresses notifications for its replies (Slack's
     // "Mute thread") — except an explicit @mention, which always gets through.
     if (ev.msg.threadRoot && session->isThreadMuted(ev.conv, *ev.msg.threadRoot) &&
-        !mrkdwnMentions(mt, me))
+        !session->mentionsMe(mt))
         return;
 
     // A reply in a thread we follow notifies regardless of the channel's level,
@@ -2380,7 +2380,7 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev, bool
     const bool followedReply =
         ev.msg.threadRoot && (isFollowedThreadReply(ev.msg, me) ||
                               session->isThreadFollowed(ev.conv, *ev.msg.threadRoot));
-    const bool isImportant = isDm || mrkdwnMentions(mt, me) || followedReply;
+    const bool isImportant = isDm || session->mentionsMe(mt) || followedReply;
 
     // Per-conversation level wins over the global default ("All new posts" unless
     // the user changed it). Muted conversations already returned above, so the

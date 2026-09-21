@@ -30,6 +30,11 @@ public:
     void                 saveBots(const QHash<QString, User> &bots);
     QHash<QString, User> loadBots() const;
 
+    // User groups (usergroups.list), so <!subteam^S…> mentions in cached
+    // history render by handle before the network answers.
+    void                   saveUsergroups(const std::vector<Usergroup> &groups);
+    std::vector<Usergroup> loadUsergroups() const;
+
     // Persists the newest kMaxMessages messages for a conversation.
     void                 saveMessages(const ConversationId &conv, const std::vector<Message> &msgs);
     std::vector<Message> loadMessages(const ConversationId &conv) const;
@@ -108,6 +113,7 @@ private:
     QString convPath() const;
     QString usersPath() const;
     QString botsPath() const;
+    QString usergroupsPath() const;
     QString emojiPath() const;
     QString msgsPath(const ConversationId &conv) const;
     QString metaPath() const;

@@ -113,6 +113,10 @@ rpl::producer<std::vector<User>> FakeBackend::loadUsers() {
     return _users.value();
 }
 
+rpl::producer<std::vector<Usergroup>> FakeBackend::loadUsergroups() {
+    return _usergroups.value();
+}
+
 rpl::producer<bool> FakeBackend::loadPresence(UserId) {
     return rpl::variable<bool>(false).value();
 }

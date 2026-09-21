@@ -143,6 +143,21 @@ TEST_CASE_METHOD(CacheFixture, "users round-trip preserves all fields", "[cache]
     CHECK(loaded[1] == input[1]);
 }
 
+TEST_CASE_METHOD(CacheFixture, "usergroups round-trip", "[cache][user]") {
+    CHECK(cache.loadUsergroups().empty());
+    const std::vector<Usergroup> input = {
+        Usergroup{
+            .id     = "S1",
+            .handle = "eng-oncall",
+            .name   = "Engineering on-call",
+            .users  = {UserId{"U1"}, UserId{"U2"}}
+        },
+        Usergroup{.id = "S2", .handle = "design", .name = "Design"},
+    };
+    cache.saveUsergroups(input);
+    CHECK(cache.loadUsergroups() == input);
+}
+
 // ── Messages ──────────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "loadMessages returns empty when no file", "[cache][msg]") {

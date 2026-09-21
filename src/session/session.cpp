@@ -107,6 +107,7 @@ void Session::start() {
         if (!users.empty())
             _users = std::move(users);
         _userProbedAtMs  = _cache->loadUserProbeTimes();
+        _usergroups      = _cache->loadUsergroups();
         _botUsers        = _cache->loadBots();
         _emojiMap        = _cache->loadEmojiMap();
         const auto muted = _cache->loadMutedThreads();
@@ -227,6 +228,11 @@ void Session::start() {
     // the first periodic re-fetch lands at a day of uptime, not at launch.
     _lastUsersRefreshMs = QDateTime::currentMSecsSinceEpoch();
     loadUsersFromBackend(/*startup=*/true);
+    loadUsergroupsFromBackend();
+    _usergroupsRefreshTimer.setSingleShot(true);
+    QObject::connect(&_usergroupsRefreshTimer, &QTimer::timeout, [this] {
+        loadUsergroupsFromBackend();
+    });
 
     // Wire the backend event firehose through our hub so Session can
     // intercept and patch state before forwarding to the UI.
@@ -298,6 +304,10 @@ void Session::start() {
                     }
                     _users = std::move(users);
                     scheduleSaveUsers();
+                } else if (std::get_if<EvUsergroupsChanged>(&e)) {
+                    // Debounced: Slack fires one subteam_members_changed per
+                    // edit, and a bulk membership change is many edits.
+                    _usergroupsRefreshTimer.start(2000);
                 } else if (auto *ev = std::get_if<EvConvMarked>(&e)) {
                     auto convs = _conversations.current();
                     for (auto &c : convs) {
@@ -512,7 +522,7 @@ bool Session::handleNewMessage(const ConversationId &conv, const Message &msg) {
     if (!ownMessage && msg.threadRoot && !isThreadMuted(conv, *msg.threadRoot)) {
         const QString &mt = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
         if (isFollowedThreadReply(msg, _meUserId) || isThreadFollowed(conv, *msg.threadRoot) ||
-            mrkdwnMentions(mt, _meUserId))
+            mentionsMe(mt))
             noteUnreadThreadReply(conv, *msg.threadRoot, msg.ts);
     }
     // Someone we hold as away/offline just posted — they are almost certainly
@@ -540,7 +550,7 @@ bool Session::handleNewMessage(const ConversationId &conv, const Message &msg) {
             }
             const bool     isDm        = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
             const QString &mt          = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
-            const bool     isMention   = mrkdwnMentions(mt, _meUserId);
+            const bool     isMention   = mentionsMe(mt);
             // A thread I muted: its replies stop badging (Slack's "Mute thread"),
             // except an explicit @mention, which always gets through.
             const bool     threadMuted = msg.threadRoot && isThreadMuted(conv, *msg.threadRoot);
@@ -688,6 +698,7 @@ void Session::checkRealtimeHealth() {
         if (nowUsers - _lastUsersRefreshMs >= kUsersRefreshGapMs) {
             _lastUsersRefreshMs = nowUsers; // stamped at request time: a failure waits a day
             loadUsersFromBackend(/*startup=*/false);
+            loadUsergroupsFromBackend();
         }
     }
 
@@ -1664,6 +1675,43 @@ const User *Session::findUser(UserId id) const {
     if (it != _botUsers.constEnd())
         return &*it;
     return nullptr;
+}
+
+const Usergroup *Session::findUsergroup(const QString &id) const {
+    for (const auto &g : _usergroups)
+        if (g.id == id)
+            return &g;
+    return nullptr;
+}
+
+bool Session::isMyUsergroup(const QString &id) const {
+    if (_meUserId.value.isEmpty())
+        return false;
+    const Usergroup *g = findUsergroup(id);
+    return g && std::find(g->users.begin(), g->users.end(), _meUserId) != g->users.end();
+}
+
+bool Session::mentionsMe(const QString &mrkdwn) const {
+    QSet<QString> mine;
+    if (!_meUserId.value.isEmpty() && mrkdwn.contains(QLatin1String("<!subteam^")))
+        for (const auto &g : _usergroups)
+            if (std::find(g.users.begin(), g.users.end(), _meUserId) != g.users.end())
+                mine.insert(g.id);
+    return mrkdwnMentions(mrkdwn, _meUserId, mine);
+}
+
+void Session::loadUsergroupsFromBackend() {
+    _usergroupsLoadLifetime.destroy();
+    _backend->loadUsergroups() | rpl::on_next(
+                                     [this](std::vector<Usergroup> groups) {
+                                         if (groups.empty() || groups == _usergroups)
+                                             return;
+                                         _usergroups = std::move(groups);
+                                         _cache->saveUsergroups(_usergroups);
+                                         _usergroupsChangedHub.fire({});
+                                     },
+                                     _usergroupsLoadLifetime
+                                 );
 }
 
 void Session::fetchBotIfNeeded(UserId botId) {

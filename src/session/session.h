@@ -428,6 +428,18 @@ public:
 
     const User         *findUser(UserId) const;
     const Conversation *findConversation(ConversationId) const;
+    // A user group by S… id (usergroups.list, cached across runs); null when
+    // unknown — the renderer then keeps the message's own label.
+    const Usergroup    *findUsergroup(const QString &id) const;
+    // True when I am a member of the user group `id`.
+    bool                isMyUsergroup(const QString &id) const;
+    // mrkdwnMentions() for me: a direct mention, a broadcast keyword, or a
+    // mention of a user group I belong to. Every badge/notification decision
+    // goes through this so user groups count everywhere at once.
+    bool                mentionsMe(const QString &mrkdwn) const;
+    // Fires when a fresh usergroups.list landed and changed something: mentions
+    // rendered from the bare id (or a stale handle) must re-render.
+    rpl::producer<>     usergroupsChanged() const { return _usergroupsChangedHub.events(); }
 
     // A human-readable name for a user id that is NEVER the raw id. Returns the
     // cached display label when known; otherwise kicks off a users.info fetch in
@@ -626,6 +638,12 @@ private:
     // exactly the same requests as any other launch. Each call arms the
     // off-roster re-probe (below) after a settle delay.
     void loadUsersFromBackend(bool startup);
+    // (Re)fetch usergroups.list: at start(), on EvUsergroupsChanged (debounced —
+    // a membership edit fires one event per member) and on the daily roster
+    // refresh alongside loadUsersFromBackend. Same rule as the roster: an empty
+    // snapshot keeps what is cached — a disabled group leaves the list but its
+    // old mentions should keep rendering by name, not fall back to the id.
+    void loadUsergroupsFromBackend();
     // Merge a snapshot into _users: snapshot rows win, cached enrichment fills
     // the gaps they leave, known users the snapshot omits are retained (and
     // recorded in _offRosterUserIds). Reassigning _users only notifies when
@@ -738,6 +756,10 @@ private:
 
     rpl::variable<std::vector<Conversation>> _conversations;
     rpl::variable<std::vector<User>>         _users;
+    std::vector<Usergroup>                   _usergroups; // see loadUsergroupsFromBackend
+    rpl::lifetime                            _usergroupsLoadLifetime; // one subscription at a time
+    QTimer                                   _usergroupsRefreshTimer; // single-shot debounce
+    rpl::event_stream<>                      _usergroupsChangedHub;
     rpl::variable<SelfPresence>              _selfPresence;
     QTimer                                   _selfPresenceTimer;
     rpl::variable<PresenceLinkState>         _presenceLink;

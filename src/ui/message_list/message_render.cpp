@@ -424,6 +424,13 @@ QString notificationText(const TextWithEntities &twe, const Session *session) {
                  resolveChannelImpl(e.data, twe.text.mid(e.offset, e.length), session)}
             );
             break;
+        case EntityType::UsergroupMention: {
+            const Usergroup *g = session ? session->findUsergroup(e.data) : nullptr;
+            repls.push_back(
+                {e.offset, e.length, g ? g->mentionLabel() : twe.text.mid(e.offset, e.length)}
+            );
+            break;
+        }
         case EntityType::Emoji: {
             const auto    er    = resolveEmojiRich(e.data, session);
             const QString glyph = er.unicode.isEmpty() ? (":" + e.data + ":") : er.unicode;
@@ -727,6 +734,17 @@ static QString renderRange(
                     ";background:" + Th::qss(Th::c().message.mentionSelfBg) +
                     ";border-radius:3px;padding:0 2px'>" + inner + "</span>";
             break;
+        case EntityType::UsergroupMention: {
+            // The parser's text is the message's own label (or the bare id);
+            // the live handle from usergroups.list wins when the group is known.
+            const Usergroup *g    = session ? session->findUsergroup(e.data) : nullptr;
+            const QString    text = g ? g->mentionLabel() : rawInner;
+            const bool       mine = session && session->isMyUsergroup(e.data);
+            html += "<span style='color:" + Th::qss(Th::c().message.mentionText) + ";background:" +
+                    Th::qss(mine ? Th::c().message.mentionSelfBg : Th::c().message.mentionBg) +
+                    ";border-radius:3px;padding:0 2px'>" + text.toHtmlEscaped() + "</span>";
+            break;
+        }
         case EntityType::Emoji:
             html += emojiHtml(resolveEmojiRich(e.data, session), inlineEmojiPx());
             break;

@@ -532,6 +532,9 @@ QString WorkspaceCache::usersPath() const {
 QString WorkspaceCache::botsPath() const {
     return _dir + "/bots.json";
 }
+QString WorkspaceCache::usergroupsPath() const {
+    return _dir + "/usergroups.json";
+}
 QString WorkspaceCache::emojiPath() const {
     return _dir + "/emoji.json";
 }
@@ -610,6 +613,39 @@ void WorkspaceCache::saveBots(const QHash<QString, User> &bots) {
     for (const auto &u : bots)
         arr.append(toJson(u));
     writeJson(botsPath(), QJsonDocument(arr));
+}
+
+void WorkspaceCache::saveUsergroups(const std::vector<Usergroup> &groups) {
+    QJsonArray arr;
+    for (const auto &g : groups) {
+        QJsonArray users;
+        for (const auto &u : g.users)
+            users.append(u.value);
+        arr.append(QJsonObject{{"id", g.id}, {"ha", g.handle}, {"na", g.name}, {"us", users}});
+    }
+    writeJson(usergroupsPath(), QJsonDocument(arr));
+}
+
+std::vector<Usergroup> WorkspaceCache::loadUsergroups() const {
+    const auto data = readFile(usergroupsPath());
+    if (data.isEmpty())
+        return {};
+    const auto doc = QJsonDocument::fromJson(data);
+    if (!doc.isArray())
+        return {};
+    std::vector<Usergroup> result;
+    for (const auto &v : doc.array()) {
+        const auto o = v.toObject();
+        Usergroup  g;
+        g.id     = o["id"].toString();
+        g.handle = o["ha"].toString();
+        g.name   = o["na"].toString();
+        for (const auto &u : o["us"].toArray())
+            g.users.push_back(UserId{u.toString()});
+        if (!g.id.isEmpty())
+            result.push_back(std::move(g));
+    }
+    return result;
 }
 
 QHash<QString, User> WorkspaceCache::loadBots() const {

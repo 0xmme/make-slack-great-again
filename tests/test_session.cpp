@@ -42,6 +42,7 @@ struct StubBackend : Backend {
     rpl::variable<UserId>                    _meId;
     rpl::variable<std::vector<Conversation>> _convs;
     rpl::variable<std::vector<User>>         _users;
+    rpl::variable<std::vector<Usergroup>>    _usergroups;
     rpl::event_stream<Event>                 _events;
 
     bool presenceResult = false;
@@ -128,6 +129,11 @@ struct StubBackend : Backend {
     rpl::producer<std::vector<User>> loadUsers() override {
         ++loadUsersCalls;
         return _users.value();
+    }
+    int                                   loadUsergroupsCalls = 0; // usergroups.list requests
+    rpl::producer<std::vector<Usergroup>> loadUsergroups() override {
+        ++loadUsergroupsCalls;
+        return _usergroups.value();
     }
 
     int                 loadPresenceCalls = 0; // times loadPresence was actually invoked
@@ -1812,6 +1818,74 @@ TEST_CASE("mrkdwnMentions matches direct and piped mentions", "[session][mention
     CHECK_FALSE(mrkdwnMentions("hi <@U12> there", me)); // prefix must not match
     CHECK_FALSE(mrkdwnMentions("plain text", me));
     CHECK_FALSE(mrkdwnMentions("hi <@U2>", me));
+}
+
+TEST_CASE("mrkdwnMentions matches my user groups only", "[session][mentions]") {
+    const UserId        me{"U1"};
+    const QSet<QString> mine{"S1"};
+    CHECK(mrkdwnMentions("<!subteam^S1> ping", me, mine));
+    CHECK(mrkdwnMentions("<!subteam^S1|@oncall> ping", me, mine));
+    CHECK_FALSE(mrkdwnMentions("<!subteam^S12> ping", me, mine)); // prefix must not match
+    CHECK_FALSE(mrkdwnMentions("<!subteam^S2|@design> ping", me, mine));
+    CHECK_FALSE(mrkdwnMentions("<!subteam^S1> ping", me)); // membership unknown
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a mention of a user group I belong to badges like a mention",
+    "[session][events]"
+) {
+    Usergroup g;
+    g.id              = "S1";
+    g.handle          = "oncall";
+    g.users           = {UserId{"U1"}};
+    stub->_usergroups = std::vector<Usergroup>{g};
+    CHECK(session->isMyUsergroup("S1"));
+    CHECK_FALSE(session->isMyUsergroup("S2"));
+    REQUIRE(session->findUsergroup("S1"));
+    CHECK(session->findUsergroup("S1")->handle == "oncall");
+    CHECK(session->mentionsMe("<!subteam^S1> pager"));
+    CHECK_FALSE(session->mentionsMe("<!subteam^S2> pager"));
+
+    Message msg;
+    msg.ts      = "500.000";
+    msg.author  = UserId{"U2"};
+    msg.rawText = "<!subteam^S1> pager";
+    stub->fireEvent(EvMessageNew{ConversationId{"C2"}, msg});
+    CHECK(session->findConversation(ConversationId{"C2"})->mentionCount == 1);
+
+    Message other;
+    other.ts      = "501.000";
+    other.author  = UserId{"U2"};
+    other.rawText = "<!subteam^S2> pager";
+    stub->fireEvent(EvMessageNew{ConversationId{"C2"}, other});
+    CHECK(session->findConversation(ConversationId{"C2"})->mentionCount == 1);
+    CHECK(session->findConversation(ConversationId{"C2"})->unread == 2);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "user groups persist across a restart and refresh on a subteam event",
+    "[session][events]"
+) {
+    Usergroup g;
+    g.id              = "S1";
+    g.handle          = "oncall";
+    stub->_usergroups = std::vector<Usergroup>{g};
+    REQUIRE(session->findUsergroup("S1"));
+
+    // Restart against a backend that hasn't answered yet: the cache serves it.
+    restartSession({kGeneral, kRandom}, {kAlice, kBob});
+    REQUIRE(session->findUsergroup("S1"));
+    CHECK(session->findUsergroup("S1")->handle == "oncall");
+    CHECK(stub->loadUsergroupsCalls == 1);
+
+    // A subteam_* event re-fetches (debounced) — this exercises the wiring.
+    stub->fireEvent(EvUsergroupsChanged{});
+    QEventLoop loop;
+    QTimer::singleShot(2300, &loop, &QEventLoop::quit);
+    loop.exec();
+    CHECK(stub->loadUsergroupsCalls == 2);
 }
 
 TEST_CASE("mrkdwnMentions matches broadcast keywords", "[session][mentions]") {

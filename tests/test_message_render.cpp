@@ -848,6 +848,7 @@ struct RenderStubBackend : Backend {
     rpl::variable<UserId>                    _me;
     rpl::variable<std::vector<Conversation>> _convs;
     rpl::variable<std::vector<User>>         _users;
+    rpl::variable<std::vector<Usergroup>>    _usergroups;
     rpl::variable<QHash<QString, QString>>   _emoji;
     rpl::event_stream<Event>                 _events;
 
@@ -858,6 +859,7 @@ struct RenderStubBackend : Backend {
     rpl::producer<UserId>                    loadMe() override { return _me.value(); }
     rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
     rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
+    rpl::producer<std::vector<Usergroup>> loadUsergroups() override { return _usergroups.value(); }
     rpl::producer<bool> loadPresence(UserId) override { return rpl::variable<bool>(false).value(); }
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override {
         return rpl::variable<MessagePage>({}).value();
@@ -902,7 +904,13 @@ static Session *renderSession(const QHash<QString, QString> &emoji = {}) {
     u.name        = "alice";
     u.displayName = "Alice";
     stub->_users  = std::vector<User>{u};
-    auto *session = new Session(std::unique_ptr<Backend>(stub), "T_TEST");
+    Usergroup g;
+    g.id              = "S0ABC";
+    g.handle          = "eng-oncall";
+    g.name            = "Engineering on-call";
+    g.users           = {UserId{"U7"}};
+    stub->_usergroups = std::vector<Usergroup>{g};
+    auto *session     = new Session(std::unique_ptr<Backend>(stub), "T_TEST");
     session->start();
     return session;
 }
@@ -925,6 +933,47 @@ TEST_CASE("toHtml resolves a bare channel link via the session", "[render][chann
     const QString html    = MsgRender::toHtml(MrkdwnParser::parse("see <#C1>"), session);
     CHECK(html.contains("#general"));
     CHECK(!html.contains("#C1"));
+    delete session;
+}
+
+// ── User-group mentions ───────────────────────────────────────────────────────
+
+TEST_CASE("toHtml without session keeps the user-group label", "[render][usergroup]") {
+    CHECK(
+        MsgRender::toHtml(MrkdwnParser::parse("<!subteam^S0ABC|@ops>"), nullptr).contains("@ops")
+    );
+    CHECK(MsgRender::toHtml(MrkdwnParser::parse("<!subteam^S0ABC>"), nullptr).contains("@S0ABC"));
+}
+
+TEST_CASE(
+    "toHtml resolves a label-less user-group mention via the session", "[render][usergroup]"
+) {
+    // What an Enterprise Grid member workspace (or a rich_text usergroup element)
+    // delivers: the id alone. The live handle wins over the message's own label too.
+    auto *session = renderSession();
+    CHECK(
+        MsgRender::toHtml(MrkdwnParser::parse("<!subteam^S0ABC>"), session).contains("@eng-oncall")
+    );
+    CHECK(
+        MsgRender::toHtml(MrkdwnParser::parse("<!subteam^S0ABC|@old-name>"), session)
+            .contains("@eng-oncall")
+    );
+    // Unknown group: the label stays.
+    CHECK(
+        MsgRender::toHtml(MrkdwnParser::parse("<!subteam^S9|@other>"), session).contains("@other")
+    );
+    delete session;
+}
+
+TEST_CASE("a user group I belong to gets the self-mention background", "[render][usergroup]") {
+    auto *session = renderSession();
+    session->setMe(UserId{"U7"});
+    const QString mine = MsgRender::toHtml(MrkdwnParser::parse("<!subteam^S0ABC>"), session);
+    session->setMe(UserId{"U8"});
+    const QString theirs = MsgRender::toHtml(MrkdwnParser::parse("<!subteam^S0ABC>"), session);
+    CHECK(mine.contains(Th::qss(Th::c().message.mentionSelfBg)));
+    CHECK(!theirs.contains(Th::qss(Th::c().message.mentionSelfBg)));
+    CHECK(theirs.contains(Th::qss(Th::c().message.mentionBg)));
     delete session;
 }
 

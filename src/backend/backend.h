@@ -78,11 +78,20 @@ public:
     virtual QString teamUrl() const { return {}; }
 
     // --- Snapshot loads (produce one page then complete) ---
-    virtual rpl::producer<UserId>                    loadMe()             = 0;
-    virtual rpl::producer<std::vector<Conversation>> loadConversations()  = 0;
-    virtual rpl::producer<std::vector<User>>         loadUsers()          = 0;
+    virtual rpl::producer<UserId>                    loadMe()            = 0;
+    virtual rpl::producer<std::vector<Conversation>> loadConversations() = 0;
+    virtual rpl::producer<std::vector<User>>         loadUsers()         = 0;
+    // The workspace's user groups (Slack usergroups.list), for rendering
+    // <!subteam^S…> mentions and counting the ones I belong to as mentions.
+    // Default: complete without a value — the service has no user groups.
+    virtual rpl::producer<std::vector<Usergroup>>    loadUsergroups() {
+        return [](auto consumer) {
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
     // Fetch current presence for one user; emits true=active/false=away then completes.
-    virtual rpl::producer<bool>                      loadPresence(UserId) = 0;
+    virtual rpl::producer<bool> loadPresence(UserId) = 0;
     // Same, for bulk sweeps: rides the paced low-priority lane (where the backend
     // has one) so a roster-wide re-poll never crowds out interactive calls.
     virtual rpl::producer<bool> loadPresenceBackground(UserId id) { return loadPresence(id); }

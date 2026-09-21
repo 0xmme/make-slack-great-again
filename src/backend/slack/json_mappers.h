@@ -43,6 +43,9 @@ std::vector<ConversationId> toStarredConversationIds(const QJsonArray &items);
 
 // Batch helpers
 std::vector<User>         toUsers(const QJsonArray &);
+// usergroups.list `usergroups` rows (empty-id rows dropped).
+Usergroup                 toUsergroup(const QJsonObject &);
+std::vector<Usergroup>    toUsergroups(const QJsonArray &);
 std::vector<Conversation> toConversations(const QJsonArray &);
 // reverseOrder=true for conversations.history (newest-first); false for conversations.replies
 // (oldest-first).

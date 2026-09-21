@@ -109,6 +109,37 @@ TEST_CASE("<!channel> broadcast", "[mrkdwn]") {
     checkOne(MrkdwnParser::parse("<!channel>"), "@channel", EntityType::ChannelCommand, 0, 8);
 }
 
+TEST_CASE("<!subteam^S…|@handle> user-group mention", "[mrkdwn]") {
+    // The label already carries the '@'; the span holds the id for the renderer.
+    checkOne(
+        MrkdwnParser::parse("<!subteam^S0ABC|@eng-oncall>"),
+        "@eng-oncall",
+        EntityType::UsergroupMention,
+        0,
+        11,
+        "S0ABC"
+    );
+}
+
+TEST_CASE("<!subteam^S…> without a label shows the id", "[mrkdwn]") {
+    // Enterprise Grid member workspaces and bots omit the label; the id is the
+    // best local text and the session swaps in the handle later.
+    checkOne(
+        MrkdwnParser::parse("<!subteam^S0ABC>"),
+        "@S0ABC",
+        EntityType::UsergroupMention,
+        0,
+        6,
+        "S0ABC"
+    );
+}
+
+TEST_CASE("<!everyone> stays a broadcast command", "[mrkdwn]") {
+    checkOne(
+        MrkdwnParser::parse("<!everyone>"), "@everyone", EntityType::HereCommand, 0, 9, "everyone"
+    );
+}
+
 TEST_CASE("emoji :name:", "[mrkdwn]") {
     checkOne(MrkdwnParser::parse(":rocket:"), ":rocket:", EntityType::Emoji, 0, 8, "rocket");
 }

@@ -248,7 +248,7 @@ static void appendAngleConstruct(Builder &b, const QString &inner, bool requireS
         return;
     }
 
-    // Special commands: <!here>, <!channel>, <!date^…>, <!subteam^S|name>
+    // Special commands: <!here>, <!channel>, <!date^…>, <!subteam^S|@name>
     if (inner.startsWith('!')) {
         auto cmd = inner.mid(1);
         if (cmd == "here") {
@@ -275,8 +275,22 @@ static void appendAngleConstruct(Builder &b, const QString &inner, bool requireS
             b.appendPlain(rendered);
             if (!link.isEmpty())
                 b.addSpan(EntityType::Link, s, link);
+        } else if (cmd.startsWith(QLatin1String("subteam^"))) {
+            // <!subteam^S…|@handle>: a user-group mention. The label is optional
+            // (Enterprise Grid member workspaces and bots often omit it) and,
+            // when present, already carries the '@'. Text is the best local
+            // guess — "@handle", else "@S…" — and the span carries the id so the
+            // renderer can swap in the live handle from usergroups.list.
+            const int     pipe  = cmd.indexOf('|');
+            const QString id    = pipe >= 0 ? cmd.mid(8, pipe - 8) : cmd.mid(8);
+            QString       label = pipe >= 0 ? decodeEntities(cmd.mid(pipe + 1)) : id;
+            if (label.startsWith('@'))
+                label.remove(0, 1);
+            const int s = b.text.size();
+            b.appendPlain("@" + label);
+            b.addSpan(EntityType::UsergroupMention, s, id);
         } else {
-            // subteam or unknown: show as @name
+            // <!everyone> and unknown commands: show as @name
             auto parts = cmd.split('|');
             auto label = parts.size() > 1 ? decodeEntities(parts.last()) : cmd;
             int  s     = b.text.size();

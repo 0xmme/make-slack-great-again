@@ -1047,6 +1047,22 @@ TEST_CASE("toBlock rich_text user mention", "[mappers][block]") {
     CHECK(b.text.entities[0].length == 5);
 }
 
+TEST_CASE("toBlock rich_text usergroup mention", "[mappers][block]") {
+    // Carries only the id — never a handle — so the text is the id fallback.
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "rich_text",
+        "elements": [{
+            "type": "rich_text_section",
+            "elements": [{"type": "usergroup", "usergroup_id": "S0ABC"}]
+        }]
+    })"));
+    CHECK(b.text.text == "@S0ABC");
+    REQUIRE(b.text.entities.size() == 1);
+    CHECK(b.text.entities[0].type == EntityType::UsergroupMention);
+    CHECK(b.text.entities[0].data == "S0ABC");
+    CHECK(b.text.entities[0].length == 6);
+}
+
 TEST_CASE("toBlock rich_text link with label", "[mappers][block]") {
     auto b = JsonMappers::toBlock(obj(R"({
         "type": "rich_text",
@@ -1394,6 +1410,22 @@ TEST_CASE("toSelfPresence idle auto-away while online is not phantom away", "[ma
 }
 
 // ── Batch helpers ─────────────────────────────────────────────────────────────
+
+TEST_CASE("toUsergroups maps usergroups.list rows", "[mappers][batch]") {
+    QJsonArray arr;
+    arr.append(obj(R"({"id":"S1","handle":"eng-oncall","name":"Engineering on-call",
+                      "users":["U1","U2"],"user_count":"2"})"));
+    arr.append(obj(R"({"id":"S2","handle":"design","name":"Design"})")); // no include_users
+    arr.append(obj(R"({"handle":"broken"})"));
+    const auto groups = JsonMappers::toUsergroups(arr);
+    REQUIRE(groups.size() == 2);
+    CHECK(groups[0].id == "S1");
+    CHECK(groups[0].handle == "eng-oncall");
+    CHECK(groups[0].name == "Engineering on-call");
+    CHECK(groups[0].users == std::vector<UserId>{UserId{"U1"}, UserId{"U2"}});
+    CHECK(groups[0].mentionLabel() == "@eng-oncall");
+    CHECK(groups[1].users.empty());
+}
 
 TEST_CASE("toUsers skips entries with empty id", "[mappers][batch]") {
     auto users = JsonMappers::toUsers(arr(R"([

@@ -20,6 +20,7 @@ public:
     rpl::producer<UserId>                    loadMe() override;
     rpl::producer<std::vector<Conversation>> loadConversations() override;
     rpl::producer<std::vector<User>>         loadUsers() override;
+    rpl::producer<std::vector<Usergroup>>    loadUsergroups() override;
     rpl::producer<bool>                      loadPresence(UserId) override;
     rpl::producer<SelfPresence>              loadSelfPresence() override;
     rpl::producer<Conversation> loadConversationInfo(ConversationId, bool background) override;
@@ -122,6 +123,7 @@ protected:
     rpl::variable<AuthState>                          _authState;
     rpl::variable<std::vector<Conversation>>          _conversations;
     rpl::variable<std::vector<User>>                  _users;
+    rpl::variable<std::vector<Usergroup>>             _usergroups;
     std::unordered_map<QString, std::vector<Message>> _history; // conv id → messages
     std::unordered_map<QString, Conversation> _convInfo; // conv id → loadConversationInfo() result
     // Canvas fixtures: conv id → canvas file id, file id → HTML body / title.

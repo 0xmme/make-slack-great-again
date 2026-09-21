@@ -288,6 +288,16 @@ static void richInlineToTWE(const QJsonObject &el, Builder &b) {
         const int  start = b.text.size();
         b.text += "#" + cid;
         b.entities.push_back({EntityType::ChannelMention, start, (int)b.text.size() - start, cid});
+    } else if (type == "usergroup") {
+        // A user-group mention carries only the S… id — no handle, ever. The
+        // renderer resolves it through the Session's usergroups; the id is the
+        // fallback text when it can't.
+        const auto gid   = el.value("usergroup_id").toString();
+        const int  start = b.text.size();
+        b.text += "@" + gid;
+        b.entities.push_back(
+            {EntityType::UsergroupMention, start, (int)b.text.size() - start, gid}
+        );
     } else if (type == "emoji") {
         const auto name  = el.value("name").toString();
         const int  start = b.text.size();
@@ -753,6 +763,30 @@ std::vector<User> toUsers(const QJsonArray &a) {
         auto u = toUser(v.toObject());
         if (!u.id.value.isEmpty())
             out.push_back(std::move(u));
+    }
+    return out;
+}
+
+Usergroup toUsergroup(const QJsonObject &o) {
+    Usergroup g;
+    g.id     = o.value("id").toString();
+    g.handle = o.value("handle").toString();
+    g.name   = o.value("name").toString();
+    // include_users=1 puts the member ids in `users`; without it there is only
+    // `user_count`, so a missing array simply means "membership unknown".
+    for (const auto &v : o.value("users").toArray())
+        if (const auto id = v.toString(); !id.isEmpty())
+            g.users.push_back(UserId{id});
+    return g;
+}
+
+std::vector<Usergroup> toUsergroups(const QJsonArray &a) {
+    std::vector<Usergroup> out;
+    out.reserve(a.size());
+    for (auto v : a) {
+        auto g = toUsergroup(v.toObject());
+        if (!g.id.isEmpty())
+            out.push_back(std::move(g));
     }
     return out;
 }

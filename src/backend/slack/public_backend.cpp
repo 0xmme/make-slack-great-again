@@ -760,6 +760,36 @@ rpl::producer<std::vector<User>> PublicBackend::loadUsers() {
     };
 }
 
+rpl::producer<std::vector<Usergroup>> PublicBackend::loadUsergroups() {
+    return [this](auto consumer) mutable {
+        QUrlQuery params;
+        // On Enterprise Grid a user group belongs to the org, and usergroups.list
+        // answers for the workspace named by team_id (required for an org-level
+        // token, ignored for a workspace-level one) — without it a member
+        // workspace sees an empty list and every <!subteam^S…> stays raw.
+        if (!_teamId.isEmpty())
+            params.addQueryItem("team_id", _teamId);
+        // Member ids, so a mention of a group I belong to counts as a mention.
+        params.addQueryItem("include_users", "1");
+        _api->call(
+            "usergroups.list",
+            params,
+            [consumer](QJsonObject resp) mutable {
+                consumer.put_next(JsonMappers::toUsergroups(resp.value("usergroups").toArray()));
+                consumer.put_done();
+            },
+            [consumer](QString err) mutable {
+                // missing_scope on an OAuth token issued before usergroups:read
+                // was requested: mentions keep their label fallback.
+                qWarning() << "loadUsergroups error:" << err;
+                consumer.put_done();
+            },
+            /*quietErrors=*/true
+        );
+        return rpl::lifetime();
+    };
+}
+
 rpl::producer<bool> PublicBackend::loadPresence(UserId userId) {
     return loadPresenceImpl(std::move(userId), /*background=*/false);
 }

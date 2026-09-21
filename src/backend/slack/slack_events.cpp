@@ -105,6 +105,15 @@ std::optional<Event> normalizeSlackEvent(const QJsonObject &ev) {
         return EvUserChanged{JsonMappers::toUser(ev.value("user").toObject())};
     }
 
+    // User groups: any change re-fetches the (small) list rather than patching
+    // from the payload — subteam_members_changed carries only deltas, and the
+    // self_* pair carries just an id.
+    if (type == "subteam_created" || type == "subteam_updated" ||
+        type == "subteam_members_changed" || type == "subteam_self_added" ||
+        type == "subteam_self_removed") {
+        return EvUsergroupsChanged{};
+    }
+
     return std::nullopt;
 }
 

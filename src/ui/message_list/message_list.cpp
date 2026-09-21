@@ -360,6 +360,8 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
     // Fresh emoji.list arrived: :codes: that resolved to nothing (or to stale
     // URLs) while the map was empty must be re-rendered.
     _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
+    // Fresh usergroups.list: @S… fallbacks and stale handles must re-render.
+    _session->usergroupsChanged() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
 
     // Reminder set/removed/synced: rows gain or lose the due strip (height) and
     // the blue tint — relayout, not just repaint.
@@ -697,6 +699,8 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
         rpl::on_next([this](UserId id) { onUserResolved(id); }, _eventLifetime);
 
     _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
+    // Fresh usergroups.list: @S… fallbacks and stale handles must re-render.
+    _session->usergroupsChanged() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
 
     // Reminder set/removed/synced: rows gain or lose the due strip (height) and
     // the blue tint — relayout, not just repaint.

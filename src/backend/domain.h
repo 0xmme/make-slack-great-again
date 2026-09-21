@@ -269,6 +269,22 @@ struct User {
     const QString &displayLabel() const { return displayName.isEmpty() ? name : displayName; }
 };
 
+// A user group (Slack "subteam", handle @eng-oncall). Mentioned in text as
+// <!subteam^S…|@handle>; the label is optional, and a rich_text usergroup
+// element carries only the id, so the roster is needed to show a name. On
+// Enterprise Grid the same S… ids are shared org-wide, and usergroups.list
+// must be asked for the member workspace's team_id to return them.
+struct Usergroup {
+    QString             id;     // S… id
+    QString             handle; // mention handle without the '@', e.g. "eng-oncall"
+    QString             name;   // display name, e.g. "Engineering on-call"
+    std::vector<UserId> users;  // members (usergroups.list include_users=1)
+    bool                operator==(const Usergroup &) const = default;
+
+    // What to show for a mention: "@handle", or the name when there is no handle.
+    QString mentionLabel() const { return "@" + (handle.isEmpty() ? name : handle); }
+};
+
 // Rich presence for the authed user only. users.getPresence returns these
 // extra fields when called for yourself; for everyone else only the binary
 // active/away (User::isActive) exists.
@@ -623,15 +639,27 @@ struct CanvasChange {
 enum class CanvasMetaState { Ok, Gone, NoAccess };
 
 // True when mrkdwn text explicitly mentions `me` — a direct <@U…> / <@U…|name>
-// mention or a broadcast keyword (<!here>, <!channel>, <!everyone>). This is
-// what the official Slack client treats as a mention for red badges and
-// notifications.
-inline bool mrkdwnMentions(const QString &mrkdwn, const UserId &me) {
+// mention, a <!subteam^S…> mention of a user group in `myUsergroups`, or a
+// broadcast keyword (<!here>, <!channel>, <!everyone>). This is what the
+// official Slack client treats as a mention for red badges and notifications.
+inline bool
+mrkdwnMentions(const QString &mrkdwn, const UserId &me, const QSet<QString> &myUsergroups = {}) {
     if (!me.value.isEmpty()) {
         const QString tag = QStringLiteral("<@") + me.value;
         for (qsizetype i = mrkdwn.indexOf(tag); i >= 0; i = mrkdwn.indexOf(tag, i + 1)) {
             const qsizetype after = i + tag.size();
             if (after < mrkdwn.size() && (mrkdwn[after] == u'>' || mrkdwn[after] == u'|'))
+                return true;
+        }
+    }
+    if (!myUsergroups.isEmpty()) {
+        const QString tag = QStringLiteral("<!subteam^");
+        for (qsizetype i = mrkdwn.indexOf(tag); i >= 0; i = mrkdwn.indexOf(tag, i + 1)) {
+            const qsizetype start = i + tag.size();
+            qsizetype       end   = start;
+            while (end < mrkdwn.size() && mrkdwn[end] != u'>' && mrkdwn[end] != u'|')
+                ++end;
+            if (myUsergroups.contains(mrkdwn.mid(start, end - start)))
                 return true;
         }
     }
@@ -667,6 +695,7 @@ enum class EntityType {
     // data = SlackLinks::refToToken(ref) — see util/slack_links.h.
     // NOTE: cached entities store this enum as an int, so new values go LAST.
     MessageLink,
+    UsergroupMention, // data = Usergroup::id (S…); text = the parser's "@label" fallback
 };
 
 struct TextEntity {
@@ -1149,6 +1178,10 @@ struct EvUserChanged {
 struct EvUsersChanged {
     std::vector<User> users;
 };
+// The workspace's user groups changed (Slack subteam_* events: created,
+// renamed, membership edited, self added/removed). Carries nothing: the
+// Session re-fetches the list, which is small and one request.
+struct EvUsergroupsChanged {};
 // A sendMessage definitively failed (Slack rejected it — not a transport
 // problem, those are retried). Session removes the optimistic copy and
 // surfaces the reason to the user.
@@ -1273,6 +1306,7 @@ using Event = std::variant<
     EvMemberJoined,
     EvUserChanged,
     EvUsersChanged,
+    EvUsergroupsChanged,
     EvSendFailed,
     EvHuddleChanged,
     EvRealtimeReconnected,

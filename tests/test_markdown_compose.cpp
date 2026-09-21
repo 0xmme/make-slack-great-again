@@ -207,6 +207,16 @@ TEST_CASE("list items resolve Slack tokens and emoji into typed elements", "[com
     );
 }
 
+TEST_CASE("a label-less user-group mention becomes a usergroup element", "[compose][list]") {
+    const auto items =
+        elements(convert("- <!subteam^S1> ping"))[0].toObject().value("elements").toArray();
+    REQUIRE(items.size() == 1);
+    CHECK(
+        json(items[0].toObject().value("elements").toArray()) ==
+        R"([{"type":"usergroup","usergroup_id":"S1"},{"text":" ping","type":"text"}])"
+    );
+}
+
 // ── Blocks: fences and quotes ─────────────────────────────────────────────────
 
 TEST_CASE("fenced code passes through, loses only a language hint", "[compose][pre]") {
