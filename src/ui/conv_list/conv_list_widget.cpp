@@ -985,9 +985,15 @@ void ConvListWidget::showMpdmContextMenu(int row, QPoint globalPos) {
 }
 
 void ConvListWidget::showDmContextMenu(int row, QPoint globalPos) {
-    const auto &conv  = _convs[_rows[row].convIdx];
-    auto       *menu  = new ContextMenu(viewport());
-    const bool  muted = conv.locallyMuted;
+    const auto &conv    = _convs[_rows[row].convIdx];
+    auto       *menu    = new ContextMenu(viewport());
+    const bool  starred = conv.isStarred;
+    menu->addItem(
+        starred ? tr("Unstar conversation") : tr("Star conversation"),
+        [this, id = conv.id, starred] { emit starConversationRequested(id, !starred); }
+    );
+    menu->addSeparator();
+    const bool muted = conv.locallyMuted;
     menu->addItem(muted ? tr("Unmute") : tr("Mute"), [this, id = conv.id, muted] {
         emit muteConversationRequested(id, !muted);
     });
@@ -1184,6 +1190,16 @@ void ConvListWidget::doPaint(QPaintEvent *event) {
     paintScrollThumb(p, contentHeight(), Th::c().nav.scrollThumb);
 }
 
+bool ConvListWidget::sectionHasUnread(int sectionId) const {
+    return std::any_of(_convs.begin(), _convs.end(), [this, sectionId](const Conversation &c) {
+        const int section = c.isStarred                                            ? 3
+                            : isAppConv(c)                                         ? 2
+                            : (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim) ? 1
+                                                                                   : 0;
+        return section == sectionId && paintsUnread(c);
+    });
+}
+
 void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int sectionId) const {
     const bool hovered   = (row == _hovered);
     const bool collapsed = (sectionId == 0)   ? _channelsCollapsed
@@ -1196,7 +1212,8 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
 
     // Normally show the section icon; on hover replace it with the chevron that
     // previews what clicking will do (collapsed → down chevron, expanded → right chevron).
-    const QColor color = Th::c().nav.itemTextDim;
+    const bool   unread = sectionHasUnread(sectionId);
+    const QColor color  = unread ? Th::c().nav.itemText : Th::c().nav.itemTextDim;
 
     const QPixmap *icon;
     if (hovered)
@@ -1213,7 +1230,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     x += kIconSize + 6;
 
     QFont font = QApplication::font();
-    font.setWeight(QFont::DemiBold);
+    font.setWeight(unread ? QFont::Bold : QFont::DemiBold);
     font.setPointSizeF(font.pointSizeF() * 0.82);
     p.setFont(font);
     p.setPen(color);

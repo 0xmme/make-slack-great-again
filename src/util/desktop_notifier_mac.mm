@@ -4,12 +4,12 @@
 #include <QBuffer>
 #include <QByteArray>
 #include <QImage>
+#include <QPointer>
+#include <QCoreApplication>
 
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 #import <UserNotifications/UserNotifications.h>
-
-#include <atomic>
 
 // Notifications go through UNUserNotificationCenter (UserNotifications.framework).
 // NSUserNotification, which this file used to call, has been deprecated since
@@ -31,23 +31,17 @@
 // default for Obj-C++), so retained objects are released explicitly.
 
 namespace {
-// Whether the OS will actually show what we post. Starts true so the very first
-// notification (possibly still racing the authorization prompt) is attempted
-// rather than dropped, then converges on the real setting via the authorization
-// callback and a re-read after every notify(). Written from the framework's
-// callback queues and read on the GUI thread, hence atomic.
-std::atomic<bool> g_authorized{true};
-
-// Fire-and-forget re-read of the OS switch, so denying at the prompt — or
-// revoking (or granting) later in System Settings — is picked up without a
-// restart. UNAuthorizationStatusNotDetermined is not a denial: the prompt is
-// still unanswered.
-void refreshAuthorized(UNUserNotificationCenter *center) {
-    [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
-        g_authorized.store(
-            settings.authorizationStatus != UNAuthorizationStatusDenied, std::memory_order_relaxed
-        );
-    }];
+// Completion handlers run on framework queues. Marshal results to Qt's GUI
+// thread and guard the owner, which may have gone away during shutdown.
+void reportSubmission(QPointer<DesktopNotifier> owner, const QString &token, const QString &error) {
+    QMetaObject::invokeMethod(
+        QCoreApplication::instance(),
+        [owner, token, error] {
+            if (owner)
+                emit owner->submissionFinished(token, error);
+        },
+        Qt::QueuedConnection
+    );
 }
 
 // Categories accumulate for the process lifetime: setNotificationCategories:
@@ -68,7 +62,7 @@ NSString *categoryIdForActions(const QList<NotifAction> &actions) {
 // Delegate: presents banners while the app is frontmost and routes a click
 // (body or action button) back to the C++ owner as activated().
 @interface MsgaNotifDelegate : NSObject <UNUserNotificationCenterDelegate> {
-    DesktopNotifier *_owner;
+    QPointer<DesktopNotifier> _owner;
 }
 - (instancetype)initWithOwner:(DesktopNotifier *)owner;
 @end
@@ -103,8 +97,18 @@ NSString *categoryIdForActions(const QList<NotifAction> &actions) {
         // An action button — its per-button token was stashed under "action.<id>".
         token = info[[@"action." stringByAppendingString:aid]];
     }
-    if (token.length > 0 && _owner)
-        _owner->emitActivated(QString::fromNSString(token));
+    if (token.length > 0) {
+        const auto owner = _owner;
+        const auto value = QString::fromNSString(token);
+        QMetaObject::invokeMethod(
+            QCoreApplication::instance(),
+            [owner, value] {
+                if (owner)
+                    owner->emitActivated(value);
+            },
+            Qt::QueuedConnection
+        );
+    }
     completionHandler();
 }
 @end
@@ -129,16 +133,12 @@ DesktopNotifier::DesktopNotifier(QObject *parent) : QObject(parent) {
     // Badge is included so the app may set the Dock/notification badge; we never
     // attach a sound (the app plays its own), but request it so the user's OS
     // toggle for sound is meaningful should that change.
-    //
-    // A denial is recorded so notify() can report failure instead of posting into
-    // a void: _available stays true (the backend itself works), while
-    // g_authorized tracks whether the user lets anything through.
     [center requestAuthorizationWithOptions:UNAuthorizationOptionAlert |
                                             UNAuthorizationOptionSound | UNAuthorizationOptionBadge
                           completionHandler:^(BOOL granted, NSError *error) {
-                              if (error)
-                                  NSLog(@"msga: notification authorization error: %@", error);
-                              g_authorized.store(granted, std::memory_order_relaxed);
+                            if (error)
+                                NSLog(@"msga: notification authorization error: %@", error);
+                            NSLog(@"msga: notification authorization granted=%d", granted);
                           }];
     _available = true;
 }
@@ -158,12 +158,6 @@ bool DesktopNotifier::notify(const QString &title, const QString &body, const QI
                              int /*timeoutMs*/) {
     if (!_available)
         return false;
-    // Notifications are switched off for us: report failure so the caller takes
-    // its tray fallback (and, on macOS, at least keeps the Dock badge and the
-    // in-app unread marks meaningful) rather than dropping the message silently.
-    if (!g_authorized.load(std::memory_order_relaxed))
-        return false;
-
     UNMutableNotificationContent *content = [[[UNMutableNotificationContent alloc] init] autorelease];
     content.title                         = title.toNSString();
     content.body                          = body.toNSString();
@@ -175,6 +169,8 @@ bool DesktopNotifier::notify(const QString &title, const QString &body, const QI
         info[@"token"] = token.toNSString();
 
     UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+    // Another notification client must not leave us without foreground delivery.
+    center.delegate                  = (MsgaNotifDelegate *)_delegate;
     bool newCategoryPosted           = false;
     if (!actions.isEmpty()) {
         NSString *catId = categoryIdForActions(actions);
@@ -237,23 +233,92 @@ bool DesktopNotifier::notify(const QString &title, const QString &body, const QI
         }
     }
 
-    NSString *reqId = [[NSProcessInfo processInfo] globallyUniqueString];
-    UNNotificationRequest *req =
-        [UNNotificationRequest requestWithIdentifier:reqId content:content trigger:nil];
-    if (newCategoryPosted) {
-        // setNotificationCategories: is an async round-trip to the notification
-        // daemon; a request that overtakes it is shown WITHOUT its buttons. Calls
-        // on that connection are ordered, so a getNotificationCategories… reply
-        // proves the set… landed — only the first notification of a given action
-        // set pays for the extra hop. (The block retains center/req under MRC.)
-        auto post = ^(NSSet<UNNotificationCategory *> *) {
-            [center addNotificationRequest:req withCompletionHandler:nil];
-        };
-        [center getNotificationCategoriesWithCompletionHandler:post];
-    } else {
-        [center addNotificationRequest:req withCompletionHandler:nil];
-    }
-    refreshAuthorized(center);
+    NSString                       *reqId = [[NSProcessInfo processInfo] globallyUniqueString];
+    UNNotificationRequest          *req   = [UNNotificationRequest requestWithIdentifier:reqId
+                                                                                 content:content
+                                                                                 trigger:nil];
+    const QPointer<DesktopNotifier> owner(this);
+    // Objective-C blocks retain C++ reference parameters as references. Own a
+    // value before crossing the async boundary; callers often pass temporaries.
+    const QString notificationToken = token;
+    // Read current OS settings for EVERY request. A cached denial used to return
+    // before refreshing, permanently silencing this process after permission
+    // was enabled. Also wait for first-run authorization before submitting.
+    auto                            submit = ^(QString presentationWarning) {
+      [center addNotificationRequest:req
+               withCompletionHandler:^(NSError *error) {
+                 if (error)
+                     NSLog(
+                         @"msga: notification submission failed domain=%@ code=%ld: %@",
+                         error.domain,
+                         (long)error.code,
+                         error.localizedDescription
+                     );
+                 else
+                     NSLog(@"msga: notification request accepted");
+                 reportSubmission(
+                     owner,
+                     notificationToken,
+                     error ? QString::fromNSString(error.localizedDescription) : presentationWarning
+                 );
+               }];
+    };
+    auto authorizedSubmit = ^(QString presentationWarning) {
+      if (newCategoryPosted) {
+          [center
+              getNotificationCategoriesWithCompletionHandler:^(NSSet<UNNotificationCategory *> *) {
+                submit(presentationWarning);
+              }];
+      } else {
+          submit(presentationWarning);
+      }
+    };
+    [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+      NSLog(
+          @"msga: notification settings authorization=%ld alerts=%ld style=%ld",
+          (long)settings.authorizationStatus,
+          (long)settings.alertSetting,
+          (long)settings.alertStyle
+      );
+      if (settings.authorizationStatus == UNAuthorizationStatusNotDetermined) {
+          [center requestAuthorizationWithOptions:UNAuthorizationOptionAlert |
+                                                  UNAuthorizationOptionSound |
+                                                  UNAuthorizationOptionBadge
+                                completionHandler:^(BOOL granted, NSError *error) {
+                                  if (granted)
+                                      authorizedSubmit(QString());
+                                  else
+                                      reportSubmission(
+                                          owner,
+                                          notificationToken,
+                                          error ? QString::fromNSString(error.localizedDescription)
+                                                : DesktopNotifier::tr(
+                                                      "Notifications are disabled in macOS System "
+                                                      "Settings."
+                                                  )
+                                      );
+                                }];
+      } else if (settings.authorizationStatus == UNAuthorizationStatusDenied) {
+          reportSubmission(
+              owner,
+              notificationToken,
+              DesktopNotifier::tr("Notifications are disabled in macOS System Settings.")
+          );
+      } else if (
+          settings.alertSetting != UNNotificationSettingEnabled ||
+          settings.alertStyle == UNAlertStyleNone
+      ) {
+          // Banners may be disabled while Notification Center delivery is
+          // allowed. Still submit, and explain the missing banner to the tester.
+          authorizedSubmit(
+              DesktopNotifier::tr(
+                  "Submitted to macOS. Enable notification banners for MSGA in System Settings."
+              )
+          );
+      } else {
+          authorizedSubmit(QString());
+      }
+    }];
     return true;
 }
 

@@ -88,7 +88,11 @@ struct StubBackend : Backend {
         return rpl::variable<MessagePage>(MessagePage{_historyPage, _olderCursor}).value();
     }
     void deliverHistory() { _historyStream.fire(MessagePage{_historyPage, _olderCursor}); }
-    rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
+    bool _deferThread = false;
+    rpl::event_stream<MessagePage> _threadStream;
+    rpl::producer<MessagePage>     loadThread(ConversationId, Ts, std::optional<QString>) override {
+        if (_deferThread)
+            return _threadStream.events();
         return rpl::variable<MessagePage>(MessagePage{_threadPage, std::nullopt}).value();
     }
 
@@ -805,6 +809,11 @@ TEST_CASE(
             .blocks     = {Block{.typeStr = "image", .imageUrl = "https://example.com/block.png"}},
             .isLinkPreview = true,
         },
+        Attachment{
+            .title         = "Linear issue",
+            .imageUrl      = "https://example.com/linear.png",
+            .isLinkPreview = true
+        },
         Attachment{.title = "Bot content", .imageUrl = "https://example.com/bot.png"},
         Attachment{
             .text        = TextWithEntities{"Shared Slack message", {}},
@@ -834,10 +843,12 @@ TEST_CASE(
         CHECK_FALSE(requested.contains("https://example.com/favicon.png"));
         CHECK_FALSE(requested.contains("https://example.com/footer.png"));
         CHECK_FALSE(requested.contains("https://example.com/block.png"));
+        CHECK_FALSE(requested.contains("https://example.com/linear.png"));
+        CHECK_FALSE(requested.contains("https://example.com/author.png"));
     };
     checkNoPreviews();
     CHECK(requested.contains("https://example.com/bot.png"));
-    CHECK(requested.contains("https://example.com/author.png"));
+    CHECK_FALSE(requested.contains("https://example.com/author.png"));
     const int hiddenHeight = list.verticalScrollBar()->maximum();
     list.setLinkPreviewsEnabled(true);
     spin(300);
@@ -860,4 +871,218 @@ TEST_CASE(
     CHECK(stored->attachments == message.attachments);
     CHECK(stored->files == message.files);
     CHECK(stored->text == message.text);
+}
+
+TEST_CASE("first history load merges racing live messages exactly once", "[message_list][race]") {
+    Fixture f;
+    f.stub->_deferHistory = true;
+    auto root             = makeMessage("1000.000001", "same text");
+    auto newer            = makeMessage("1000.000002", "same text");
+    SECTION("without cache") {}
+    SECTION("with duplicate cached rows") {
+        f.session->cacheMessages(kConv.id, {root, root});
+    }
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+    f.stub->_events.fire(EvMessageNew{kConv.id, root});
+    f.stub->_events.fire(EvMessageNew{kConv.id, newer});
+    root.replyCount      = 3;
+    root.latestReply     = "1000.000004";
+    f.stub->_historyPage = {root, root}; // duplicate page, newer live row absent
+    f.stub->deliverHistory();
+    auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 2);
+    CHECK(view[0].ts == root.ts);
+    CHECK(view[0].replyCount == 3);
+    CHECK(view[1].ts == newer.ts); // identical text is still a distinct message
+}
+
+TEST_CASE("history does not undo concurrent edits or deletions", "[message_list][race]") {
+    Fixture f;
+    auto    message = makeMessage("1000.000001", "old text");
+    f.session->cacheMessages(kConv.id, {message});
+    f.stub->_deferHistory = true;
+    f.stub->_historyPage  = {message};
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+    bool deleted = false;
+    SECTION("edited while loading") {
+        message.text.text = "edited text";
+        f.stub->_events.fire(EvMessageChanged{kConv.id, message});
+    }
+    SECTION("deleted while loading") {
+        deleted = true;
+        f.stub->_events.fire(EvMessageDeleted{kConv.id, message.ts});
+    }
+    f.stub->deliverHistory();
+    auto view = liveView(list, f.session.get(), kConv.id);
+    if (deleted) {
+        CHECK(view.empty());
+    } else {
+        REQUIRE(view.size() == 1);
+        CHECK(view[0].text.text == "edited text");
+    }
+}
+
+TEST_CASE("an empty first history response preserves concurrent messages", "[message_list][race]") {
+    Fixture f;
+    f.stub->_deferHistory = true;
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+    const auto message = makeMessage("1000.000001", "arrived after request");
+    f.stub->_events.fire(EvMessageNew{kConv.id, message});
+    f.stub->deliverHistory();
+    auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 1);
+    CHECK(view[0].ts == message.ts);
+}
+
+TEST_CASE("thread first load merges overlapping replies and live edits", "[message_list][race]") {
+    Fixture f;
+    f.stub->_deferThread = true;
+    auto root            = makeMessage("1000.000001", "root");
+    auto reply           = makeMessage("1000.000002", "reply");
+    reply.threadRoot     = root.ts;
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openThread(kConv.id, root.ts);
+    f.stub->_events.fire(EvMessageNew{kConv.id, reply});
+    f.stub->_threadStream.fire(MessagePage{{root, reply, reply}, std::nullopt});
+    // Deleting once must remove the only copy, not expose a duplicate underneath.
+    f.stub->_events.fire(EvMessageDeleted{kConv.id, reply.ts, root.ts});
+    const auto last = list.lastOwnMessage(UserId{"U1"});
+    REQUIRE(last.has_value());
+    CHECK(last->ts == root.ts);
+}
+
+TEST_CASE("live reply before channel history does not hide its root", "[message_list][race]") {
+    Fixture f;
+    f.stub->_deferHistory = true;
+    auto root             = makeMessage("1000.000001", "root");
+    root.replyCount       = 1;
+    auto reply            = makeMessage("1000.000002", "reply");
+    reply.threadRoot      = root.ts;
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+    f.stub->_events.fire(EvMessageNew{kConv.id, reply});
+    f.stub->_historyPage = {root};
+    f.stub->deliverHistory();
+    auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 1);
+    CHECK(view[0].ts == root.ts);
+    CHECK(view[0].replyCount == 1);
+}
+
+TEST_CASE("first history response retains richer live thread metadata", "[message_list][race]") {
+    Fixture f;
+    f.stub->_deferHistory = true;
+    auto root             = makeMessage("1000.000001", "root");
+    f.stub->_historyPage  = {root};
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+    root.replyCount  = 3;
+    root.latestReply = "1000.000004";
+    f.stub->_events.fire(EvMessageNew{kConv.id, root});
+    f.stub->deliverHistory();
+    auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 1);
+    CHECK(view[0].replyCount == 3);
+    CHECK(view[0].latestReply == root.latestReply);
+}
+
+TEST_CASE("delayed periodic history preserves live arrivals", "[message_list][race]") {
+    Fixture    f;
+    const auto old       = makeMessage("1000.000001", "old");
+    const auto live      = makeMessage("1000.000002", "new");
+    f.stub->_historyPage = {old};
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+    const auto revision = f.session->nextMessageRevision(); // periodic request starts
+    f.stub->_events.fire(EvMessageNew{kConv.id, live});
+    f.stub->_events.fire(EvHeadRefresh{kConv.id, {old}, revision});
+    CHECK(f.session->cachedMessages(kConv.id).size() == 2);
+    const auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 2);
+    CHECK(view.back().ts == live.ts);
+}
+
+TEST_CASE("newer history wins over a delayed initial response", "[message_list][race]") {
+    Fixture f;
+    auto    old           = makeMessage("1000.000001", "old");
+    auto    newer         = makeMessage("1000.000002", "new");
+    f.stub->_historyPage  = {old};
+    f.stub->_deferHistory = true;
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+    const auto revision = f.session->nextMessageRevision();
+    old.text.text       = "edited by newer history";
+    f.stub->_events.fire(EvHeadRefresh{kConv.id, {old, newer}, revision});
+    f.stub->deliverHistory();
+    auto cached = f.session->cachedMessages(kConv.id);
+    REQUIRE(cached.size() == 2);
+    CHECK(cached.front().text.text == old.text.text);
+    const auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 2);
+    CHECK(view.front().text.text == old.text.text);
+    CHECK(view.back().ts == newer.ts);
+}
+
+TEST_CASE("stale history cannot resurrect a deletion from newer history", "[message_list][race]") {
+    Fixture    f;
+    const auto old        = makeMessage("1000.000001", "keep");
+    const auto deleted    = makeMessage("1000.000002", "deleted");
+    f.stub->_historyPage  = {old, deleted};
+    f.stub->_deferHistory = true;
+    bool emptyHead        = false;
+    SECTION("nonempty head, deletion was not loaded locally") {}
+    SECTION("nonempty head, deletion was already cached") {
+        f.session->cacheMessages(kConv.id, {old, deleted});
+    }
+    SECTION("empty newer head") {
+        emptyHead = true;
+    }
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+    const auto                 revision = f.session->nextMessageRevision();
+    const std::vector<Message> head =
+        emptyHead ? std::vector<Message>{} : std::vector<Message>{old};
+    f.stub->_events.fire(EvHeadRefresh{kConv.id, head, revision});
+    f.stub->deliverHistory();
+    CHECK(f.session->cachedMessages(kConv.id).size() == head.size());
+    const auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == head.size());
+    CHECK_FALSE(containsTs(view, deleted.ts));
+}
+
+TEST_CASE("older responses retain scrollback outside the newer head", "[message_list][race]") {
+    Fixture    f;
+    const auto older      = makeMessage("1000.000001", "older page");
+    const auto newer      = makeMessage("1000.000002", "newer head");
+    f.stub->_historyPage  = {older};
+    f.stub->_deferHistory = true;
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+    const auto revision = f.session->nextMessageRevision();
+    f.stub->_events.fire(EvHeadRefresh{kConv.id, {newer}, revision});
+    f.stub->deliverHistory();
+    const auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 2);
+    CHECK(view.front().ts == older.ts);
+    CHECK(view.back().ts == newer.ts);
+}
+
+TEST_CASE("later requests can refresh rows changed by earlier responses", "[message_list][race]") {
+    Fixture f;
+    auto    message      = makeMessage("1000.000001", "original");
+    f.stub->_historyPage = {message};
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+    const auto first  = f.session->nextMessageRevision();
+    const auto second = f.session->nextMessageRevision();
+    message.text.text = "first refresh";
+    f.stub->_events.fire(EvHeadRefresh{kConv.id, {message}, first});
+    message.text.text = "second refresh";
+    f.stub->_events.fire(EvHeadRefresh{kConv.id, {message}, second});
+    const auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 1);
+    CHECK(view.front().text.text == "second refresh");
 }

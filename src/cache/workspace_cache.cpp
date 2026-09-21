@@ -212,7 +212,8 @@ static QJsonObject toJson(const Attachment &a) {
         o["fc"] = a.footerIcon;
     if (a.msgDate > 0)
         o["md"] = QString::number(a.msgDate); // epoch micros; string-encoded like Message::date
-    o["lp"] = a.isLinkPreview;
+    o["lp"]  = a.isLinkPreview;
+    o["lpv"] = 2; // app unfurls now count as previews too
     if (a.imageWidth > 0)
         o["iw"] = a.imageWidth;
     if (a.imageHeight > 0)
@@ -380,8 +381,8 @@ static Message messageFromJson(const QJsonObject &o) {
         // Older caches discarded Slack's unfurl metadata. Only infer a preview
         // when its target is also a link in the message body; a bot attachment
         // with a linked title alone is not enough.
-        if (!obj.contains("lp") && !att.isMsgUnfurl && m.botName.isEmpty() &&
-            (!m.subtype || *m.subtype != QLatin1String("bot_message"))) {
+        if (obj.value("lpv").toInt() < 2 && !att.isLinkPreview && !att.isMsgUnfurl &&
+            m.botName.isEmpty() && (!m.subtype || *m.subtype != QLatin1String("bot_message"))) {
             // Slack reports the unfurl's canonical URL (redirects resolved,
             // tracking params dropped), so compare host+path, not the string.
             const auto linksTo = [&](const QString &url) {

@@ -250,6 +250,11 @@ void MessageListWidget::clear() {
     _olderCursor       = std::nullopt;
     _loadingOlder      = false;
     _items.clear();
+    _latestHeadRevision = 0;
+    _latestHeadOldest   = std::numeric_limits<qint64>::min();
+    _historyMessageRevisions.clear();
+    _liveMessageRevisions.clear();
+    _liveEditRevisions.clear();
     _tops.clear();
     _topsTs.clear();
     _totalH = 0;
@@ -429,21 +434,16 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
     }
 
     // Fetch fresh data from the network; merge it into whatever is already shown.
+    const auto revision = _session->nextMessageRevision();
     _session->backend()->loadHistory(conv, std::nullopt) |
         rpl::on_next(
-            [this, conv, hasCached](MessagePage page) {
+            [this, conv, hasCached, revision](MessagePage page) {
                 if (_currentConv != conv)
                     return;
 
                 _loading = false;
                 _loadingAnim.stop();
                 _olderCursor = page.olderCursor;
-
-                // Always cache the authoritative network result.
-                if (_session) {
-                    std::vector<Message> msgs(page.messages.begin(), page.messages.end());
-                    _session->cacheMessages(conv, msgs);
-                }
 
                 if (hasCached) {
                     // Merge: network data may differ slightly (edits, reactions) but is
@@ -454,7 +454,7 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                     const bool wasAtBottom =
                         verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
                     const bool retarget = _scrollToBottomPending || !_pendingJumpTs.isEmpty();
-                    mergeNetworkMessages(page.messages, /*fromHeadPage=*/true);
+                    mergeNetworkMessages(page.messages, /*fromHeadPage=*/true, revision);
                     if (retarget) {
                         applyPendingScroll();
                         // The network page is authoritative — if the saved or
@@ -469,7 +469,7 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                     }
                 } else {
                     // No cached data was shown — normal first-load path.
-                    appendMessages(page.messages);
+                    mergeNetworkMessages(page.messages, /*fromHeadPage=*/true, revision);
                     emit initialPageLoaded();
                     QTimer::singleShot(0, this, [this, conv] {
                         if (_currentConv != conv)
@@ -480,6 +480,7 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                         _pendingJumpTs.clear();
                     });
                 }
+                cacheMergedPage(page.messages, revision);
                 maybeFillViewport();
             },
             _loadLifetime
@@ -592,8 +593,9 @@ void MessageListWidget::loadOlderMessages() {
     const QString cur  = *_olderCursor;
     _olderCursor       = std::nullopt;
 
-    auto producer = _isThreadMode ? _session->backend()->loadThread(conv, _threadRootTs, cur)
-                                  : _session->backend()->loadHistory(conv, cur);
+    const auto revision = _session->nextMessageRevision();
+    auto       producer = _isThreadMode ? _session->backend()->loadThread(conv, _threadRootTs, cur)
+                                        : _session->backend()->loadHistory(conv, cur);
 
     // A failed history fetch completes the producer with done() but no page (the
     // backend swallows the error). Without a done handler that would leave
@@ -603,7 +605,7 @@ void MessageListWidget::loadOlderMessages() {
     auto gotPage = std::make_shared<bool>(false);
 
     std::move(producer) | rpl::on_next_done(
-                              [this, conv, gotPage](MessagePage page) {
+                              [this, conv, gotPage, revision](MessagePage page) {
                                   *gotPage = true;
                                   if (_currentConv != conv) {
                                       _loadingOlder = false;
@@ -631,7 +633,7 @@ void MessageListWidget::loadOlderMessages() {
                                   const int prevTotalH = _totalH;
                                   // Cursored older page: a middle slice, not the head,
                                   // so deletion reconciliation is capped at its window.
-                                  mergeNetworkMessages(page.messages, /*fromHeadPage=*/false);
+                                  mergeNetworkMessages(page.messages, /*fromHeadPage=*/false, revision);
                                   if (_totalH != prevTotalH)
                                       _scrollAnim.stop();
                                   maybeFillViewport();
@@ -655,6 +657,11 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     _loadLifetime  = rpl::lifetime();
     _eventLifetime = rpl::lifetime();
     _items.clear();
+    _latestHeadRevision = 0;
+    _latestHeadOldest   = std::numeric_limits<qint64>::min();
+    _historyMessageRevisions.clear();
+    _liveMessageRevisions.clear();
+    _liveEditRevisions.clear();
     _tops.clear();
     _totalH          = 0;
     _hoveredRow      = -1;
@@ -705,9 +712,10 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     _session->aiTranscriptChanged() |
         rpl::on_next([this](QString fileId) { onAiTranscript(fileId); }, _eventLifetime);
 
+    const auto revision = _session->nextMessageRevision();
     _session->backend()->loadThread(conv, rootTs, std::nullopt) |
         rpl::on_next(
-            [this](MessagePage page) {
+            [this, revision](MessagePage page) {
                 _loading = false;
                 _loadingAnim.stop();
                 _olderCursor = page.olderCursor;
@@ -717,7 +725,7 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
                 // Threads-feed poll from ever re-delivering these as new.
                 if (!page.messages.empty())
                     _session->markThreadRead(_currentConv, _threadRootTs, page.messages.back().ts);
-                appendMessages(page.messages);
+                mergeNetworkMessages(page.messages, /*fromHeadPage=*/false, revision);
                 QTimer::singleShot(0, this, [this] {
                     applyPendingScroll();
                     _pendingJumpTs.clear(); // the replies page is the whole thread
@@ -818,53 +826,41 @@ void MessageListWidget::collapseInlineThread(const Ts &rootTs) {
 }
 
 void MessageListWidget::mergeNetworkMessages(
-    const std::vector<Message> &incoming, bool fromHeadPage
+    const std::vector<Message> &incoming, bool fromHeadPage, quint64 requestRevision
 ) {
-    // Build ts → index map for the items already displayed.
-    QHash<QString, int> tsIdx;
-    tsIdx.reserve(static_cast<int>(_items.size()));
-    for (int i = 0; i < static_cast<int>(_items.size()); ++i)
-        tsIdx[_items[i].msg.ts] = i;
-
-    bool                 changed = false;
-    std::vector<Message> toInsert;
-
+    // Unknown request order must never be treated as newer than all live data.
+    if (!requestRevision)
+        return;
+    const auto newerHistory = [this, requestRevision](const Message &message) {
+        return _historyMessageRevisions.value(message.ts) > requestRevision ||
+               (_latestHeadRevision > requestRevision && message.date >= _latestHeadOldest);
+    };
+    bool changed = false;
     for (const auto &msg : incoming) {
-        const auto it = tsIdx.constFind(msg.ts);
-        if (it != tsIdx.constEnd()) {
-            auto &item = _items[*it];
-            if (item.msg != msg) {
-                item.msg = msg;
-                if (_session)
-                    _session->applyAiTranscripts(item.msg);
-                item.textDoc.reset();
-                item.docWidth = 0;
-                item.attachDocs.clear();
-                item.fileImgsRequested = false;
-                item.fileImgBaseH      = -1; // files may differ
-                changed                = true;
+        const int existing = findByTs(msg.ts);
+        // Keep edits/deletions received after this fetch began. A new-message
+        // event may be sparse, so history can still enrich its thread metadata.
+        if (newerHistory(msg) || _liveEditRevisions.value(msg.ts) > requestRevision ||
+            (existing < 0 && _liveMessageRevisions.value(msg.ts) > requestRevision))
+            continue;
+        Message merged = msg;
+        if (existing >= 0 && _liveMessageRevisions.value(msg.ts) > requestRevision) {
+            const auto &live = _items[existing].msg;
+            if (live.replyCount > merged.replyCount) {
+                merged.replyCount  = live.replyCount;
+                merged.replyUsers  = live.replyUsers;
+                merged.latestReply = live.latestReply;
             }
-        } else {
-            toInsert.push_back(msg);
+        }
+        if (existing < 0 || _items[existing].msg != merged) {
+            appendMessageDeferred(merged); // upsert also deduplicates within a page
             changed = true;
         }
+        _historyMessageRevisions[msg.ts] = requestRevision;
     }
-
-    for (const auto &msg : toInsert) {
-        const qint64 ts       = msg.date;
-        int          insertAt = static_cast<int>(_items.size());
-        for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
-            if (_items[i].msg.date > ts) {
-                insertAt = i;
-                break;
-            }
-        }
-        MessageItem item;
-        item.msg = msg;
-        if (_session)
-            _session->applyAiTranscripts(item.msg);
-        _items.insert(_items.begin() + insertAt, std::move(item));
-    }
+    std::stable_sort(_items.begin(), _items.end(), [](const MessageItem &a, const MessageItem &b) {
+        return a.msg.date < b.msg.date;
+    });
 
     // Reconcile deletions. A message deleted from another client won't appear in
     // this authoritative page, yet it's still sitting in our list (pre-populated
@@ -902,15 +898,22 @@ void MessageListWidget::mergeNetworkMessages(
         bool         removed = false;
         for (int i = static_cast<int>(_items.size()) - 1; i >= 0; --i) {
             const auto &m = _items[i].msg;
+            if (newerHistory(m) || _liveMessageRevisions.value(m.ts) > requestRevision)
+                continue; // received after the history snapshot was requested
             if (m.pending)
                 continue; // optimistic send not yet on the server
             if (m.date < lower || m.date > upper)
                 continue; // below this page, or above a non-head page's window
             if (incomingTs.contains(m.ts))
-                continue; // still on the server
+                continue;                                     // still on the server
+            _historyMessageRevisions[m.ts] = requestRevision; // deletion tombstone
             _items.erase(_items.begin() + i);
             removed = true;
             changed = true;
+        }
+        if (fromHeadPage && requestRevision > _latestHeadRevision) {
+            _latestHeadRevision = requestRevision;
+            _latestHeadOldest   = lower;
         }
         if (removed) {
             // Row indices shifted — drop hover state; the next mouse move
@@ -941,7 +944,11 @@ void MessageListWidget::appendMessageDeferred(const Message &msg) {
     item.msg = msg;
     if (_session)
         _session->applyAiTranscripts(item.msg);
-    _items.push_back(std::move(item));
+    const int existing = findByTs(msg.ts);
+    if (existing >= 0)
+        _items[existing] = std::move(item);
+    else
+        _items.push_back(std::move(item));
 }
 
 void MessageListWidget::appendMessage(const Message &msg) {
@@ -4057,6 +4064,32 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
 // ── Live event handling ───────────────────────────────────────────────────────
 
 void MessageListWidget::handleEvent(const Event &e) {
+    const auto record = [this](const ConversationId &conv, const Ts &ts, bool edit) {
+        if (conv != _currentConv)
+            return;
+        const auto revision       = _session->nextMessageRevision();
+        _liveMessageRevisions[ts] = revision;
+        if (edit)
+            _liveEditRevisions[ts] = revision;
+    };
+    if (const auto *ev = std::get_if<EvMessageNew>(&e)) {
+        record(ev->conv, ev->msg.ts, false);
+        if (ev->msg.threadRoot && !ev->msg.pending && findByTs(*ev->msg.threadRoot) >= 0)
+            record(ev->conv, *ev->msg.threadRoot, true);
+    } else if (const auto *ev = std::get_if<EvMessageChanged>(&e)) {
+        if (findByTs(ev->msg.ts) >= 0)
+            record(ev->conv, ev->msg.ts, true);
+    } else if (const auto *ev = std::get_if<EvMessageDeleted>(&e)) {
+        record(ev->conv, ev->ts, true);
+        if (ev->threadRoot && findByTs(*ev->threadRoot) >= 0)
+            record(ev->conv, *ev->threadRoot, true);
+    } else if (const auto *ev = std::get_if<EvReactionAdded>(&e)) {
+        if (findByTs(ev->ts) >= 0)
+            record(ev->conv, ev->ts, true);
+    } else if (const auto *ev = std::get_if<EvReactionRemoved>(&e)) {
+        if (findByTs(ev->ts) >= 0)
+            record(ev->conv, ev->ts, true);
+    }
     const bool wasAtBottom = verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
 
     if (auto *ev = std::get_if<EvMessageNew>(&e)) {
@@ -4267,7 +4300,7 @@ void MessageListWidget::handleEvent(const Event &e) {
         if (_isThreadMode)
             refreshOpenThread(ev->conv, ev->messages);
         else
-            mergeHeadPage(ev->conv, ev->messages);
+            mergeHeadPage(ev->conv, ev->messages, true, ev->requestRevision);
     } else if (std::get_if<EvRealtimeReconnected>(&e)) {
         backfillAfterReconnect();
     }
@@ -4293,16 +4326,19 @@ void MessageListWidget::backfillAfterReconnect() {
     _lastReconnectBackfillMs = now;
     const auto conv          = _currentConv;
     const bool threadMode    = _isThreadMode;
+    const auto revision      = _session->nextMessageRevision();
     auto producer = threadMode ? _session->backend()->loadThread(conv, _threadRootTs, std::nullopt)
                                : _session->backend()->loadHistory(conv, std::nullopt);
     std::move(producer) |
         rpl::on_next(
-            [this, conv, threadMode](MessagePage page) {
+            [this, conv, threadMode, revision](MessagePage page) {
                 // (mergeNetworkMessages dedups by ts, so racing the initial open
                 // load can't produce twins.) mergeHeadPage guards _currentConv.
                 // A no-cursor loadHistory page IS the channel head; a thread page
                 // is authoritative only when it came back whole.
-                mergeHeadPage(conv, page.messages, !threadMode || threadPageIsComplete(page));
+                mergeHeadPage(
+                    conv, page.messages, !threadMode || threadPageIsComplete(page), revision
+                );
             },
             _eventLifetime
         );
@@ -4342,21 +4378,45 @@ void MessageListWidget::refreshOpenThread(
             return;
         break;
     }
-    const auto root = _threadRootTs;
+    const auto root     = _threadRootTs;
+    const auto revision = _session->nextMessageRevision();
     _session->backend()->loadThread(conv, root, std::nullopt) |
         rpl::on_next(
-            [this, conv = conv, root](MessagePage page) {
+            [this, conv = conv, root, revision](MessagePage page) {
                 // Thread could have been closed or swapped mid-flight.
                 if (!_isThreadMode || _threadRootTs != root)
                     return;
-                mergeHeadPage(conv, page.messages, threadPageIsComplete(page));
+                mergeHeadPage(conv, page.messages, threadPageIsComplete(page), revision);
             },
             _eventLifetime
         );
 }
 
+void MessageListWidget::cacheMergedPage(
+    const std::vector<Message> &incoming, quint64 requestRevision
+) {
+    // Cache the fetched page plus concurrent live arrivals, using reconciled
+    // rows so stale network data cannot resurrect a deletion on the next open.
+    // Keep paginated scrollback out of this head cache (saved on leaving).
+    if (!_session || _isThreadMode || !requestRevision || requestRevision < _latestHeadRevision)
+        return;
+    QSet<Ts> ids;
+    for (const auto &message : incoming)
+        ids.insert(message.ts);
+    std::vector<Message> messages;
+    for (const auto &item : _items)
+        if (ids.contains(item.msg.ts) ||
+            _liveMessageRevisions.value(item.msg.ts) > requestRevision ||
+            _historyMessageRevisions.value(item.msg.ts) > requestRevision)
+            messages.push_back(item.msg);
+    _session->cacheMessages(_currentConv, messages);
+}
+
 void MessageListWidget::mergeHeadPage(
-    const ConversationId &conv, const std::vector<Message> &messages, bool authoritative
+    const ConversationId       &conv,
+    const std::vector<Message> &messages,
+    bool                        authoritative,
+    quint64                     requestRevision
 ) {
     // Conversation changed out from under an in-flight fetch. (Channel history and
     // thread replies must never be merged into each other's view; that's the
@@ -4366,14 +4426,8 @@ void MessageListWidget::mergeHeadPage(
     const bool wasAtBottom = verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
     // A no-cursor (head) fetch is authoritative for the head, so it also
     // reconciles deletions missed during the socket gap.
-    mergeNetworkMessages(messages, /*fromHeadPage=*/authoritative);
-    // Channel head only: cacheMessages REPLACES the conversation's cached page, so
-    // writing a thread's replies under the same key would clobber the channel's
-    // history with them — the channel would reopen showing nothing but replies.
-    if (_session && !_isThreadMode) {
-        std::vector<Message> msgs(messages.begin(), messages.end());
-        _session->cacheMessages(conv, msgs);
-    }
+    mergeNetworkMessages(messages, /*fromHeadPage=*/authoritative, requestRevision);
+    cacheMergedPage(messages, requestRevision);
     // Reveal anything that landed during the gap, but only if the user was already
     // pinned to the bottom (don't yank them out of scrollback they're reading).
     if (wasAtBottom)

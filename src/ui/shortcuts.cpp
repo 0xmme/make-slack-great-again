@@ -34,6 +34,12 @@ constexpr Qt::KeyboardModifiers kRelevantMods =
 // Never write "Meta" meaning "the platform's command key": on macOS that is the
 // *physical Control* key.
 const std::vector<ShortcutDef> kDefs = {
+    {Shortcut::OpenSettings,
+     ShortcutScope::Window,
+     "Ctrl+,",
+     kNoStd,
+     QT_TRANSLATE_NOOP("Ui::Shortcuts", "Open settings"),
+     true},
     {Shortcut::QuickSwitch,
      ShortcutScope::Window,
      "Ctrl+K",

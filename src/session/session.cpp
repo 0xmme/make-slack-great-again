@@ -852,9 +852,10 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground, Ts
             lastKnown = c->latestTs;
     const bool priming = lastKnown.isEmpty();
 
+    const auto requestRevision = nextMessageRevision();
     _backend->loadHistory(conv, std::nullopt) |
         rpl::on_next(
-            [this, conv, lastKnown, foreground, priming](MessagePage page) {
+            [this, conv, lastKnown, foreground, priming, requestRevision](MessagePage page) {
                 // Bail if intent changed while the fetch was in flight: a
                 // foreground poll is stale once the open conversation moves on;
                 // a background poll yields only if THIS exact conversation
@@ -863,6 +864,11 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground, Ts
                 // don't affect a background poll targeting a different one.
                 if (foreground ? (_openConv != conv) : (_openConv == conv))
                     return;
+                // A slower old poll must not roll back the baseline/snapshot or
+                // emit stale synthetic deletes after a newer poll completed.
+                if (requestRevision < _completedHistoryPolls.value(conv.value))
+                    return;
+                _completedHistoryPolls[conv.value] = requestRevision;
                 // Advance our baseline to the head's newest ts: everything up to
                 // here has now been scanned (injected below, or already known).
                 // messages are oldest-first, so back() is newest.
@@ -935,7 +941,7 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground, Ts
                 // the open chat, the only conversation with rows on screen. Skip an
                 // empty page — with no baseline it would look like "all deleted".
                 if (foreground && !page.messages.empty())
-                    _eventHub.fire(EvHeadRefresh{conv, std::move(page.messages)});
+                    _eventHub.fire(EvHeadRefresh{conv, std::move(page.messages), requestRevision});
 
                 // The realtime stream dropped a message it should have pushed:
                 // the subscription is compromised. Re-establish the socket so

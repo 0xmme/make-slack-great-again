@@ -158,10 +158,17 @@ struct StubBackend : Backend {
     int                        loadHistoryCalls = 0;
     ConversationId             lastHistoryConv;
     QList<QString>             historyConvIds; // every conversation fetched, in order
+    bool                       deferHistory = false;
+    std::vector<std::shared_ptr<rpl::event_stream<MessagePage>>> historyRequests;
     rpl::producer<MessagePage> loadHistory(ConversationId c, std::optional<QString>) override {
         ++loadHistoryCalls;
         lastHistoryConv = c;
         historyConvIds.append(c.value);
+        if (deferHistory) {
+            auto request = std::make_shared<rpl::event_stream<MessagePage>>();
+            historyRequests.push_back(request);
+            return request->events();
+        }
         return rpl::variable<MessagePage>(MessagePage{historyPage, std::nullopt}).value();
     }
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
@@ -4002,6 +4009,8 @@ TEST_CASE_METHOD(
         if (auto *r = std::get_if<EvHeadRefresh>(&e); r && r->conv == conv)
             refresh = r;
     REQUIRE(refresh != nullptr);
+    CHECK(refresh->requestRevision > 0);
+    CHECK(refresh->requestRevision < session->nextMessageRevision());
     bool carriesGap = false;
     for (const auto &m : refresh->messages)
         if (m.ts == gap.ts)
@@ -5392,4 +5401,37 @@ TEST_CASE_METHOD(
     session->applyAiTranscripts(again);
     CHECK(again.files[0].transcriptPreview == "Тест, раз, два, три.");
     CHECK(again.files[1].transcriptBy == "OpenAI");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "stale safety poll cannot delete newer poll results", "[session][events][race]"
+) {
+    const ConversationId conv{"C1"};
+    const auto           first  = pollMsg("1000.000001");
+    const auto           second = pollMsg("1000.000002");
+    session->setReading(conv);
+    stub->fireEvent(EvMessageNew{conv, first});
+    // Prime the head snapshot and the background rotation's throttle first.
+    stub->historyPage = {first};
+    session->runRealtimeHealthCheckForTest();
+    stub->deferHistory = true;
+    auto [events, lt]  = collectEvents();
+    session->runRealtimeHealthCheckForTest();
+    session->runRealtimeHealthCheckForTest();
+    REQUIRE(stub->historyRequests.size() == 2);
+    const auto afterRequests = session->nextMessageRevision();
+    stub->historyRequests[1]->fire(MessagePage{{first, second}, std::nullopt});
+    stub->historyRequests[0]->fire(MessagePage{{first}, std::nullopt});
+    int refreshes = 0;
+    for (const auto &event : events) {
+        if (const auto *refresh = std::get_if<EvHeadRefresh>(&event)) {
+            ++refreshes;
+            CHECK(refresh->requestRevision > 0);
+            CHECK(refresh->requestRevision < afterRequests);
+            CHECK(refresh->messages.size() == 2);
+        }
+        if (const auto *deleted = std::get_if<EvMessageDeleted>(&event))
+            CHECK(deleted->ts != second.ts);
+    }
+    CHECK(refreshes == 1);
 }

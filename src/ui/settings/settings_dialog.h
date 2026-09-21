@@ -63,6 +63,8 @@ public:
 
     // Which sample notification the "Test" button fires; the int carried by
     // testNotificationRequested is one of these.
+    void setNotificationTestResult(const QString &text);
+
     enum class SampleNotif { Dm = 0, Channel = 1, Huddle = 2 };
 
 signals:
@@ -194,7 +196,8 @@ private:
     QCheckBox                *_showAgentsApps   = nullptr;
     QCheckBox                *_unreadsOnly      = nullptr;
     QCheckBox                *_ctrlEnterSends   = nullptr;
-    QCheckBox                *_showLinkPreviews = nullptr;
+    QLabel                   *_notificationTestResult = nullptr;
+    QCheckBox                *_showLinkPreviews       = nullptr;
     QList<ThemePreviewCard *> _themeCards; // every preset + custom: light row then dark row
     QWidget                  *_customSection = nullptr; // heading + editor; shown when custom
     CustomThemeEditor        *_customEditor  = nullptr;

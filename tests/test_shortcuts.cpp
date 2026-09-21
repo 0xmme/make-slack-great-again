@@ -322,3 +322,8 @@ TEST_CASE("Shortcuts: UndoSend is Ctrl/Cmd+Z in the composer", "[shortcuts][undo
     const QKeyEvent ctrlZ(QEvent::KeyPress, Qt::Key_Z, Qt::ControlModifier);
     CHECK(Shortcuts::matches(Shortcut::UndoSend, &ctrlZ));
 }
+
+TEST_CASE("settings uses the platform command-comma binding", "[shortcuts]") {
+    CHECK(Shortcuts::sequence(Shortcut::OpenSettings) == QKeySequence("Ctrl+,"));
+    CHECK(Shortcuts::def(Shortcut::OpenSettings).scope == ShortcutScope::Window);
+}
