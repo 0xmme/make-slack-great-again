@@ -123,7 +123,11 @@ struct StubBackend : Backend {
         ++loadConversationsCalls;
         return _convs.value();
     }
-    rpl::producer<std::vector<User>> loadUsers() override { return _users.value(); }
+    int                              loadUsersCalls = 0; // snapshot (users.list) requests
+    rpl::producer<std::vector<User>> loadUsers() override {
+        ++loadUsersCalls;
+        return _users.value();
+    }
 
     int                 loadPresenceCalls = 0; // times loadPresence was actually invoked
     UserId              lastPresenceUser;      // user id of the most recent loadPresence call
@@ -526,11 +530,21 @@ struct StubBackend : Backend {
     }
 
     // users.info fixtures for the missing-DM-peer resolver; missing id = error
-    // (producer completes empty, like the real backend on failure).
+    // (producer completes empty, like the real backend on failure). The
+    // background variant (the Session's off-roster re-probe) is recorded apart
+    // so a test can assert which lane a fetch took.
     QHash<QString, User> userInfoResults;
     QList<QString>       userInfoRequested;
+    QList<QString>       userInfoBackgroundRequested;
     rpl::producer<User>  loadUser(UserId id) override {
         userInfoRequested.append(id.value);
+        return userInfoProducer(id);
+    }
+    rpl::producer<User> loadUserBackground(UserId id) override {
+        userInfoBackgroundRequested.append(id.value);
+        return userInfoProducer(id);
+    }
+    rpl::producer<User> userInfoProducer(UserId id) {
         const auto it = userInfoResults.constFind(id.value);
         if (it == userInfoResults.constEnd())
             return [](auto consumer) {
@@ -5434,4 +5448,254 @@ TEST_CASE_METHOD(
             CHECK(deleted->ts != second.ts);
     }
     CHECK(refreshes == 1);
+}
+
+// ── Daily roster refresh + off-roster re-probe ───────────────────────────────
+
+namespace {
+// A Slack Connect peer users.list never lists, resolved via users.info.
+User extUser(int i, const QString &suffix = {}) {
+    return User{
+        .id          = UserId{QStringLiteral("W0EXT%1").arg(i)},
+        .name        = QStringLiteral("ext%1").arg(i),
+        .displayName = QStringLiteral("External %1%2").arg(i).arg(suffix),
+        .avatarUrl   = QStringLiteral("https://avatars.example/ext%1_72.png").arg(i),
+    };
+}
+QString wipeSessionCache(const QString &teamId) {
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+    return baseDir;
+}
+} // namespace
+
+// The snapshot is re-fetched on the health tick only once the daily gap has
+// elapsed (measured from the load start() issued), stamped at request time so
+// a tick right after doesn't fetch again — and never for a backend without the
+// capability. This is the "no flood on launch" guarantee: launch = one fetch.
+TEST_CASE(
+    "roster refresh: health tick re-fetches users.list once per daily gap", "[session][roster]"
+) {
+    const QString teamId  = "T_SESSION_ROSTER_TICK";
+    const QString baseDir = wipeSessionCache(teamId);
+
+    auto  backend            = std::make_unique<StubBackend>();
+    auto *stub               = backend.get();
+    stub->_meId              = UserId{"U1"};
+    stub->_users             = std::vector<User>{kAlice};
+    stub->caps.rosterRefresh = true;
+
+    Session session(std::move(backend), teamId);
+    session.start();
+    CHECK(stub->loadUsersCalls == 1);
+
+    // Ticks inside the gap: nothing.
+    session.runRealtimeHealthCheckForTest();
+    session.runRealtimeHealthCheckForTest();
+    CHECK(stub->loadUsersCalls == 1);
+
+    // Gap elapsed: exactly one re-fetch, and the very next tick is quiet again.
+    session.resetUsersRefreshGapForTest();
+    session.runRealtimeHealthCheckForTest();
+    CHECK(stub->loadUsersCalls == 2);
+    session.runRealtimeHealthCheckForTest();
+    CHECK(stub->loadUsersCalls == 2);
+
+    // A backend whose snapshot has side effects (Teams) or is local (IMAP) is
+    // never re-fetched, however long the session runs.
+    stub->caps.rosterRefresh = false;
+    session.resetUsersRefreshGapForTest();
+    session.runRealtimeHealthCheckForTest();
+    CHECK(stub->loadUsersCalls == 2);
+
+    QDir(baseDir).removeRecursively();
+}
+
+// A refreshed snapshot renames a member in place, keeps the users.info-only
+// peer the snapshot omits (tracked as off-roster), and an unchanged snapshot
+// re-emits users() to nobody.
+TEST_CASE(
+    "roster refresh: merges renames, retains off-roster peers, silent when unchanged",
+    "[session][roster]"
+) {
+    const QString teamId  = "T_SESSION_ROSTER_MERGE";
+    const QString baseDir = wipeSessionCache(teamId);
+
+    auto  backend                   = std::make_unique<StubBackend>();
+    auto *stub                      = backend.get();
+    stub->_meId                     = UserId{"U1"};
+    stub->_users                    = std::vector<User>{kAlice};
+    stub->caps.rosterRefresh        = true;
+    stub->userInfoResults["W0EXT1"] = extUser(1);
+
+    Session session(std::move(backend), teamId);
+    session.start();
+    session.fetchUserIfNeeded(UserId{"W0EXT1"});
+    REQUIRE(session.findUser(UserId{"W0EXT1"}) != nullptr);
+    CHECK(session.offRosterUserIdsForTest() == QSet<QString>{"W0EXT1"});
+
+    int           emissions = 0;
+    rpl::lifetime lt;
+    session.users() | rpl::on_next([&](const std::vector<User> &) { ++emissions; }, lt);
+    emissions = 0; // users() replays the current value on subscribe
+
+    // Identical snapshot → merge finds nothing new → no roster re-emission.
+    session.refreshUsersForTest();
+    CHECK(stub->loadUsersCalls == 2);
+    CHECK(emissions == 0);
+    CHECK(session.findUser(UserId{"W0EXT1"}) != nullptr);
+
+    // Renamed member → one emission, rename applied, off-roster peer retained,
+    // live presence preserved across the refresh.
+    stub->fireEvent(EvPresenceChanged{UserId{"U1"}, true});
+    User renamed        = kAlice;
+    renamed.displayName = "Alice Liddell";
+    renamed.avatarUrl   = "https://av/alice_new.png";
+    stub->_users        = std::vector<User>{renamed};
+    CHECK(emissions == 1);
+    const User *alice = session.findUser(UserId{"U1"});
+    REQUIRE(alice != nullptr);
+    CHECK(alice->displayName == "Alice Liddell");
+    CHECK(alice->avatarUrl == "https://av/alice_new.png");
+    CHECK(alice->isActive);
+    CHECK(session.findUser(UserId{"W0EXT1"}) != nullptr);
+    CHECK(session.offRosterUserIdsForTest() == QSet<QString>{"W0EXT1"});
+
+    QDir(baseDir).removeRecursively();
+}
+
+// Off-roster users carry a persisted probe stamp. A pass re-fetches only the
+// ones due (a day+ old), oldest first, at most 20 per pass, on the BACKGROUND
+// lane; stamps move at request time, so the next pass takes the remainder and
+// the one after that finds nothing. Persistence: the stamps survive the session.
+TEST_CASE(
+    "off-roster re-probe: capped, oldest first, paced lane, stamped at request", "[session][roster]"
+) {
+    const QString teamId  = "T_SESSION_ROSTER_PROBE";
+    const QString baseDir = wipeSessionCache(teamId);
+
+    // 25 off-roster peers cached from earlier runs, probed at distinct ancient
+    // times (ext1 the longest ago), plus one probed just now.
+    std::vector<User>      cached{kAlice};
+    QHash<QString, qint64> stamps;
+    for (int i = 1; i <= 25; ++i) {
+        cached.push_back(extUser(i));
+        stamps.insert(QStringLiteral("W0EXT%1").arg(i), qint64(i) * 1000);
+    }
+    cached.push_back(extUser(99));
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    stamps.insert("W0EXT99", now);
+    {
+        WorkspaceCache cache(teamId);
+        cache.saveUsers(cached);
+        cache.saveUserProbeTimes(stamps);
+    }
+
+    auto  backend            = std::make_unique<StubBackend>();
+    auto *stub               = backend.get();
+    stub->_meId              = UserId{"U1"};
+    stub->_users             = std::vector<User>{kAlice}; // the peers stay unlisted
+    stub->caps.rosterRefresh = true;
+    for (int i = 1; i <= 25; ++i)
+        stub->userInfoResults[QStringLiteral("W0EXT%1").arg(i)] = extUser(i, " (renamed)");
+
+    {
+        Session session(std::move(backend), teamId);
+        session.start();
+        REQUIRE(session.offRosterUserIdsForTest().size() == 26);
+        // Nothing is probed on its own at start: the pass sits behind a settle
+        // delay far longer than this test.
+        CHECK(stub->userInfoBackgroundRequested.isEmpty());
+        CHECK(stub->userInfoRequested.isEmpty());
+
+        // Pass 1: the 20 oldest, background lane only.
+        session.reprobeOffRosterUsersForTest();
+        REQUIRE(stub->userInfoBackgroundRequested.size() == 20);
+        CHECK(stub->userInfoRequested.isEmpty());
+        for (int i = 1; i <= 20; ++i)
+            CHECK(stub->userInfoBackgroundRequested.contains(QStringLiteral("W0EXT%1").arg(i)));
+        CHECK_FALSE(stub->userInfoBackgroundRequested.contains("W0EXT21"));
+        CHECK_FALSE(stub->userInfoBackgroundRequested.contains("W0EXT99"));
+        const User *ext1 = session.findUser(UserId{"W0EXT1"});
+        REQUIRE(ext1 != nullptr);
+        CHECK(ext1->displayName == "External 1 (renamed)");
+        const User *ext21 = session.findUser(UserId{"W0EXT21"});
+        REQUIRE(ext21 != nullptr);
+        CHECK(ext21->displayName == "External 21"); // not yet
+
+        // Pass 2: the remaining 5. Pass 3: nothing is due.
+        session.reprobeOffRosterUsersForTest();
+        CHECK(stub->userInfoBackgroundRequested.size() == 25);
+        for (int i = 21; i <= 25; ++i)
+            CHECK(stub->userInfoBackgroundRequested.contains(QStringLiteral("W0EXT%1").arg(i)));
+        session.reprobeOffRosterUsersForTest();
+        CHECK(stub->userInfoBackgroundRequested.size() == 25);
+        // Session teardown flushes the debounced stamp save.
+    }
+
+    const auto saved = WorkspaceCache(teamId).loadUserProbeTimes();
+    CHECK(saved.size() == 26);
+    for (int i = 1; i <= 25; ++i)
+        CHECK(saved.value(QStringLiteral("W0EXT%1").arg(i)) >= now);
+    CHECK(saved.value("W0EXT99") == now);
+
+    QDir(baseDir).removeRecursively();
+}
+
+// Fixed system accounts never change and are skipped; a peer that rejoins the
+// snapshot stops being off-roster and its stamp is pruned; an EMPTY snapshot
+// classifies nobody (it would otherwise hand the whole cached roster to the
+// re-probe).
+TEST_CASE(
+    "off-roster re-probe: skips synthetic accounts, prunes rejoined peers, ignores empty snapshots",
+    "[session][roster]"
+) {
+    const QString teamId  = "T_SESSION_ROSTER_PRUNE";
+    const QString baseDir = wipeSessionCache(teamId);
+
+    const User slackUser{
+        .id          = UserId{"USLACK"},
+        .name        = "slack",
+        .displayName = "Slack",
+        .avatarUrl   = "https://a/s.svg"
+    };
+    {
+        WorkspaceCache cache(teamId);
+        cache.saveUsers({kAlice, extUser(1), extUser(2), slackUser});
+        cache.saveUserProbeTimes({{"W0EXT1", 1000}, {"W0EXT2", 2000}, {"USLACK", 0}});
+    }
+
+    auto  backend                   = std::make_unique<StubBackend>();
+    auto *stub                      = backend.get();
+    stub->_meId                     = UserId{"U1"};
+    stub->caps.rosterRefresh        = true;
+    stub->userInfoResults["W0EXT1"] = extUser(1, " (renamed)");
+    stub->userInfoResults["USLACK"] = slackUser;
+
+    Session session(std::move(backend), teamId);
+    session.start(); // the stub's snapshot is EMPTY here
+    CHECK(session.offRosterUserIdsForTest().isEmpty());
+    session.reprobeOffRosterUsersForTest();
+    CHECK(stub->userInfoBackgroundRequested.isEmpty());
+
+    // A real snapshot arrives: ext2 turns out to be listed after all.
+    stub->_users = std::vector<User>{kAlice, extUser(2)};
+    CHECK(session.offRosterUserIdsForTest() == QSet<QString>{"W0EXT1", "USLACK"});
+
+    session.reprobeOffRosterUsersForTest();
+    CHECK(stub->userInfoBackgroundRequested == QList<QString>{"W0EXT1"});
+    QCoreApplication::processEvents();
+
+    // The pruned stamp is gone from disk once the debounced save lands; USLACK
+    // keeps its (never-used) stamp, ext1 got a fresh one.
+    QEventLoop loop;
+    QTimer::singleShot(1200, &loop, &QEventLoop::quit);
+    loop.exec();
+    const auto saved = WorkspaceCache(teamId).loadUserProbeTimes();
+    CHECK_FALSE(saved.contains("W0EXT2"));
+    CHECK(saved.contains("USLACK"));
+    CHECK(saved.value("W0EXT1") > 1000);
+
+    QDir(baseDir).removeRecursively();
 }

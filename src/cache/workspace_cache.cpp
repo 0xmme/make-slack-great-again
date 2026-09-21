@@ -837,6 +837,22 @@ QStringList WorkspaceCache::loadDeadConvIds() const {
     return out;
 }
 
+void WorkspaceCache::saveUserProbeTimes(const QHash<QString, qint64> &byUserId) {
+    QJsonObject o;
+    for (auto it = byUserId.constBegin(); it != byUserId.constEnd(); ++it)
+        o[it.key()] = QJsonValue(qint64(it.value()));
+    metaObject()["userProbeTimes"] = o;
+    writeMeta();
+}
+
+QHash<QString, qint64> WorkspaceCache::loadUserProbeTimes() const {
+    QHash<QString, qint64> out;
+    const QJsonObject      o = metaObject().value("userProbeTimes").toObject();
+    for (auto it = o.constBegin(); it != o.constEnd(); ++it)
+        out.insert(it.key(), it.value().toVariant().toLongLong());
+    return out;
+}
+
 void WorkspaceCache::saveEmojiMap(const QHash<QString, QString> &map) {
     QJsonObject o;
     for (auto it = map.constBegin(); it != map.constEnd(); ++it)

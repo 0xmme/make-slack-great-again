@@ -71,6 +71,7 @@ public:
     rpl::producer<SelfPresence>              loadSelfPresence() override;
     rpl::producer<User>                      loadBotInfo(UserId botId) override;
     rpl::producer<User>                      loadUser(UserId userId) override;
+    rpl::producer<User>                      loadUserBackground(UserId userId) override;
     rpl::producer<Conversation> loadConversationInfo(ConversationId, bool background) override;
     rpl::producer<std::vector<ConvCounts>> loadUnreadCounts() override;
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString> cursor) override;
@@ -270,6 +271,7 @@ protected:
 
 private:
     rpl::producer<bool> loadPresenceImpl(UserId userId, bool background);
+    rpl::producer<User> loadUserImpl(UserId userId, bool background);
     void                setupTokenRefresh(const Credentials &creds, const AppConfig &appCfg);
     // Repoint every Web API client at `base` (the workspace's own /api/ host).
     void                applyApiBase(const QString &base);

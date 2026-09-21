@@ -86,6 +86,13 @@ public:
     void        saveDeadConvIds(const QStringList &ids);
     QStringList loadDeadConvIds() const;
 
+    // When each off-roster user (known only via users.info, never listed by
+    // users.list) was last re-fetched: user id → Unix ms. Persisted so a
+    // restart neither re-probes everyone at once nor forgets who is due; the
+    // Session prunes ids no longer off-roster before saving.
+    void                   saveUserProbeTimes(const QHash<QString, qint64> &byUserId);
+    QHash<QString, qint64> loadUserProbeTimes() const;
+
     // Persist/retrieve raw downloaded thumbnail bytes, keyed by URL.
     // The URL is hashed to a safe filename. The blob's mtime doubles as its
     // last-used time (loadImage bumps it) so CacheEvictor can drop the least

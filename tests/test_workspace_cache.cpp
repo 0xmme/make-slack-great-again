@@ -610,3 +610,17 @@ TEST_CASE_METHOD(CacheFixture, "AI transcripts round-trip by file id", "[cache][
     CHECK(cache.loadAiTranscripts().size() == 2);
     CHECK(cache.loadFollowedThreads() == QStringList{"C1\t1.0"});
 }
+
+TEST_CASE_METHOD(CacheFixture, "user probe times round-trip", "[cache][user]") {
+    CHECK(cache.loadUserProbeTimes().isEmpty());
+    const qint64 big = 1'790'000'000'000; // a 2026 Unix-ms stamp: must not truncate to int
+    cache.saveUserProbeTimes({{"W0EXT1", big}, {"USLACK", 0}});
+    const auto out = cache.loadUserProbeTimes();
+    CHECK(out.size() == 2);
+    CHECK(out.value("W0EXT1") == big);
+    CHECK(out.value("USLACK") == 0);
+    // Lives in meta.json next to the other small blobs without clobbering them.
+    cache.saveDeadConvIds({"C_DEAD"});
+    CHECK(cache.loadUserProbeTimes().size() == 2);
+    CHECK(cache.loadDeadConvIds() == QStringList{"C_DEAD"});
+}

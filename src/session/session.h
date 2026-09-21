@@ -487,6 +487,15 @@ public:
     // checkRealtimeHealth).
     void pollDmPresenceForTest() { pollDmPresence(); }
 
+    // Test hooks for the daily roster refresh (see loadUsersFromBackend /
+    // reprobeOffRosterUsers): re-fetch the snapshot now; make the next health
+    // tick treat the daily gap as elapsed; run one off-roster re-probe pass now
+    // (bypassing its settle delay); the ids currently known only via users.info.
+    void          refreshUsersForTest() { loadUsersFromBackend(/*startup=*/false); }
+    void          resetUsersRefreshGapForTest() { _lastUsersRefreshMs = 0; }
+    void          reprobeOffRosterUsersForTest() { reprobeOffRosterUsers(); }
+    QSet<QString> offRosterUserIdsForTest() const { return _offRosterUserIds; }
+
 private:
     // Resolve our own user id via auth.test; persists the result to cache.
     // Called at start() and retried from the loadUsers handler if the first
@@ -581,6 +590,36 @@ private:
     // until users.list has loaded (so we don't mistake "not loaded yet" for
     // "missing"); called from both the users and conversations load handlers.
     void fetchMissingDmUsers();
+
+    // (Re)fetch the backend's user snapshot (users.list) and merge it via
+    // mergeUserSnapshot. Called once at start() (startup=true also runs the
+    // one-time startup follow-ups: presence subscription, self-presence/me
+    // retries, DM-peer presence + resolution) and then once per
+    // kUsersRefreshGapMs of UPTIME from checkRealtimeHealth — the clock starts
+    // at launch, never from a persisted stamp, so a launch after days away makes
+    // exactly the same requests as any other launch. Each call arms the
+    // off-roster re-probe (below) after a settle delay.
+    void loadUsersFromBackend(bool startup);
+    // Merge a snapshot into _users: snapshot rows win, cached enrichment fills
+    // the gaps they leave, known users the snapshot omits are retained (and
+    // recorded in _offRosterUserIds). Reassigning _users only notifies when
+    // something actually changed, so an unchanged daily refresh is UI-silent.
+    void mergeUserSnapshot(std::vector<User> users);
+    // Merge one freshly fetched user record over its roster entry, preserving
+    // the live presence/DND flags the fetch doesn't carry; fires userInfoLoaded
+    // so open views re-render that author.
+    void applyRefreshedUser(User u);
+    // Users users.list never returns (Slack Connect peers, system accounts,
+    // cross-Grid members) are otherwise cached FOREVER: fetchUserIfNeeded skips
+    // anything already known. This re-fetches the ones whose last users.info is
+    // older than kUsersRefreshGapMs, oldest first, at most
+    // kMaxUserReprobesPerPass per pass, on the paced background lane — a bounded
+    // trickle, never a burst, however long the app was closed. Stamps are taken
+    // at request time so a failed probe waits a full day rather than retrying.
+    void reprobeOffRosterUsers();
+    // Debounced persistence of _userProbedAtMs (fetchUserIfNeeded stamps in
+    // bursts at startup).
+    void scheduleSaveUserProbeTimes();
 
     // Apply `fn` to our own entry in _users (no-op while meUserId is unknown);
     // reassigning the variable notifies users() subscribers.
@@ -989,7 +1028,25 @@ private:
     QHash<QString, User>       _botUsers;           // bot_id → User; for bots not in users.list
     QSet<QString>              _pendingBotFetches;  // bot_ids with an in-flight bots.info request
     QSet<QString>              _pendingUserFetches; // user ids with an in-flight users.info request
-    rpl::event_stream<UserId>  _botInfoHub;
-    rpl::event_stream<UserId>  _userInfoHub;
-    rpl::lifetime              _lifetime;
+    // Daily roster refresh (loadUsersFromBackend / reprobeOffRosterUsers). Renames
+    // and avatar changes are rare and a day of lag on them is fine; anything
+    // tighter just churns the roster for no visible change. Gated on
+    // Capabilities::rosterRefresh. _lastUsersRefreshMs is set when start() issues
+    // the initial load, so the first refresh lands at a day of uptime.
+    static constexpr qint64    kUsersRefreshGapMs      = 24 * 60 * 60'000;
+    qint64                     _lastUsersRefreshMs     = 0;
+    // Hard ceiling on users.info calls per re-probe pass; the rest wait for the
+    // next pass. With the 1.2 s-paced background lane that is ~25 s of trickle.
+    static constexpr int       kMaxUserReprobesPerPass = 20;
+    // Settle delay before a pass: lets the startup conversation sweeps, which
+    // share the paced lane, go first.
+    static constexpr int       kOffRosterProbeDelayMs  = 90'000;
+    QSet<QString>          _offRosterUserIds;  // known only via users.info (see mergeUserSnapshot)
+    QHash<QString, qint64> _userProbedAtMs;    // off-roster id → last users.info request (Unix ms)
+    rpl::lifetime          _usersLoadLifetime; // the current loadUsers subscription (one at a time)
+    QTimer                 _offRosterProbeTimer; // single-shot → reprobeOffRosterUsers
+    QTimer                 _saveUserProbesTimer; // debounces scheduleSaveUserProbeTimes()
+    rpl::event_stream<UserId> _botInfoHub;
+    rpl::event_stream<UserId> _userInfoHub;
+    rpl::lifetime             _lifetime;
 };

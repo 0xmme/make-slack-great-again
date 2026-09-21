@@ -34,6 +34,8 @@ Session::~Session() {
         _cache->saveDeadConvIds(QStringList(_deadConvIds.begin(), _deadConvIds.end()));
     if (_saveUsersTimer.isActive())
         _cache->saveUsers(_users.current());
+    if (_saveUserProbesTimer.isActive())
+        _cache->saveUserProbeTimes(_userProbedAtMs);
     flushPendingMsgWrites(); // queued message-cache writes (no-op when empty)
 }
 
@@ -103,6 +105,7 @@ void Session::start() {
         auto users = _cache->loadUsers();
         if (!users.empty())
             _users = std::move(users);
+        _userProbedAtMs  = _cache->loadUserProbeTimes();
         _botUsers        = _cache->loadBots();
         _emojiMap        = _cache->loadEmojiMap();
         const auto muted = _cache->loadMutedThreads();
@@ -181,6 +184,15 @@ void Session::start() {
         _cache->saveUsers(_users.current());
     });
 
+    // Off-roster re-probe settle delay + debounced stamp persistence (see
+    // reprobeOffRosterUsers / scheduleSaveUserProbeTimes).
+    _offRosterProbeTimer.setSingleShot(true);
+    QObject::connect(&_offRosterProbeTimer, &QTimer::timeout, [this] { reprobeOffRosterUsers(); });
+    _saveUserProbesTimer.setSingleShot(true);
+    QObject::connect(&_saveUserProbesTimer, &QTimer::timeout, [this] {
+        _cache->saveUserProbeTimes(_userProbedAtMs);
+    });
+
     // Deferred per-conversation message-cache writes (see cacheMessages).
     _saveMsgsTimer.setSingleShot(true);
     QObject::connect(&_saveMsgsTimer, &QTimer::timeout, [this] { flushPendingMsgWrites(); });
@@ -210,90 +222,10 @@ void Session::start() {
     // another client never shows up.
     refreshStarred();
 
-    // Load users; update cache on arrival.
-    _backend->loadUsers() | rpl::on_next(
-                                [this](std::vector<User> users) {
-                                    // Merge the snapshot into what's already known rather than
-                                    // replacing outright. The snapshot is not complete for any
-                                    // backend: Slack's users.list never lists Slack Connect
-                                    // external (EXT) peers, and Teams may omit self and supplies
-                                    // users without avatars (filled in asynchronously via
-                                    // EvUserChanged). A plain replace drops those users until
-                                    // users.info re-resolves them one by one — an "Unknown user"
-                                    // + no-avatar flicker right after start, in both the message
-                                    // list and DM/MPDM titles. So: snapshot rows win, cached
-                                    // enrichment (avatar, display name, live presence) fills the
-                                    // gaps they leave, and known users the snapshot omits are
-                                    // retained. Retention is safe — departed members come back
-                                    // as deleted:true rows, not as absences.
-                                    {
-                                        const auto                   prev = _users.current();
-                                        QHash<QString, const User *> prevById;
-                                        for (const auto &u : prev)
-                                            prevById.insert(u.id.value, &u);
-                                        QSet<QString> inSnapshot;
-                                        inSnapshot.reserve(int(users.size()));
-                                        for (auto &u : users) {
-                                            inSnapshot.insert(u.id.value);
-                                            const auto it = prevById.constFind(u.id.value);
-                                            if (it == prevById.constEnd())
-                                                continue;
-                                            const User &old = *it.value();
-                                            if (u.avatarUrl.isEmpty())
-                                                u.avatarUrl = old.avatarUrl;
-                                            if (u.displayName.isEmpty())
-                                                u.displayName = old.displayName;
-                                            if (u.name.isEmpty())
-                                                u.name = old.name;
-                                            // Presence/DND are polled separately, never carried by
-                                            // loadUsers — keep the live values across the refresh.
-                                            u.isActive   = old.isActive;
-                                            u.dndEnabled = old.dndEnabled;
-                                        }
-                                        for (const auto &u : prev)
-                                            if (!inSnapshot.contains(u.id.value))
-                                                users.push_back(u);
-                                    }
-                                    _users = std::move(users);
-                                    scheduleSaveUsers();
-                                    // Update admin flag now that the full user list is available.
-                                    if (!_meUserId.value.isEmpty()) {
-                                        if (const User *u = findUser(_meUserId))
-                                            _meIsAdmin = u->isAdmin;
-                                    }
-                                    // Subscribe to real-time presence events for all non-bot users.
-                                    std::vector<UserId> ids;
-                                    for (const auto &u : _users.current())
-                                        if (!u.isBot && !u.isDeactivated)
-                                            ids.push_back(u.id);
-                                    _backend->subscribePresence(std::move(ids));
-
-                                    // The self-presence and auth.test calls made at start() can
-                                    // race the startup token refresh and come back empty;
-                                    // users.list landing proves the token works, so retry now
-                                    // (ahead of the per-DM polls below, which share the request
-                                    // queue). A session without meUserId ghosts every send: the
-                                    // optimistic copy has no author and is never reconciled with
-                                    // its realtime echo, so the message shows up twice.
-                                    if (!_selfPresence.current().loaded)
-                                        refreshSelfPresence();
-                                    if (_meUserId.value.isEmpty())
-                                        fetchMe();
-
-                                    // Poll current presence for every DM conversation partner so
-                                    // the list shows the right indicator without waiting for the
-                                    // first change.
-                                    for (const auto &conv : _conversations.current())
-                                        if (conv.dmUser && !conv.dmUser->value.isEmpty())
-                                            requestPresence(*conv.dmUser);
-
-                                    // Resolve DM peers users.list omits now that the
-                                    // full list is known (conversations may already
-                                    // be loaded; if not, their handler calls us too).
-                                    fetchMissingDmUsers();
-                                },
-                                _lifetime
-                            );
+    // Load users; update cache on arrival. Stamps the daily-refresh clock so
+    // the first periodic re-fetch lands at a day of uptime, not at launch.
+    _lastUsersRefreshMs = QDateTime::currentMSecsSinceEpoch();
+    loadUsersFromBackend(/*startup=*/true);
 
     // Wire the backend event firehose through our hub so Session can
     // intercept and patch state before forwarding to the UI.
@@ -741,6 +673,20 @@ void Session::checkRealtimeHealth() {
         if (now - _lastForegroundPollMs >= _backend->foregroundPollGapMs()) {
             _lastForegroundPollMs = now;
             pollConversationForMissed(_openConv, /*foreground=*/true);
+        }
+    }
+
+    // (2b) Roster freshness: renames and new avatars reach a push backend via
+    // user_change, but a poll-only (session-auth) workspace has no such event and
+    // an outage loses pushes too — so re-fetch the snapshot once per day of
+    // uptime. Deliberately slow: the changes are rare, and the merge is silent
+    // when nothing changed. Off for backends whose snapshot isn't a cheap
+    // side-effect-free fetch (see Capabilities::rosterRefresh).
+    if (_backend->capabilities().rosterRefresh) {
+        const qint64 nowUsers = QDateTime::currentMSecsSinceEpoch();
+        if (nowUsers - _lastUsersRefreshMs >= kUsersRefreshGapMs) {
+            _lastUsersRefreshMs = nowUsers; // stamped at request time: a failure waits a day
+            loadUsersFromBackend(/*startup=*/false);
         }
     }
 
@@ -1752,33 +1698,39 @@ void Session::fetchUserIfNeeded(UserId userId) {
     if (_pendingUserFetches.contains(userId.value))
         return;
     _pendingUserFetches.insert(userId.value);
-    _backend->loadUser(userId) | rpl::on_next(
-                                     [this, userId](User u) {
-                                         _pendingUserFetches.remove(userId.value);
-                                         if (u.id.value.isEmpty())
-                                             return;
-                                         // Append to the live user list so the conv
-                                         // list (fed by users()) re-resolves the name
-                                         // + avatar, and persist: users.list never
-                                         // returns these (external/system peers), so
-                                         // the cache is the only thing that keeps
-                                         // their names across a restart.
-                                         auto users = _users.current();
-                                         for (const auto &existing : users)
-                                             if (existing.id == u.id)
-                                                 return;
-                                         const UserId resolved = u.id;
-                                         users.push_back(std::move(u));
-                                         _users = std::move(users);
-                                         scheduleSaveUsers();
-                                         // Tell the message list a previously-raw
-                                         // id now has a name + avatar so it can
-                                         // re-render the author header and any
-                                         // baked-in @mentions of this user.
-                                         _userInfoHub.fire_copy(resolved);
-                                     },
-                                     _lifetime
-                                 );
+    _backend->loadUser(userId) |
+        rpl::on_next(
+            [this, userId](User u) {
+                _pendingUserFetches.remove(userId.value);
+                if (u.id.value.isEmpty())
+                    return;
+                // Append to the live user list so the conv
+                // list (fed by users()) re-resolves the name
+                // + avatar, and persist: users.list never
+                // returns these (external/system peers), so
+                // the cache is the only thing that keeps
+                // their names across a restart.
+                auto users = _users.current();
+                for (const auto &existing : users)
+                    if (existing.id == u.id)
+                        return;
+                const UserId resolved = u.id;
+                users.push_back(std::move(u));
+                _users = std::move(users);
+                scheduleSaveUsers();
+                // Known only via users.info from here on:
+                // the daily re-probe is its only refresh.
+                _offRosterUserIds.insert(resolved.value);
+                _userProbedAtMs.insert(resolved.value, QDateTime::currentMSecsSinceEpoch());
+                scheduleSaveUserProbeTimes();
+                // Tell the message list a previously-raw
+                // id now has a name + avatar so it can
+                // re-render the author header and any
+                // baked-in @mentions of this user.
+                _userInfoHub.fire_copy(resolved);
+            },
+            _lifetime
+        );
 }
 
 rpl::producer<UserId> Session::userInfoLoaded() const {
@@ -1799,6 +1751,197 @@ void Session::fetchMissingDmUsers() {
             for (const auto &uid : c.members)
                 fetchUserIfNeeded(uid);
     }
+}
+
+void Session::loadUsersFromBackend(bool startup) {
+    // One live snapshot subscription at a time: a dev backend's producer never
+    // completes (it's a variable), so without this every refresh would stack
+    // another subscriber that re-merges the same snapshot on each change.
+    _usersLoadLifetime.destroy();
+    _backend->loadUsers() | rpl::on_next(
+                                [this, startup](std::vector<User> users) {
+                                    mergeUserSnapshot(std::move(users));
+
+                                    if (startup) {
+                                        // Subscribe to real-time presence events for all non-bot
+                                        // users.
+                                        std::vector<UserId> ids;
+                                        for (const auto &u : _users.current())
+                                            if (!u.isBot && !u.isDeactivated)
+                                                ids.push_back(u.id);
+                                        _backend->subscribePresence(std::move(ids));
+
+                                        // The self-presence and auth.test calls made at start() can
+                                        // race the startup token refresh and come back empty;
+                                        // users.list landing proves the token works, so retry now
+                                        // (ahead of the per-DM polls below, which share the request
+                                        // queue). A session without meUserId ghosts every send: the
+                                        // optimistic copy has no author and is never reconciled
+                                        // with its realtime echo, so the message shows up twice.
+                                        if (!_selfPresence.current().loaded)
+                                            refreshSelfPresence();
+                                        if (_meUserId.value.isEmpty())
+                                            fetchMe();
+
+                                        // Poll current presence for every DM conversation partner
+                                        // so the list shows the right indicator without waiting for
+                                        // the first change.
+                                        for (const auto &conv : _conversations.current())
+                                            if (conv.dmUser && !conv.dmUser->value.isEmpty())
+                                                requestPresence(*conv.dmUser);
+
+                                        // Resolve DM peers users.list omits now that the
+                                        // full list is known (conversations may already
+                                        // be loaded; if not, their handler calls us too).
+                                        fetchMissingDmUsers();
+                                    }
+
+                                    // Off-roster users get their (bounded, paced) re-probe after
+                                    // the sweeps that share the lane have had their turn.
+                                    // Restarting an armed timer just pushes the pass out; nothing
+                                    // is lost.
+                                    _offRosterProbeTimer.start(kOffRosterProbeDelayMs);
+                                },
+                                _usersLoadLifetime
+                            );
+}
+
+void Session::mergeUserSnapshot(std::vector<User> users) {
+    // Merge the snapshot into what's already known rather than replacing
+    // outright. The snapshot is not complete for any backend: Slack's users.list
+    // never lists Slack Connect external (EXT) peers, and Teams may omit self and
+    // supplies users without avatars (filled in asynchronously via
+    // EvUserChanged). A plain replace drops those users until users.info
+    // re-resolves them one by one — an "Unknown user" + no-avatar flicker right
+    // after start, in both the message list and DM/MPDM titles. So: snapshot
+    // rows win, cached enrichment (avatar, display name, live presence) fills
+    // the gaps they leave, and known users the snapshot omits are retained.
+    // Retention is safe — departed members come back as deleted:true rows, not
+    // as absences. The retained set is exactly what reprobeOffRosterUsers works
+    // through, so it is recomputed from scratch on every snapshot.
+    //
+    // An EMPTY snapshot carries no information (a backend with nothing to list
+    // yet): keep what's known and, above all, don't classify the whole cached
+    // roster as off-roster — that would hand every member to the re-probe.
+    if (users.empty())
+        return;
+    {
+        const auto                   prev = _users.current();
+        QHash<QString, const User *> prevById;
+        for (const auto &u : prev)
+            prevById.insert(u.id.value, &u);
+        QSet<QString> inSnapshot;
+        inSnapshot.reserve(int(users.size()));
+        for (auto &u : users) {
+            inSnapshot.insert(u.id.value);
+            const auto it = prevById.constFind(u.id.value);
+            if (it == prevById.constEnd())
+                continue;
+            const User &old = *it.value();
+            if (u.avatarUrl.isEmpty())
+                u.avatarUrl = old.avatarUrl;
+            if (u.displayName.isEmpty())
+                u.displayName = old.displayName;
+            if (u.name.isEmpty())
+                u.name = old.name;
+            // Presence/DND are polled separately, never carried by
+            // loadUsers — keep the live values across the refresh.
+            u.isActive   = old.isActive;
+            u.dndEnabled = old.dndEnabled;
+        }
+        // A user missing from the snapshot is off-roster from now on — and one
+        // that reappeared no longer is, so its probe stamp can go (users.list
+        // refreshes it from here). This is the only place stamps are pruned: an
+        // authoritative snapshot is the only thing that can say who is listed.
+        QSet<QString> offRoster;
+        for (const auto &u : prev)
+            if (!inSnapshot.contains(u.id.value)) {
+                users.push_back(u);
+                offRoster.insert(u.id.value);
+            }
+        _offRosterUserIds = std::move(offRoster);
+        bool pruned       = false;
+        for (auto it = _userProbedAtMs.begin(); it != _userProbedAtMs.end();) {
+            if (_offRosterUserIds.contains(it.key())) {
+                ++it;
+            } else {
+                it     = _userProbedAtMs.erase(it);
+                pruned = true;
+            }
+        }
+        if (pruned)
+            scheduleSaveUserProbeTimes();
+    }
+    _users = std::move(users);
+    scheduleSaveUsers();
+    // Update admin flag now that the full user list is available.
+    if (!_meUserId.value.isEmpty()) {
+        if (const User *u = findUser(_meUserId))
+            _meIsAdmin = u->isAdmin;
+    }
+}
+
+void Session::applyRefreshedUser(User u) {
+    if (u.id.value.isEmpty())
+        return;
+    const UserId refreshed = u.id;
+    auto         users     = _users.current();
+    auto         it =
+        std::find_if(users.begin(), users.end(), [&](const User &x) { return x.id == refreshed; });
+    if (it != users.end()) {
+        // Same rule as the EvUserChanged merge: the fetch carries no live
+        // presence/DND, those stay as tracked.
+        u.isActive   = it->isActive;
+        u.dndEnabled = it->dndEnabled;
+        if (*it == u)
+            return; // nothing changed — no roster re-emission, no repaint
+        *it = std::move(u);
+    } else {
+        users.push_back(std::move(u));
+    }
+    _users = std::move(users);
+    scheduleSaveUsers();
+    // A changed avatar means a new image URL (the hash is embedded), so the
+    // repaint alone makes ImageCache fetch the new picture.
+    _userInfoHub.fire_copy(refreshed);
+}
+
+void Session::reprobeOffRosterUsers() {
+    if (_offRosterUserIds.isEmpty())
+        return;
+    const qint64                            now = QDateTime::currentMSecsSinceEpoch();
+    // Candidates: due (never probed, or a day+ ago), a real user id the backend
+    // can look up, not a fixed system account (those never change), and not
+    // already mid-fetch.
+    std::vector<std::pair<qint64, QString>> due; // (last probe ms, id)
+    for (const QString &id : _offRosterUserIds) {
+        const UserId uid{id};
+        if (!_backend->isUserId(uid) || _backend->isSyntheticUser(uid))
+            continue;
+        if (_pendingUserFetches.contains(id))
+            continue;
+        const qint64 last = _userProbedAtMs.value(id, 0);
+        if (now - last < kUsersRefreshGapMs)
+            continue;
+        due.emplace_back(last, id);
+    }
+    if (due.empty())
+        return;
+    // Oldest first; whatever exceeds the per-pass cap waits for the next pass.
+    std::sort(due.begin(), due.end());
+    if (int(due.size()) > kMaxUserReprobesPerPass)
+        due.resize(kMaxUserReprobesPerPass);
+    for (const auto &entry : due) {
+        const QString &id = entry.second;
+        _userProbedAtMs.insert(id, now); // at request time: no retry storm on failure
+        _backend->loadUserBackground(UserId{id}) |
+            rpl::on_next([this](User u) { applyRefreshedUser(std::move(u)); }, _lifetime);
+    }
+    scheduleSaveUserProbeTimes();
+}
+
+void Session::scheduleSaveUserProbeTimes() {
+    _saveUserProbesTimer.start(1000);
 }
 
 QString Session::userDisplayName(UserId id) {

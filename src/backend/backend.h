@@ -111,6 +111,10 @@ public:
             return rpl::lifetime();
         };
     }
+    // loadUser routed via the paced low-priority lane (see loadConversationInfo's
+    // `background`): for the Session's bulk re-probe of users the roster snapshot
+    // omits, which must never crowd out interactive calls. Defaults to loadUser.
+    virtual rpl::producer<User> loadUserBackground(UserId userId) { return loadUser(userId); }
     // Authoritative per-conversation state (conversations.info): last_read and
     // latest message ts, which conversations.list no longer returns. Used by the
     // Session's background activity sweep to seed conversation-list relevance.

@@ -201,17 +201,22 @@ struct Capabilities {
     bool messageSubjects  = false; // per-message subject line (email); shows the composer subject
                                    // field — see imap-backend-plan §3/§4
     bool collapseQuotedReplies =
-        false;                 // email: a reply's trailing quoted history + signature is
-                               // the previous message(s) already shown above, so collapse
-                               // it behind a "show quoted text" toggle (messenger, not mail
-                               // client). Chat services quote intentionally → leave false.
-    bool sidebarTheme = false; // loadSidebarTheme(): the user's stored sidebar theme (Slack's
-                               // users.prefs.get, served only to a session token) — feeds the
-                               // "Use my Slack theme" button of the custom theme editor.
-    bool presenceLink = false; // setPresenceMode(): the backend can hold the connection that
-                               // makes the service show this user "active" without an
-                               // official client (Slack: RTM on a session token; an OAuth
-                               // token is refused rtm.connect). Requires presence.
+        false;                  // email: a reply's trailing quoted history + signature is
+                                // the previous message(s) already shown above, so collapse
+                                // it behind a "show quoted text" toggle (messenger, not mail
+                                // client). Chat services quote intentionally → leave false.
+    bool sidebarTheme  = false; // loadSidebarTheme(): the user's stored sidebar theme (Slack's
+                                // users.prefs.get, served only to a session token) — feeds the
+                                // "Use my Slack theme" button of the custom theme editor.
+    bool presenceLink  = false; // setPresenceMode(): the backend can hold the connection that
+                                // makes the service show this user "active" without an
+                                // official client (Slack: RTM on a session token; an OAuth
+                                // token is refused rtm.connect). Requires presence.
+    bool rosterRefresh = false; // loadUsers() is a cheap, side-effect-free server snapshot the
+                                // Session may re-fetch on its daily cadence so renames and new
+                                // avatars reach a long-running session (Slack: users.list). Off
+                                // for a backend whose loadUsers re-downloads per-member data
+                                // (Teams fetches every photo) or is purely local (IMAP).
     bool operator==(const Capabilities &) const = default;
 };
 

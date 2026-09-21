@@ -391,6 +391,10 @@ Capabilities PublicBackend::capabilities() const {
     // The presence link is an RTM socket, and rtm.connect refuses a granular
     // OAuth token (not_allowed_token_type) — session tokens only.
     c.presenceLink     = _sessionAuth;
+    // users.list is a plain paged snapshot with no per-member side requests, so
+    // the Session may re-fetch it daily to pick up renames/avatars on a session
+    // that never restarts (the only other refresh path, user_change, needs push).
+    c.rosterRefresh    = true;
     return c;
 }
 
@@ -840,24 +844,35 @@ rpl::producer<User> PublicBackend::loadBotInfo(UserId botId) {
 }
 
 rpl::producer<User> PublicBackend::loadUser(UserId userId) {
-    return [this, userId](auto consumer) mutable {
+    return loadUserImpl(std::move(userId), /*background=*/false);
+}
+
+rpl::producer<User> PublicBackend::loadUserBackground(UserId userId) {
+    return loadUserImpl(std::move(userId), /*background=*/true);
+}
+
+rpl::producer<User> PublicBackend::loadUserImpl(UserId userId, bool background) {
+    return [this, userId, background](auto consumer) mutable {
         QUrlQuery params;
         params.addQueryItem("user", userId.value);
-        _api->call(
-            "users.info",
-            params,
-            [consumer, myTeam = _teamId](QJsonObject resp) mutable {
-                auto u       = JsonMappers::toUser(resp.value("user").toObject());
-                u.isExternal = u.isExternal ||
-                               (!u.teamId.isEmpty() && !myTeam.isEmpty() && u.teamId != myTeam);
-                consumer.put_next(std::move(u));
-                consumer.put_done();
-            },
-            [consumer](QString err) mutable {
-                qWarning() << "loadUser error:" << err;
-                consumer.put_done();
-            }
-        );
+        auto onOk = [consumer, myTeam = _teamId](QJsonObject resp) mutable {
+            auto u = JsonMappers::toUser(resp.value("user").toObject());
+            u.isExternal =
+                u.isExternal || (!u.teamId.isEmpty() && !myTeam.isEmpty() && u.teamId != myTeam);
+            consumer.put_next(std::move(u));
+            consumer.put_done();
+        };
+        auto onErr = [consumer](QString err) mutable {
+            qWarning() << "loadUser error:" << err;
+            consumer.put_done();
+        };
+        // The Session's periodic off-roster re-probe rides the paced low-priority
+        // lane like the conversations.info sweeps; an on-demand resolve (a DM peer
+        // users.list omitted, an unknown author) goes straight out.
+        if (background)
+            _infoApi->callBackground("users.info", params, std::move(onOk), std::move(onErr));
+        else
+            _api->call("users.info", params, std::move(onOk), std::move(onErr));
         return rpl::lifetime();
     };
 }
