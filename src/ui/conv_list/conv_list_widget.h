@@ -90,6 +90,7 @@ public:
     int                            selectedIndex() const { return _selected; }
     // Number of visual rows currently laid out (conversations plus the section
     // headers and action rows between them).
+    bool                           sectionHasUnread(int sectionId) const;
     int                            rowCount() const { return int(_rows.size()); }
     // Resolved ConversationId for a visual row (-1 safe: returns empty id).
     ConversationId                 conversationId(int row) const;

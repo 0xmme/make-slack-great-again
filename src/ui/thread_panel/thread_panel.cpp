@@ -123,6 +123,7 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     });
 
     _composer = new ComposerWidget(this);
+    _composer->setImageCache(imgCache);
     _composer->setEnabled(false);
     layout->addWidget(_composer);
 

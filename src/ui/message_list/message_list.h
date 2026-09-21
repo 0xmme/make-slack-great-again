@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #pragma once
 
+#include <limits>
+
 #include "backend/domain.h"
 #include "rpl/lifetime.h"
 #include "ui/loading_indicator/loading_indicator.h"
@@ -278,7 +280,10 @@ private:
     // its newest message was deleted, not merely not-yet-fetched; a cursored
     // (older) page is a middle slice, so deletion reconciliation is capped at its
     // newest message.
-    void mergeNetworkMessages(const std::vector<Message> &incoming, bool fromHeadPage);
+    void mergeNetworkMessages(
+        const std::vector<Message> &incoming, bool fromHeadPage, quint64 requestRevision
+    );
+    void cacheMergedPage(const std::vector<Message> &incoming, quint64 requestRevision);
     // Re-fetch the newest page of the open conversation/thread and merge it,
     // recovering messages that arrived while the realtime socket was down (Slack
     // doesn't replay them). Driven by EvRealtimeReconnected.
@@ -291,7 +296,10 @@ private:
     // mergeNetworkMessages' fromHeadPage: true only when `messages` really is the
     // newest page, so a local row above it can be treated as deleted.
     void mergeHeadPage(
-        const ConversationId &conv, const std::vector<Message> &messages, bool authoritative = true
+        const ConversationId       &conv,
+        const std::vector<Message> &messages,
+        bool                        authoritative,
+        quint64                     requestRevision
     );
     // Thread-mode counterpart of the EvHeadRefresh merge. The safety poll fetches
     // conversations.history, which NEVER contains thread replies, so that page
@@ -621,7 +629,8 @@ private:
     bool                isAttachmentHidden(const Message &msg, int ai) const {
         // Hot path (rowHeight/paint per attachment): only build the lookup key
         // when something was actually dismissed this session.
-        return (!_showLinkPreviews && msg.attachments[ai].isLinkPreview) ||
+        return (!_showLinkPreviews &&
+                (msg.attachments[ai].isLinkPreview || msg.attachments[ai].isMsgUnfurl)) ||
                (!_dismissedAttachments.isEmpty() &&
                 _dismissedAttachments.contains(msg.ts + "/" + QString::number(ai)));
     }
@@ -722,6 +731,13 @@ private:
     // Root ts currently shown in the standalone panel ({} when none).
     Ts                         _openThreadRoot;
     std::vector<MessageItem>   _items;
+    // Arrival revisions, including deletion tombstones, protect in-flight fetches.
+    // Latest authoritative head also protects deleted rows not loaded locally.
+    quint64                    _latestHeadRevision = 0;
+    qint64                     _latestHeadOldest   = std::numeric_limits<qint64>::min();
+    QHash<Ts, quint64>         _historyMessageRevisions;
+    QHash<Ts, quint64>         _liveMessageRevisions;
+    QHash<Ts, quint64>         _liveEditRevisions;
     std::vector<int>           _tops; // document-space top of each row
     // ts of each row at the time _tops was built — a consistent snapshot of the
     // previous layout used by rebuildLayout() to re-anchor the view (callers

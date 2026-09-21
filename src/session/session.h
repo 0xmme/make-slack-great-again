@@ -36,6 +36,9 @@ public:
     // code key per-workspace state (composer drafts) without asking the host.
     QString teamId() const { return _teamId; }
 
+    // GUI-thread ordering shared by history requests and message-view updates.
+    quint64 nextMessageRevision() { return ++_messageRevision; }
+
     // --- Read interface for UI ---
     rpl::producer<std::vector<Conversation>> conversations() const;
     rpl::producer<std::vector<User>>         users() const;
@@ -889,6 +892,9 @@ private:
     // primary delivery; this poll is only a backstop for a silently-stalled socket,
     // so once per minute is plenty. See checkRealtimeHealth().
     static constexpr qint64    kForegroundPollGapMs   = 60'000;
+    // Shared request/live-update clock; completed polls cannot run backwards.
+    quint64                    _messageRevision       = 0;
+    QHash<QString, quint64>    _completedHistoryPolls;
     qint64                     _lastForegroundPollMs  = 0;
     // Cadence for the background-workspace stall poll (no conversation open). Much
     // slower than the foreground poll: it's a safety net for a workspace the user

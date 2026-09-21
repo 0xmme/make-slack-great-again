@@ -25,15 +25,18 @@
 
 #include <QApplication>
 #include <QObject>
+#include <QMouseEvent>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QUuid>
 
 #include <vector>
 
 #include "backend/domain.h"
 #include "ui/conv_list/conv_list_widget.h"
 #include "ui/theme.h"
+#include "ui/context_menu/context_menu.h"
 #include "ui/theme_manager.h"
 
 int main(int argc, char **argv) {
@@ -101,23 +104,28 @@ TEST_CASE("selectConversation selects a visible channel and emits the matching r
 }
 
 TEST_CASE("selectConversation opens a relevance-filtered DM that rowForId cannot find") {
-    ConvListWidget list(nullptr);
-    list.setConversations({channel("C1", "general"), hiddenDm("D1", "U1")});
+    ConvListWidget       list(nullptr);
+    // Native macOS QSettings ignores setPath; use a fresh id so visits from
+    // earlier test runs cannot make this supposedly hidden DM visible.
+    const ConversationId dmId{QUuid::createUuid().toString()};
+    auto                 dm = hiddenDm("", "U1");
+    dm.id                   = dmId;
+    list.setConversations({channel("C1", "general"), dm});
     SelectionSpy spy(&list);
 
     // Precondition mirroring the bug: the DM is hidden, so the old notification
     // path (rowForId + openConversation) would find no row and do nothing —
     // leaving the header/selection stale on the previously-open conversation.
-    REQUIRE(list.rowForId(ConversationId{"D1"}) < 0);
+    REQUIRE(list.rowForId(dmId) < 0);
 
-    REQUIRE(list.selectConversation(ConversationId{"D1"}));
+    REQUIRE(list.selectConversation(dmId));
 
     // It is now visible, selected, and the signal carried its row — so the
     // coordinated header + highlight update can run.
-    REQUIRE(list.rowForId(ConversationId{"D1"}) >= 0);
+    REQUIRE(list.rowForId(dmId) >= 0);
     REQUIRE(spy.count == 1);
-    REQUIRE(list.conversationId(spy.lastRow) == ConversationId{"D1"});
-    REQUIRE(list.conversationId(list.selectedIndex()) == ConversationId{"D1"});
+    REQUIRE(list.conversationId(spy.lastRow) == dmId);
+    REQUIRE(list.conversationId(list.selectedIndex()) == dmId);
 }
 
 // An app/bot DM: isAppConv() keys off the roster's isBot flag, so the matching
@@ -484,4 +492,124 @@ TEST_CASE("unreads-only applies to the Agents & apps section", "[unreads-only]")
     // The open app DM stays reachable while it is open.
     REQUIRE(list.selectConversation(ConversationId{"A1"}));
     REQUIRE(list.rowForId(ConversationId{"A1"}) >= 0);
+}
+
+TEST_CASE("section unread emphasis follows membership and notification preferences") {
+    ConvListWidget list(nullptr);
+    auto           ch  = channel("C1", "general");
+    auto           dm  = hiddenDm("D1", "U1");
+    auto           app = appDm("A1", "B1");
+    list.setUsers({botUser("B1")});
+    ch.unread = dm.unread = app.unread = 1;
+    list.setConversations({ch, dm, app});
+    CHECK(list.sectionHasUnread(0));
+    CHECK(list.sectionHasUnread(1));
+    CHECK(list.sectionHasUnread(2));
+    CHECK_FALSE(list.sectionHasUnread(3));
+    dm.isStarred  = true;
+    ch.notifLevel = NotificationLevel::Mute;
+    app.unread    = 0;
+    list.setConversations({ch, dm, app});
+    CHECK_FALSE(list.sectionHasUnread(0));
+    CHECK_FALSE(list.sectionHasUnread(1));
+    CHECK_FALSE(list.sectionHasUnread(2));
+    CHECK(list.sectionHasUnread(3));
+    dm.unread     = 0;
+    ch.notifLevel = NotificationLevel::Mentions;
+    list.setHighlightMentionsOnlyUnreads(false);
+    list.setConversations({ch, dm, app});
+    CHECK_FALSE(list.sectionHasUnread(0));
+    CHECK_FALSE(list.sectionHasUnread(3));
+    ch.mentionCount = 1;
+    list.setConversations({ch, dm, app});
+    CHECK(list.sectionHasUnread(0));
+}
+
+TEST_CASE("one-to-one DM context menu stars and unstars the selected conversation") {
+    ConvListWidget list(nullptr);
+    list.resize(300, 500);
+    auto dm         = hiddenDm("D_CONTEXT_STAR", "U_CONTEXT_STAR");
+    dm.unread       = 1;
+    bool wasStarred = false;
+    SECTION("star") {}
+    SECTION("unstar") {
+        wasStarred = true;
+    }
+    dm.isStarred = wasStarred;
+    list.setConversations({dm});
+    list.show();
+    QApplication::processEvents();
+    ConversationId target;
+    bool           requestedStar = wasStarred;
+    QObject::connect(
+        &list, &ConvListWidget::starConversationRequested, [&](ConversationId id, bool star) {
+            target        = id;
+            requestedStar = star;
+        }
+    );
+    ContextMenu *menu = nullptr;
+    // Only the DM row has a context menu. Scan viewport positions so this test
+    // does not depend on the current theme's row height or section spacing.
+    for (int y = 0; y < list.viewport()->height() && !menu; y += 5) {
+        QPointF     pos(60, y);
+        QMouseEvent press(
+            QEvent::MouseButtonPress,
+            pos,
+            list.viewport()->mapToGlobal(pos.toPoint()),
+            Qt::RightButton,
+            Qt::RightButton,
+            Qt::NoModifier
+        );
+        QApplication::sendEvent(list.viewport(), &press);
+        menu = list.findChild<ContextMenu *>();
+    }
+    REQUIRE(menu);
+    // First menu item is Star/Unstar; padding and shadow occupy the top 14px.
+    const QPointF pos(50, 30);
+    QMouseEvent   press(
+        QEvent::MouseButtonPress,
+        pos,
+        menu->mapToGlobal(pos.toPoint()),
+        Qt::LeftButton,
+        Qt::LeftButton,
+        Qt::NoModifier
+    );
+    QApplication::sendEvent(menu, &press);
+    QMouseEvent release(
+        QEvent::MouseButtonRelease,
+        pos,
+        menu->mapToGlobal(pos.toPoint()),
+        Qt::LeftButton,
+        Qt::NoButton,
+        Qt::NoModifier
+    );
+    QApplication::sendEvent(menu, &release);
+    CHECK(target == dm.id);
+    CHECK(requestedStar == !wasStarred);
+}
+
+TEST_CASE("collapsed Starred header keeps its unread state") {
+    ConvListWidget list(nullptr);
+    list.resize(300, 500);
+    auto dm   = starred(hiddenDm("D_COLLAPSED_STAR", "U_COLLAPSED_STAR"));
+    dm.unread = 1;
+    list.setConversations({dm});
+    list.show();
+    REQUIRE(list.rowForId(dm.id) >= 0);
+    // Starred is the first header (top inset 8px, default row height 30px).
+    const QPointF pos(60, 20);
+    QMouseEvent   press(
+        QEvent::MouseButtonPress,
+        pos,
+        list.viewport()->mapToGlobal(pos.toPoint()),
+        Qt::LeftButton,
+        Qt::LeftButton,
+        Qt::NoModifier
+    );
+    QApplication::sendEvent(list.viewport(), &press);
+    CHECK(list.rowForId(dm.id) < 0);
+    CHECK(list.sectionHasUnread(3));
+    dm.unread = 0;
+    list.setConversations({dm});
+    CHECK_FALSE(list.sectionHasUnread(3));
 }

@@ -160,7 +160,7 @@ collectEmojiImageUrls(const Message &msg, const Session *session, bool showLinkP
         addBlockImage(b);
     }
     for (const auto &att : msg.attachments) {
-        if (!showLinkPreviews && att.isLinkPreview)
+        if (!showLinkPreviews && (att.isLinkPreview || att.isMsgUnfurl))
             continue;
         if (!att.pretext.isEmpty()) // pretext is parsed as mrkdwn at render time
             addFrom(MrkdwnParser::parse(att.pretext));

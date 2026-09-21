@@ -802,7 +802,7 @@ struct Attachment {
     std::vector<Block>           blocks;  // Block Kit blocks embedded in this attachment
     std::vector<BotButton>       buttons; // legacy "actions" buttons (classic bot format)
 
-    // A web-link preview, distinct from bot content and shared Slack messages.
+    // Generated link preview, including app and shared-message unfurls.
     bool isLinkPreview = false;
 
     // --- Shared-message unfurl (Slack's `is_msg_unfurl`) ---
@@ -1041,6 +1041,8 @@ struct EvMessageDeleted {
 struct EvHeadRefresh {
     ConversationId       conv;
     std::vector<Message> messages;
+    // Session's shared clock, captured before the history request starts.
+    quint64              requestRevision = 0;
 };
 struct EvReactionAdded {
     ConversationId conv;

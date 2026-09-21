@@ -31,6 +31,7 @@ enum class Shortcut {
     CloseFrontmost,
     SearchMessages,
     QuickSwitch,
+    OpenSettings,
 
     // ── Composer scope: matched in ComposerWidget's key handler ───────────────
     Bold,

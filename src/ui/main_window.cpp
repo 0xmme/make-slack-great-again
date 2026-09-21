@@ -297,6 +297,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     updateRoundedMask();
     qApp->installEventFilter(this);
 
+    Ui::Shortcuts::install(Ui::Shortcut::OpenSettings, this, [this] { _settingsDialog->open(); });
+
     // Back/forward chat navigation: mouse side buttons are handled in
     // eventFilter; these cover the keyboard equivalents (the registry binds both
     // the dedicated XF86 keys and the conventional Alt+arrows to each action).
@@ -2813,12 +2815,26 @@ void MainWindow::showSampleNotification(int kind) {
             notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
     }
 
-    // Empty body token: clicking just dismisses (no real conversation to open).
+    // A test-only token correlates native submission status; clicks open no conversation.
+#ifdef Q_OS_MACOS
+    _settingsDialog->setNotificationTestResult(tr("Submitting notification to macOS…"));
+#endif
     bool shown = false;
     if (_desktopNotifier && _desktopNotifier->isAvailable())
         shown = _desktopNotifier->notify(
-            title, body, notifPix.isNull() ? QImage() : notifPix.toImage(), QString(), actions, 5000
+            title,
+            body,
+            notifPix.isNull() ? QImage() : notifPix.toImage(),
+            QStringLiteral("msga-notification-test"),
+            actions,
+            5000
         );
+#ifdef Q_OS_MACOS
+    if (!shown)
+        _settingsDialog->setNotificationTestResult(
+            tr("The macOS notification service is unavailable.")
+        );
+#endif
     if (!shown && _trayIcon) {
         _pendingNotifTeam.clear();
         _pendingNotifConv       = {};
@@ -2957,12 +2973,34 @@ void MainWindow::updateTrayIcon() {
         // Red when anything important (DM/mention) is unread anywhere,
         // blue for plain unread activity.
         const int d = 36;
+#ifdef Q_OS_MACOS
+        // Cut a clear halo so the monochrome dot stays distinct from the wing.
+        p.setCompositionMode(QPainter::CompositionMode_Clear);
+        p.setBrush(Qt::white);
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(sz - d - 4, sz - d - 4, d + 8, d + 8);
+        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        p.setBrush(Qt::white); // template alpha, tinted by macOS with the plane
+#else
         p.setBrush(globalMentions > 0 ? Th::c().badge.mention : Th::c().badge.activity);
+#endif
         p.setPen(Qt::NoPen);
         p.drawEllipse(sz - d, sz - d, d, d);
     }
     p.end();
-    _trayIcon->setIcon(QIcon(px));
+    QIcon icon;
+#ifdef Q_OS_MACOS
+    for (int scale : {1, 2}) {
+        auto sized =
+            px.scaled(22 * scale, 22 * scale, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        sized.setDevicePixelRatio(scale);
+        icon.addPixmap(sized);
+    }
+    icon.setIsMask(true); // NSImage template: follows the menu bar, not the app theme
+#else
+    icon.addPixmap(px);
+#endif
+    _trayIcon->setIcon(icon);
 }
 
 // ── Workspace management ──────────────────────────────────────────────────────
@@ -3162,6 +3200,19 @@ void MainWindow::setupTray() {
     // with the team\x1fconv token we encoded in maybeNotify(). (Windows delivers
     // the same token via msga://notif protocol activation → handleNotifToken.)
     _desktopNotifier = new DesktopNotifier(this);
+    connect(
+        _desktopNotifier,
+        &DesktopNotifier::submissionFinished,
+        this,
+        [this](const QString &token, const QString &error) {
+            if (token == QLatin1String("msga-notification-test"))
+                _settingsDialog->setNotificationTestResult(
+                    error.isEmpty() ? tr("Accepted by macOS. If no banner appears, check Focus and "
+                                         "notification settings.")
+                                    : tr("Notification status: %1").arg(error)
+                );
+        }
+    );
     connect(_desktopNotifier, &DesktopNotifier::activated, this, &MainWindow::handleNotifToken);
 }
 

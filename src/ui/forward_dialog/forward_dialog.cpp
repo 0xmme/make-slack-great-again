@@ -192,8 +192,9 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
 
     connect(_fwdBtn, &QPushButton::clicked, this, &AppDialog::accept);
 
-    connect(_copyLinkBtn, &QPushButton::clicked, this, [&msg] {
-        for (const auto &ent : msg.text.entities) {
+    // The modeless dialog outlives the caller's message (often a signal argument).
+    connect(_copyLinkBtn, &QPushButton::clicked, this, [entities = msg.text.entities] {
+        for (const auto &ent : entities) {
             if (ent.type == EntityType::Link && !ent.data.isEmpty()) {
                 QApplication::clipboard()->setText(ent.data);
                 return;

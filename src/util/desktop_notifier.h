@@ -30,10 +30,7 @@ struct NotifAction {
 //   • Windows: shows a WinRT toast with the avatar as a circular
 //     `appLogoOverride` (same placement as the Linux image). Qt's path only
 //     yields the small Shell_NotifyIcon balloon icon.
-//   • macOS: shows an NSUserNotification with the avatar as the right-side
-//     `contentImage`. The large left icon is hard-locked to the app icon by the
-//     OS — no app can replace it per-notification — so the avatar sits on the
-//     right.
+//   • macOS: UNUserNotificationCenter with an optional image attachment.
 //
 // Cross-platform contract (.rules): each backend lives in its own TU
 // (desktop_notifier_{linux,win,mac}.{cpp,mm}); the header is shared. When a
@@ -54,7 +51,8 @@ public:
     // string echoed back via activated() if the user clicks the notification
     // body. `actions` add optional buttons, each echoing its own token on click
     // (see NotifAction); ignored by backends that can't render buttons.
-    // Returns false when not delivered, so the caller can fall back to the tray.
+    // Returns false when submission cannot start, so the caller can fall back.
+    // True does not guarantee OS presentation; macOS reports submissionFinished.
     bool notify(
         const QString            &title,
         const QString            &body,
@@ -70,6 +68,8 @@ public:
     void emitActivated(const QString &token) { emit activated(token); }
 
 signals:
+    // macOS async result; empty error means accepted, not necessarily displayed.
+    void submissionFinished(const QString &token, const QString &error);
     void activated(const QString &token); // user clicked a notification
 
 private:

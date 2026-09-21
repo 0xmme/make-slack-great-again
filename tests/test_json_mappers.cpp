@@ -1221,11 +1221,11 @@ TEST_CASE(
             QString(key).startsWith("is_") ? QJsonValue(true) : QJsonValue("https://example.com");
         CHECK(JsonMappers::toAttachment(attachment).isLinkPreview);
         attachment["is_msg_unfurl"] = true;
-        CHECK_FALSE(JsonMappers::toAttachment(attachment).isLinkPreview);
+        CHECK(JsonMappers::toAttachment(attachment).isLinkPreview);
         attachment.remove("is_msg_unfurl");
-        // Rich app cards (GitHub, Jira, Docs) are message content, not previews.
+        // App-generated cards are link previews too.
         attachment["is_app_unfurl"] = true;
-        CHECK_FALSE(JsonMappers::toAttachment(attachment).isLinkPreview);
+        CHECK(JsonMappers::toAttachment(attachment).isLinkPreview);
     }
     CHECK_FALSE(
         JsonMappers::toAttachment(obj(R"({
@@ -1773,4 +1773,12 @@ TEST_CASE(
 
     auto pdf = JsonMappers::toFile(obj(R"({"id": "F3", "mimetype": "application/pdf"})"));
     CHECK_FALSE(pdf.isAudio());
+}
+
+TEST_CASE("app unfurl metadata alone identifies a link preview", "[mappers][attachment]") {
+    CHECK(
+        JsonMappers::toAttachment(QJsonObject{{"is_app_unfurl", true}, {"title", "Linear issue"}})
+            .isLinkPreview
+    );
+    CHECK(JsonMappers::toAttachment(QJsonObject{{"is_msg_unfurl", true}}).isLinkPreview);
 }

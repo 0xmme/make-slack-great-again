@@ -499,7 +499,7 @@ void SettingsDialog::buildPanel() {
     _showLinkPreviews = new QCheckBox(tr("Show link previews"), appearPage);
     alay->addWidget(_showLinkPreviews);
     auto *linkDesc = new QLabel(
-        tr("Show previews of web links and load their images automatically.\n"
+        tr("Show web, app, and shared-message link previews and load their images automatically.\n"
            "When off, links stay clickable. This setting only affects your "
            "client."),
         appearPage
@@ -675,7 +675,11 @@ void SettingsDialog::buildPanel() {
     sampleRow->addStretch();
     nlay->addLayout(sampleRow);
 
+    _notificationTestResult = new QLabel(notifPage);
+    _notificationTestResult->setWordWrap(true);
+    nlay->addWidget(_notificationTestResult);
     connect(_sampleNotifTest, &QPushButton::clicked, this, [this] {
+        _notificationTestResult->clear();
         emit testNotificationRequested(_sampleNotifChoice->currentData().toInt());
     });
 
@@ -2761,4 +2765,8 @@ bool SettingsDialog::eventFilter(QObject *obj, QEvent *e) {
         updatePanelGeometry();
     }
     return QWidget::eventFilter(obj, e);
+}
+
+void SettingsDialog::setNotificationTestResult(const QString &text) {
+    _notificationTestResult->setText(text);
 }

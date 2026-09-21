@@ -2879,9 +2879,9 @@ Time and date formats update immediately.</translation>
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="502"/>
-        <source>Show previews of web links and load their images automatically.
+        <source>Show web, app, and shared-message link previews and load their images automatically.
 When off, links stay clickable. This setting only affects your client.</source>
-        <translation>Show previews of web links and load their images automatically.
+        <translation>Show web, app, and shared-message link previews and load their images automatically.
 When off, links stay clickable. This setting only affects your client.</translation>
     </message>
     <message>
