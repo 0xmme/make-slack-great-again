@@ -6,6 +6,7 @@
 #pragma once
 
 #include "backend/domain.h"
+#include "text/markdown_compose.h"
 #include "rpl/variable.h"
 #include "rpl/event_stream.h"
 #include "rpl/lifetime.h"
@@ -54,7 +55,11 @@ public:
     rpl::producer<> parallelUsageNotice() const { return _parallelUsageHub.events(); }
 
     // Send a message (optionally as a thread reply) and optimistically insert it.
-    // Returns the optimistic copy's client-side ts — the handle undoSend() takes.
+    // `text` is composer text: mrkdwn plus the CommonMark people type by habit,
+    // folded into mrkdwn (and a rich_text block for lists) by MarkdownCompose
+    // before anything else sees it — the optimistic copy already shows the
+    // result. Returns the optimistic copy's client-side ts — the handle
+    // undoSend() takes.
     Ts sendMessage(
         ConversationId    conv,
         const QString    &text,
@@ -504,6 +509,20 @@ public:
     QSet<QString> offRosterUserIdsForTest() const { return _offRosterUserIds; }
 
 private:
+    // The send proper, after the composer text has been converted. Callers
+    // re-posting an EXISTING message's mrkdwn (moveMessageToThread) come here
+    // directly so it isn't read as CommonMark a second time.
+    Ts postComposed(
+        ConversationId                            conv,
+        const MarkdownCompose::Composed          &composed,
+        std::optional<Ts>                         threadRoot,
+        const QString                            &subject,
+        std::function<void(bool ok, QString err)> done
+    );
+    // Composer text → OutgoingMessage (parsed text, mrkdwn, blocks) for the
+    // paths that don't need an optimistic copy: edit and schedule.
+    static OutgoingMessage composeOutgoing(const QString &composerText);
+
     // Resolve our own user id via auth.test; persists the result to cache.
     // Called at start() and retried from the loadUsers handler if the first
     // call raced the startup token refresh and failed — without meUserId every

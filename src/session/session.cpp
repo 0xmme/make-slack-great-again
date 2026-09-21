@@ -4,6 +4,7 @@
 #include "backend/backend.h"
 #include "backend/common_commands.h"
 #include "cache/workspace_cache.h"
+#include "text/markdown_compose.h"
 #include "text/mrkdwn_parser.h"
 #include "util/presence_settings.h"
 #include "util/time_format.h"
@@ -2057,6 +2058,22 @@ Ts Session::postMessage(
     const QString                            &subject,
     std::function<void(bool ok, QString err)> done
 ) {
+    return postComposed(
+        std::move(conv),
+        MarkdownCompose::convert(text),
+        std::move(threadRoot),
+        subject,
+        std::move(done)
+    );
+}
+
+Ts Session::postComposed(
+    ConversationId                            conv,
+    const MarkdownCompose::Composed          &composed,
+    std::optional<Ts>                         threadRoot,
+    const QString                            &subject,
+    std::function<void(bool ok, QString err)> done
+) {
     const Ts fakeTs = makeFakeTs();
     if (threadRoot)
         markThreadFollowed(conv, *threadRoot);
@@ -2065,8 +2082,8 @@ Ts Session::postMessage(
     optimistic.ts         = fakeTs;
     optimistic.date       = decimalTsToMicros(fakeTs); // so it sorts/renders like a real msg
     optimistic.author     = _meUserId;
-    optimistic.text       = MrkdwnParser::parse(text);
-    optimistic.rawText    = text;
+    optimistic.text       = MrkdwnParser::parse(composed.mrkdwn);
+    optimistic.rawText    = composed.mrkdwn;
     optimistic.threadRoot = threadRoot;
     optimistic.pending    = true;
 
@@ -2076,7 +2093,8 @@ Ts Session::postMessage(
 
     OutgoingMessage out;
     out.text       = optimistic.text;
-    out.rawText    = text;
+    out.rawText    = composed.mrkdwn;
+    out.blocks     = composed.blocks;
     out.threadRoot = threadRoot;
     out.subject    = subject;
     // Anchor for the backend's lost-send reconciliation: only messages newer
@@ -2118,9 +2136,12 @@ void Session::moveMessageToThread(
     if (!_backend || rootTs.isEmpty() || msg.ts.isEmpty() || msg.ts == rootTs || msg.pending)
         return;
     const Ts original = msg.ts;
-    postMessage(
+    // The copy is an existing message's mrkdwn, not composer input: it goes out
+    // as it is, no CommonMark reading (a "```word" first code line, say, must
+    // not be taken for a language hint and dropped).
+    postComposed(
         conv,
-        movedMessageText(msg, withNote),
+        MarkdownCompose::Composed{movedMessageText(msg, withNote), {}},
         rootTs,
         {},
         [this, conv, original](bool ok, QString) {
@@ -2155,7 +2176,16 @@ Backend *Session::backend() const {
 }
 
 void Session::editMessage(ConversationId conv, Ts ts, const QString &newText) {
-    _backend->editMessage(conv, ts, TextWithEntities{newText, {}});
+    _backend->editMessage(conv, ts, composeOutgoing(newText));
+}
+
+OutgoingMessage Session::composeOutgoing(const QString &composerText) {
+    const auto      composed = MarkdownCompose::convert(composerText);
+    OutgoingMessage out;
+    out.text    = MrkdwnParser::parse(composed.mrkdwn);
+    out.rawText = composed.mrkdwn;
+    out.blocks  = composed.blocks;
+    return out;
 }
 
 void Session::removeAttachment(ConversationId conv, Ts ts, Attachment attachment) {
@@ -2177,9 +2207,7 @@ void Session::sendTyping(ConversationId conv) {
 }
 
 void Session::scheduleMessage(ConversationId conv, const QString &text, qint64 postAt) {
-    OutgoingMessage out;
-    out.text = MrkdwnParser::parse(text);
-    _backend->scheduleMessage(conv, std::move(out), postAt);
+    _backend->scheduleMessage(conv, composeOutgoing(text), postAt);
 }
 
 const SlashCommand *Session::findCommand(const QString &name) const {
@@ -2441,7 +2469,7 @@ void Session::setPhoto(const QString &filePath, std::function<void(bool, QString
 Ts Session::uploadFiles(
     ConversationId     conv,
     const QStringList &filePaths,
-    const QString     &text,
+    const QString     &composerText,
     std::optional<Ts>  threadRoot
 ) {
     // Uploads can take a while for big files — show the message immediately as
@@ -2450,6 +2478,10 @@ Ts Session::uploadFiles(
     const Ts fakeTs = makeFakeTs();
     if (threadRoot)
         markThreadFollowed(conv, *threadRoot);
+
+    // initial_comment is text-only, so a list here can only be the "• item"
+    // fallback — the mrkdwn half of the conversion.
+    const QString text = MarkdownCompose::convert(composerText).mrkdwn;
 
     Message optimistic;
     optimistic.ts         = fakeTs;

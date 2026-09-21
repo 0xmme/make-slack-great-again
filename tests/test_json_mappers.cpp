@@ -1136,6 +1136,23 @@ TEST_CASE("toBlock rich_text ordered list", "[mappers][block]") {
     CHECK(b.text.text == "1. first\n2. second");
 }
 
+TEST_CASE("toBlock rich_text ordered list honours its offset", "[mappers][block]") {
+    // "3. a / 4. b" as the official client (and our composer) encode it.
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "rich_text",
+        "elements": [{
+            "type": "rich_text_list",
+            "style": "ordered",
+            "offset": 2,
+            "elements": [
+                {"type": "rich_text_section", "elements": [{"type": "text", "text": "a"}]},
+                {"type": "rich_text_section", "elements": [{"type": "text", "text": "b"}]}
+            ]
+        }]
+    })"));
+    CHECK(b.text.text == "3. a\n4. b");
+}
+
 // ── toAttachment ──────────────────────────────────────────────────────────────
 
 TEST_CASE("toAttachment all fields", "[mappers][attachment]") {

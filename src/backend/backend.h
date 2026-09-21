@@ -232,9 +232,11 @@ public:
     // message that isn't there.
     virtual void sendMessage(
         ConversationId, OutgoingMessage, std::function<void(bool ok, QString err)> done = {}
-    )                                                              = 0;
-    virtual void editMessage(ConversationId, Ts, TextWithEntities) = 0;
-    virtual void deleteMessage(ConversationId, Ts)                 = 0;
+    )                                                             = 0;
+    // Replace a message's text (rawText on the wire, blocks alongside when set —
+    // chat.update drops a message's blocks whenever text comes without them).
+    virtual void editMessage(ConversationId, Ts, OutgoingMessage) = 0;
+    virtual void deleteMessage(ConversationId, Ts)                = 0;
     // Remove one attachment (a link preview) from an own message server-side,
     // for everyone — the official client's "Remove preview". `attachmentId` is
     // the service's positional id (Attachment::id). `done` reports the outcome

@@ -365,7 +365,10 @@ TEST_CASE("DemoBackend: reactions, edits, deletes round-trip through events", "[
     be.removeReaction(c1, root, "eyes");
     CHECK(std::holds_alternative<EvReactionRemoved>(events.back()));
 
-    be.editMessage(c1, root, TextWithEntities{"edited", {}});
+    OutgoingMessage edit;
+    edit.text    = TextWithEntities{"edited", {}};
+    edit.rawText = "edited";
+    be.editMessage(c1, root, std::move(edit));
     const auto *changed = std::get_if<EvMessageChanged>(&events.back());
     REQUIRE(changed);
     CHECK(changed->msg.text.text == "edited");

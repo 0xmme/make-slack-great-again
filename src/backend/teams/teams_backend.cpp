@@ -635,8 +635,9 @@ QString Backend::messageItemPath(const ConversationId &conv, const Ts &ts) const
     return "chats/" + conv.value + "/messages/" + ts;
 }
 
-void Backend::editMessage(ConversationId conv, Ts ts, TextWithEntities text) {
-    QJsonObject body{{"body", QJsonObject{{"contentType", "text"}, {"content", text.text}}}};
+void Backend::editMessage(ConversationId conv, Ts ts, OutgoingMessage msg) {
+    const QString content = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
+    QJsonObject   body{{"body", QJsonObject{{"contentType", "text"}, {"content", content}}}};
     // PATCH returns 204; the edit reflects via the realtime echo (increment 4) or
     // a refetch — mirrors slack::editMessage, which relies on the realtime echo.
     _client->patchJson(messageItemPath(conv, ts), body, {}, [](QString e) {

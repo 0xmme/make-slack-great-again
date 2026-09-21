@@ -1535,7 +1535,7 @@ void Backend::sendMessage(
     );
 }
 
-void Backend::editMessage(ConversationId, Ts, TextWithEntities) {} // email: not supported
+void Backend::editMessage(ConversationId, Ts, OutgoingMessage) {} // email: not supported
 
 void Backend::deleteMessage(ConversationId conv, Ts ts) {
     whenReady([this, conv, ts]() mutable {

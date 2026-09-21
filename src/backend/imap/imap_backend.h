@@ -52,7 +52,7 @@ public:
     void sendMessage(
         ConversationId, OutgoingMessage, std::function<void(bool ok, QString err)> done = {}
     ) override;
-    void editMessage(ConversationId, Ts, TextWithEntities) override; // not supported
+    void editMessage(ConversationId, Ts, OutgoingMessage) override; // not supported
     void deleteMessage(ConversationId, Ts) override;
     bool channelsAreLabels() const override { return true; } // channels = labels/folders
     void labelMessage(

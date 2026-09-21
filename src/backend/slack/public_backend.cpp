@@ -1487,6 +1487,16 @@ QString unescapedText(QString t) {
         .replace(QLatin1String("&amp;"), QLatin1String("&"));
     return t.trimmed();
 }
+
+// Block Kit `blocks` argument — JSON in a form field. Omitted when empty so a
+// plain mrkdwn message keeps its plain wire shape.
+void addBlocks(QUrlQuery &params, const QJsonArray &blocks) {
+    if (blocks.isEmpty())
+        return;
+    params.addQueryItem(
+        "blocks", QString::fromUtf8(QJsonDocument(blocks).toJson(QJsonDocument::Compact))
+    );
+}
 } // namespace
 
 void PublicBackend::sendMessage(
@@ -1508,6 +1518,7 @@ void PublicBackend::postMessageAttempt(std::shared_ptr<SendState> st) {
     QUrlQuery params;
     params.addQueryItem("channel", st->conv.value);
     params.addQueryItem("text", st->wireText);
+    addBlocks(params, st->msg.blocks);
     if (st->msg.threadRoot)
         params.addQueryItem("thread_ts", *st->msg.threadRoot);
     _api->callNonIdempotent(
@@ -1637,14 +1648,24 @@ void PublicBackend::reconcileUpload(
     );
 }
 
-void PublicBackend::editMessage(ConversationId conv, Ts ts, TextWithEntities text) {
+void PublicBackend::editMessage(ConversationId conv, Ts ts, OutgoingMessage msg) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
     params.addQueryItem("ts", ts);
-    params.addQueryItem("text", text.text);
-    _api->call(
-        "chat.update",
-        params,
+    params.addQueryItem("text", msg.rawText.isEmpty() ? msg.text.text : msg.rawText);
+    // Text without blocks makes chat.update DROP the message's blocks (documented),
+    // which is right for a plain edit and why a list must travel again here.
+    addBlocks(params, msg.blocks);
+    // chat.update is idempotent, so a plain edit rides the GET path and gets
+    // Qt's retransmit on a dropped connection for free. A blocks payload can
+    // outgrow a query string (a long list, percent-encoded), so that one POSTs.
+    const auto call = [&](auto &&onOk, auto &&onErr) {
+        if (msg.blocks.isEmpty())
+            _api->call("chat.update", params, onOk, onErr);
+        else
+            _api->callNonIdempotent("chat.update", params, onOk, onErr);
+    };
+    call(
         [this, conv, ts](QJsonObject resp) {
             // Confirm the edit from the response itself rather than waiting for
             // the realtime message_changed echo, which may never arrive on a
@@ -1789,7 +1810,8 @@ void PublicBackend::sendTyping(ConversationId) {
 void PublicBackend::scheduleMessage(ConversationId conv, OutgoingMessage msg, qint64 postAt) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
-    params.addQueryItem("text", msg.text.text);
+    params.addQueryItem("text", msg.rawText.isEmpty() ? msg.text.text : msg.rawText);
+    addBlocks(params, msg.blocks);
     params.addQueryItem("post_at", QString::number(postAt));
     if (msg.threadRoot)
         params.addQueryItem("thread_ts", *msg.threadRoot);

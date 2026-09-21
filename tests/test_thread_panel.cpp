@@ -98,14 +98,14 @@ struct StubBackend : Backend {
         sendCalls.push_back({c, std::move(m)});
     }
     struct EditCall {
-        ConversationId   conv;
-        Ts               ts;
-        TextWithEntities text;
+        ConversationId  conv;
+        Ts              ts;
+        OutgoingMessage msg;
     };
     std::vector<EditCall> editCalls;
 
-    void editMessage(ConversationId c, Ts ts, TextWithEntities t) override {
-        editCalls.push_back({c, ts, std::move(t)});
+    void editMessage(ConversationId c, Ts ts, OutgoingMessage m) override {
+        editCalls.push_back({c, ts, std::move(m)});
     }
     void deleteMessage(ConversationId, Ts) override {}
     void addReaction(ConversationId, Ts, QString) override {}
@@ -476,7 +476,7 @@ TEST_CASE("editing an older thread reply reaches the backend", "[thread][edit]")
     REQUIRE(f.stub->editCalls.size() == 1);
     CHECK(f.stub->editCalls[0].conv == kConv.id);
     CHECK(f.stub->editCalls[0].ts == QStringLiteral("100.600"));
-    CHECK(f.stub->editCalls[0].text.text == QStringLiteral("fixed it"));
+    CHECK(f.stub->editCalls[0].msg.rawText == QStringLiteral("fixed it"));
     // Not a new reply: an unwired menu item leaves the composer in plain send
     // mode, where the same Enter posts "fixed it" as a fresh message.
     CHECK(f.stub->sendCalls.empty());

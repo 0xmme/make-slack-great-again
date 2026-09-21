@@ -189,6 +189,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
 
     # Text
     src/text/link_labels.cpp
+    src/text/markdown_compose.cpp
     src/text/mrkdwn_parser.cpp
 
     # Utilities

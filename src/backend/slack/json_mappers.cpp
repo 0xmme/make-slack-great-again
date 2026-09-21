@@ -377,7 +377,7 @@ static TextWithEntities richTextToTWE(const QJsonObject &block) {
             );
         } else if (stype == "rich_text_list") {
             const auto style   = section.value("style").toString(); // "bullet" or "ordered"
-            int        itemIdx = 0;
+            int        itemIdx = section.value("offset").toInt();   // "3." starts at offset 2
             for (const auto &ev : elems) {
                 // Each list item is a rich_text_section
                 const auto item = ev.toObject();

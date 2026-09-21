@@ -14,6 +14,7 @@
 #include <QTimer>
 
 #include "session/session.h"
+#include "text/mrkdwn_parser.h"
 #include "ui/conv_list/named_conversation.h"
 #include "backend/backend.h"
 #include "backend/common_commands.h"
@@ -223,7 +224,24 @@ struct StubBackend : Backend {
                              ) override {
         attachmentDeletes.push_back({c, ts, id, std::move(done)});
     }
-    void editMessage(ConversationId, Ts, TextWithEntities) override {}
+    struct EditCall {
+        ConversationId  conv;
+        Ts              ts;
+        OutgoingMessage msg;
+    };
+    std::vector<EditCall> edits;
+    void                  editMessage(ConversationId c, Ts ts, OutgoingMessage m) override {
+        edits.push_back({c, ts, std::move(m)});
+    }
+    struct ScheduledCall {
+        ConversationId  conv;
+        OutgoingMessage msg;
+        qint64          postAt;
+    };
+    std::vector<ScheduledCall> scheduled;
+    void scheduleMessage(ConversationId c, OutgoingMessage m, qint64 postAt) override {
+        scheduled.push_back({c, std::move(m), postAt});
+    }
     void addReaction(ConversationId, Ts, QString) override {}
     void removeReaction(ConversationId, Ts, QString) override {}
 
@@ -1833,6 +1851,74 @@ TEST_CASE_METHOD(SessionFixture, "sendMessage delegates to backend", "[session][
     REQUIRE(stub->sentMessages.size() == 1);
     CHECK(stub->sentMessages[0].conv == ConversationId{"C1"});
     CHECK(stub->sentMessages[0].msg.text.text == "hi");
+}
+
+// ── Composer text → wire (MarkdownCompose) ────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "sendMessage folds CommonMark into mrkdwn before anything sees it",
+    "[session][send][compose]"
+) {
+    auto col = collectEvents();
+    session->sendMessage(ConversationId{"C1"}, "**bold** [d](https://x.io)");
+    REQUIRE(stub->sentMessages.size() == 1);
+    const auto &sent = stub->sentMessages[0].msg;
+    CHECK(sent.rawText == "*bold* <https://x.io|d>");
+    CHECK(sent.text.text == "bold d");
+    CHECK(sent.blocks.isEmpty());
+    // The optimistic copy already shows the converted text, and reopens as it.
+    const auto &ev = std::get<EvMessageNew>(col.events[0]);
+    CHECK(ev.msg.rawText == "*bold* <https://x.io|d>");
+    REQUIRE(ev.msg.text.entities.size() == 2);
+    CHECK(ev.msg.text.entities[0].type == EntityType::Bold);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a list travels as a rich_text block with a bullet fallback",
+    "[session][send][compose]"
+) {
+    session->sendMessage(ConversationId{"C1"}, "todo\n- a\n- b");
+    REQUIRE(stub->sentMessages.size() == 1);
+    const auto &sent = stub->sentMessages[0].msg;
+    CHECK(sent.rawText == "todo\n• a\n• b");
+    REQUIRE(sent.blocks.size() == 1);
+    CHECK(sent.blocks[0].toObject().value("type").toString() == "rich_text");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "editMessage and scheduleMessage convert the same way",
+    "[session][edit][compose]"
+) {
+    session->editMessage(ConversationId{"C1"}, Ts{"100.000"}, "- ~~x~~");
+    REQUIRE(stub->edits.size() == 1);
+    CHECK(stub->edits[0].ts == "100.000");
+    CHECK(stub->edits[0].msg.rawText == "• ~x~");
+    CHECK(stub->edits[0].msg.text.text == "• x");
+    CHECK(stub->edits[0].msg.blocks.size() == 1); // chat.update would drop the list otherwise
+
+    session->scheduleMessage(ConversationId{"C1"}, "**soon**", 2000000000LL);
+    REQUIRE(stub->scheduled.size() == 1);
+    CHECK(stub->scheduled[0].msg.rawText == "*soon*");
+    CHECK(stub->scheduled[0].msg.text.text == "soon");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "moveMessageToThread re-posts an existing message's mrkdwn verbatim",
+    "[session][move][compose]"
+) {
+    Message m;
+    m.ts      = "100.500";
+    m.author  = UserId{"U1"};
+    m.rawText = "```echo\nhi```\n- dash line **stays**";
+    m.text    = MrkdwnParser::parse(m.rawText);
+    session->moveMessageToThread(ConversationId{"C1"}, m, Ts{"100.000"});
+    REQUIRE(stub->sentMessages.size() == 1);
+    CHECK(stub->sentMessages[0].msg.rawText == m.rawText);
+    CHECK(stub->sentMessages[0].msg.blocks.isEmpty());
 }
 
 // ── moveMessageToThread ───────────────────────────────────────────────────────

@@ -77,7 +77,7 @@ struct StubBackend : Backend {
 
     void sendMessage(ConversationId, OutgoingMessage, std::function<void(bool, QString)>) override {
     }
-    void editMessage(ConversationId, Ts, TextWithEntities) override {}
+    void editMessage(ConversationId, Ts, OutgoingMessage) override {}
     void deleteMessage(ConversationId, Ts) override {}
     void addReaction(ConversationId, Ts, QString) override {}
     void removeReaction(ConversationId, Ts, QString) override {}

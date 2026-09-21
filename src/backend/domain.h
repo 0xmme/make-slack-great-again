@@ -6,6 +6,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QJsonArray>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -1030,6 +1031,10 @@ struct ThreadsViewPage {
 struct OutgoingMessage {
     TextWithEntities  text;
     QString           rawText; // original mrkdwn source; sent verbatim to chat.postMessage
+    // Block Kit `blocks` to post alongside the text — one rich_text block when
+    // the composer text held a list (MarkdownCompose::convert), else empty.
+    // Slack only; other services render rawText.
+    QJsonArray        blocks;
     std::optional<Ts> threadRoot;
     // Latest server ts known for the conversation when the send started.
     // Anchors the duplicate-check window when a send must be reconciled after

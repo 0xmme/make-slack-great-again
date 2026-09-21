@@ -185,14 +185,14 @@ void DemoBackend::sendMessage(
     Q_UNUSED(ts);
 }
 
-void DemoBackend::editMessage(ConversationId conv, Ts ts, TextWithEntities text) {
+void DemoBackend::editMessage(ConversationId conv, Ts ts, OutgoingMessage msg) {
     Message *m = findMessage(conv, ts);
     if (!m)
         return;
-    m->text    = text;
+    m->text    = msg.text;
     m->edited  = true;
-    // The composer hands us the parsed text; keep rawText in step for re-edits.
-    m->rawText = text.text;
+    // Keep rawText in step for re-edits (the composer reopens it).
+    m->rawText = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
     _events.fire(EvMessageChanged{conv, *m, /*textOnly=*/true});
 }
 

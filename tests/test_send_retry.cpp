@@ -8,6 +8,9 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDeadlineTimer>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
@@ -544,7 +547,7 @@ TEST_CASE_METHOD(SendFixture, "edit confirms from the chat.update response", "[s
         R"("message":{"text":"fixed","user":"U1"}})"
     );
 
-    backend.editMessage(ConversationId{"C1"}, "123.456", TextWithEntities{"fixed", {}});
+    backend.editMessage(ConversationId{"C1"}, "123.456", out("fixed"));
 
     REQUIRE(waitFor([&] { return messageChangedEvent() != nullptr; }));
     const auto *ev = messageChangedEvent();
@@ -554,6 +557,44 @@ TEST_CASE_METHOD(SendFixture, "edit confirms from the chat.update response", "[s
     CHECK(ev->msg.edited);
     CHECK(ev->textOnly);
     CHECK(server.requestPaths[0] == "/chat.update");
+}
+
+// The form field a send/edit carries its Block Kit JSON in, parsed back.
+static QJsonArray postedBlocks(const QByteArray &formBody) {
+    for (const QByteArray &pair : formBody.split('&')) {
+        if (!pair.startsWith("blocks="))
+            continue;
+        const QByteArray raw = QByteArray::fromPercentEncoding(pair.mid(7));
+        return QJsonDocument::fromJson(raw).array();
+    }
+    return {};
+}
+
+TEST_CASE_METHOD(SendFixture, "blocks ride along with the text on send and edit", "[send_retry]") {
+    server.enqueue(R"({"ok":true,"ts":"1.0","message":{"ts":"1.0","user":"U1","text":"• a"}})");
+    server.enqueue(
+        R"({"ok":true,"channel":"C1","ts":"1.0","text":"• a","message":{"text":"• a"}})"
+    );
+
+    OutgoingMessage list = out("• a");
+    list.blocks.append(QJsonObject{{"type", "rich_text"}, {"elements", QJsonArray{}}});
+    backend.sendMessage(ConversationId{"C1"}, list);
+    REQUIRE(waitFor([&] { return newMessageEvent() != nullptr; }));
+    backend.editMessage(ConversationId{"C1"}, "1.0", list);
+    REQUIRE(waitFor([&] { return messageChangedEvent() != nullptr; }));
+
+    REQUIRE(server.requestBodies.size() == 2);
+    for (const auto &body : server.requestBodies) {
+        CHECK(body.contains("text=%E2%80%A2%20a")); // the fallback text, form-encoded
+        const auto blocks = postedBlocks(body);
+        REQUIRE(blocks.size() == 1);
+        CHECK(blocks[0].toObject().value("type").toString() == "rich_text");
+    }
+    // A plain message posts no blocks field at all.
+    server.enqueue(R"({"ok":true,"ts":"2.0","message":{"ts":"2.0","user":"U1","text":"hi"}})");
+    backend.sendMessage(ConversationId{"C1"}, out("hi"));
+    REQUIRE(waitFor([&] { return server.requestBodies.size() == 3; }));
+    CHECK(!server.requestBodies[2].contains("blocks="));
 }
 
 TEST_CASE_METHOD(

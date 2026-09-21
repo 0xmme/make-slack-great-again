@@ -152,7 +152,7 @@ void FakeBackend::sendMessage(
     if (done)
         done(true, {});
 }
-void FakeBackend::editMessage(ConversationId, Ts, TextWithEntities) {}
+void FakeBackend::editMessage(ConversationId, Ts, OutgoingMessage) {}
 void FakeBackend::deleteMessage(ConversationId, Ts) {}
 void FakeBackend::addReaction(ConversationId, Ts, QString) {}
 void FakeBackend::removeReaction(ConversationId, Ts, QString) {}

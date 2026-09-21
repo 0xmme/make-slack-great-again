@@ -66,7 +66,7 @@ public:
     void sendMessage(
         ConversationId, OutgoingMessage, std::function<void(bool ok, QString err)> done = {}
     ) override;
-    void editMessage(ConversationId, Ts, TextWithEntities) override;
+    void editMessage(ConversationId, Ts, OutgoingMessage) override;
     void deleteMessage(ConversationId, Ts) override;
     void addReaction(ConversationId, Ts, QString emoji) override;
     void removeReaction(ConversationId, Ts, QString emoji) override;

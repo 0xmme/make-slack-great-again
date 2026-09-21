@@ -125,6 +125,15 @@ add_msga_test(test_mrkdwn
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
 )
 
+# Composer text → mrkdwn + rich_text (CommonMark rewrites, list blocks).
+add_msga_test(test_markdown_compose
+    test_markdown_compose.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+)
+
 # Shortened link labels ("host/…/…") — detection, display expansion, copy text.
 add_msga_test(test_link_labels
     test_link_labels.cpp
@@ -392,6 +401,7 @@ endif()
 add_msga_qt_test(test_session
     test_session.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/conv_list/named_conversation.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
@@ -418,6 +428,7 @@ add_msga_widget_test(test_message_render
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
@@ -467,6 +478,7 @@ add_msga_widget_test(test_canvas_page
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
@@ -488,6 +500,7 @@ add_msga_widget_test(test_canvas_emoji
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
@@ -578,6 +591,7 @@ add_msga_widget_test(test_search_widget
     ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -783,6 +797,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -823,6 +838,7 @@ add_msga_widget_test(test_conv_list_widget
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -910,6 +926,7 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/llm/audio_transcriber.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -974,6 +991,7 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/llm/audio_transcriber.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp

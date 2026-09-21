@@ -99,7 +99,7 @@ struct StubBackend : Backend {
 
     void sendMessage(ConversationId, OutgoingMessage, std::function<void(bool, QString)>) override {
     }
-    void editMessage(ConversationId, Ts, TextWithEntities) override {}
+    void editMessage(ConversationId, Ts, OutgoingMessage) override {}
     void deleteMessage(ConversationId, Ts) override {}
     // deleteAttachment calls with their outcome callbacks: the test plays the
     // server, so the list's optimistic hide and the confirmation can be told apart.
