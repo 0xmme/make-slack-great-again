@@ -326,3 +326,33 @@ TEST_CASE_METHOD(
     CHECK(keys[0] == slackKey("T_NEW"));
     CHECK(TokenStore::loadWorkspace(slackKey("T_NEW"))->auth == QByteArray("blob"));
 }
+
+// ── Custom workspace icon path ────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    TokenStoreFixture, "custom icon path round-trips and clears", "[tokenstore][icon]"
+) {
+    const auto k = slackKey("T1");
+    CHECK(TokenStore::customWorkspaceIconPath(k).isEmpty());
+    TokenStore::setCustomWorkspaceIconPath(k, "/tmp/x.png");
+    CHECK(TokenStore::customWorkspaceIconPath(k) == "/tmp/x.png");
+    TokenStore::setCustomWorkspaceIconPath(k, {});
+    CHECK(TokenStore::customWorkspaceIconPath(k).isEmpty());
+}
+
+TEST_CASE_METHOD(
+    TokenStoreFixture, "removeWorkspace drops the custom icon path", "[tokenstore][icon]"
+) {
+    TokenStore::saveWorkspace(rec("T1", "One", "https://x/1.png"));
+    TokenStore::setCustomWorkspaceIconPath(slackKey("T1"), "/tmp/x.png");
+    TokenStore::removeWorkspace(slackKey("T1"));
+    CHECK(TokenStore::customWorkspaceIconPath(slackKey("T1")).isEmpty());
+}
+
+TEST_CASE_METHOD(
+    TokenStoreFixture, "displayIconUrl ignores a path whose file is missing", "[tokenstore][icon]"
+) {
+    const auto r = rec("T1", "One", "https://x/1.png");
+    TokenStore::setCustomWorkspaceIconPath(r.key, "/nonexistent/dir/icon.png");
+    CHECK(TokenStore::displayIconUrl(r) == "https://x/1.png");
+}

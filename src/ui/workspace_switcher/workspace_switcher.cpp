@@ -54,9 +54,12 @@ void WorkspaceSwitcher::setWorkspaces(const std::vector<Entry> &entries) {
         // Carry over what the caller doesn't know: the downloaded icon, live
         // unread counts and the animated position (entries built from
         // TokenStore carry zeros).
+        // A carried pixmap is only valid for the same url: a changed url (the
+        // user set or cleared a custom icon) must fall through to loadIcons().
         for (const auto &old : _entries)
             if (old.info.teamId == e.teamId) {
-                ep.icon          = old.icon;
+                if (old.info.iconUrl == e.iconUrl)
+                    ep.icon = old.icon;
                 ep.info.unread   = old.info.unread;
                 ep.info.mentions = old.info.mentions;
                 ep.y             = old.y;

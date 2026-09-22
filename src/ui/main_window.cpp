@@ -23,6 +23,8 @@
 #include "backend/slack/session_import/token_deriver.h"
 #include "backend/slack/slack_auth.h"
 #include "ui/session_import_dialog/session_import_dialog.h"
+#include "ui/workspace_icon_dialog/workspace_icon_dialog.h"
+#include "util/custom_workspace_icon.h"
 #include "auth/auth_strategy_factory.h"
 #include "backend/backend.h"
 #include "backend/backend_factory.h"
@@ -126,6 +128,12 @@ static TokenStore::WorkspaceRecord recordForHandle(const QString &handle) {
         if (const auto rec = TokenStore::loadWorkspace(*key))
             return *rec;
     return {};
+}
+
+// The icon to SHOW for a workspace — honours the user's local override, unlike
+// the record's raw iconUrl (which is what the server serves).
+static QString iconUrlForHandle(const QString &handle) {
+    return TokenStore::displayIconUrl(recordForHandle(handle));
 }
 
 // Global default notification level (Settings → "Notify me about"): applied to
@@ -1991,7 +1999,7 @@ void MainWindow::openQuickSwitcher() {
         workspaces.push_back(
             {.teamId  = teamId,
              .name    = rec.displayName,
-             .iconUrl = rec.iconUrl,
+             .iconUrl = TokenStore::displayIconUrl(rec),
              .conversations =
                  teamId == _activeTeamId
                      ? _convList->namedConversations()
@@ -2469,7 +2477,7 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev, bool
             else if (!ev.msg.botAvatarUrl.isEmpty())
                 iconUrl = ev.msg.botAvatarUrl;
         } else {
-            iconUrl = recordForHandle(teamId).iconUrl;
+            iconUrl = iconUrlForHandle(teamId);
         }
         if (!iconUrl.isEmpty())
             notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
@@ -2627,7 +2635,7 @@ void MainWindow::maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged 
         if (isDm && starter && !starter->avatarUrl.isEmpty())
             iconUrl = starter->avatarUrl;
         else
-            iconUrl = recordForHandle(teamId).iconUrl;
+            iconUrl = iconUrlForHandle(teamId);
         if (!iconUrl.isEmpty())
             notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
     }
@@ -2751,7 +2759,7 @@ void MainWindow::notifyReminderDue(const QString &teamId, const EvReminderDue &e
                 iconUrl = peer->avatarUrl;
         }
         if (iconUrl.isEmpty())
-            iconUrl = recordForHandle(teamId).iconUrl;
+            iconUrl = iconUrlForHandle(teamId);
         if (!iconUrl.isEmpty())
             notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
     }
@@ -2815,7 +2823,7 @@ void MainWindow::showSampleNotification(int kind) {
     // Picture: the active workspace icon when cached (illustrative only).
     QPixmap notifPix;
     if (_imgCache && !_activeTeamId.isEmpty()) {
-        const QString iconUrl = recordForHandle(_activeTeamId).iconUrl;
+        const QString iconUrl = iconUrlForHandle(_activeTeamId);
         if (!iconUrl.isEmpty())
             notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
     }
@@ -2874,7 +2882,7 @@ void MainWindow::notifySessionExpired(const QString &teamId) {
     // workspace's; the image-less form is the floor.
     QPixmap notifPix;
     if (_imgCache) {
-        const QString iconUrl = recordForHandle(teamId).iconUrl;
+        const QString iconUrl = iconUrlForHandle(teamId);
         if (!iconUrl.isEmpty())
             notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
     }
@@ -3024,7 +3032,9 @@ void MainWindow::refreshSwitcher() {
         if (TokenStore::isWorkspaceMuted(key))
             _mutedTeams.insert(handle);
         entries.push_back(
-            {handle, rec ? rec->displayName : QString(), rec ? rec->iconUrl : QString()}
+            {handle,
+             rec ? rec->displayName : QString(),
+             rec ? TokenStore::displayIconUrl(*rec) : QString()}
         );
     }
     _switcher->setWorkspaces(entries);
@@ -3040,8 +3050,10 @@ void MainWindow::logoutWorkspace(const QString &teamId) {
     dropSession(teamId);
     if (wasActive)
         _activeTeamId.clear();
-    if (const auto key = WorkspaceKey::fromString(teamId))
+    if (const auto key = WorkspaceKey::fromString(teamId)) {
+        CustomWorkspaceIcon::remove(*key); // the override's file goes with the workspace
         TokenStore::removeWorkspace(*key);
+    }
 
     const auto remaining = TokenStore::workspaceKeys();
     if (remaining.empty()) {
@@ -3051,6 +3063,37 @@ void MainWindow::logoutWorkspace(const QString &teamId) {
     } else {
         refreshSwitcher();
     }
+}
+
+void MainWindow::changeWorkspaceIcon(const QString &teamId) {
+    const auto key = WorkspaceKey::fromString(teamId);
+    if (!key)
+        return;
+    const auto    rec     = recordForHandle(teamId);
+    const QString url     = TokenStore::displayIconUrl(rec);
+    const QPixmap current = (_imgCache && !url.isEmpty()) ? _imgCache->get(url) : QPixmap();
+    auto         *dlg     = new WorkspaceIconDialog(
+        teamId, rec.displayName, current, !TokenStore::customWorkspaceIconPath(*key).isEmpty(), this
+    );
+    connect(dlg, &AppDialog::finished, this, [this, dlg, key = *key](int result) {
+        dlg->deleteLater();
+        if (result != QDialog::Accepted)
+            return;
+        if (dlg->resetRequested()) {
+            CustomWorkspaceIcon::remove(key);
+        } else if (const QImage img = dlg->chosenImage(); !img.isNull()) {
+            if (CustomWorkspaceIcon::install(key, img).isEmpty()) {
+                QMessageBox::warning(
+                    this, tr("Workspace icon"), tr("The icon could not be saved.")
+                );
+                return;
+            }
+        }
+        // The rail rebuilds its entries from TokenStore; a changed url drops
+        // the carried pixmap so the new file is fetched.
+        refreshSwitcher();
+    });
+    dlg->open();
 }
 
 void MainWindow::toggleWorkspaceMute(const QString &teamId) {
@@ -3086,6 +3129,8 @@ void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPo
             });
         }
     }
+
+    menu->addItem(tr("Change icon…"), [this, teamId] { changeWorkspaceIcon(teamId); });
 
     menu->addItem(_mutedTeams.contains(teamId) ? tr("Unmute") : tr("Mute"), [this, teamId] {
         toggleWorkspaceMute(teamId);

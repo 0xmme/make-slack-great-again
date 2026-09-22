@@ -43,4 +43,16 @@ void                        setWorkspaceMuted(const WorkspaceKey &key, bool mute
 std::optional<WorkspaceKey> activeWorkspace();
 void                        setActiveWorkspace(const WorkspaceKey &key);
 
+// Local override for the workspace icon: a non-admin cannot change the icon
+// Slack serves, so the user may pick one that only this install shows. Stored
+// as the absolute path of a PNG the app owns (see CustomWorkspaceIcon), apart
+// from the credential record so a re-login — which rewrites `iconUrl` from the
+// server — never wipes it. Empty path = no override.
+QString customWorkspaceIconPath(const WorkspaceKey &key);
+void    setCustomWorkspaceIconPath(const WorkspaceKey &key, const QString &path);
+// What the UI shows for the workspace: the custom icon as a file:// URL when
+// one is set and its file still exists, else the record's server icon URL.
+// Every icon consumer (rail, quick switcher, notifications) goes through here.
+QString displayIconUrl(const WorkspaceRecord &rec);
+
 } // namespace TokenStore

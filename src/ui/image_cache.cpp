@@ -7,6 +7,7 @@
 #include <QBuffer>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QFile>
 #include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
@@ -254,6 +255,22 @@ void ImageCache::pumpFetchQueue() {
 }
 
 void ImageCache::issueFetch(const QString &url) {
+    // A file:// url (custom workspace icons) is read straight from disk: no
+    // download slot to hold, and nothing to copy into the disk cache — the
+    // file IS the durable copy. Same completion path as a download otherwise.
+    if (const QUrl u(url); u.isLocalFile()) {
+        QFile f(u.toLocalFile());
+        if (f.open(QIODevice::ReadOnly)) {
+            decodeAsync(url, f.readAll(), /*saveToDisk=*/false);
+        } else {
+            auto &e    = _cache[url];
+            e.inFlight = false;
+            markFailed(url, /*permanent=*/false);
+            account(url);
+            emit loaded(url);
+        }
+        return;
+    }
     ++_activeFetches;
     auto *reply = _nam->get(QNetworkRequest(QUrl(url)));
     connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {

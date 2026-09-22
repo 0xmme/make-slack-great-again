@@ -134,6 +134,8 @@ private:
     void refreshSwitcher();
     void logoutWorkspace(const QString &teamId);
     void toggleWorkspaceMute(const QString &teamId);
+    // Pick/clear the local override for a workspace's icon (WorkspaceIconDialog).
+    void changeWorkspaceIcon(const QString &teamId);
     void showWorkspaceMenu(const QString &teamId, const QPoint &globalPos);
 
     // Header helpers

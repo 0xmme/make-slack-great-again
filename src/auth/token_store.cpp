@@ -4,9 +4,11 @@
 
 #include "util/secret_store.h"
 
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
+#include <QUrl>
 
 static QSettings settings() {
     return QSettings("msga", "msga");
@@ -185,4 +187,23 @@ std::optional<WorkspaceKey> TokenStore::activeWorkspace() {
 
 void TokenStore::setActiveWorkspace(const WorkspaceKey &key) {
     settings().setValue(QStringLiteral("active"), key.toString());
+}
+
+QString TokenStore::customWorkspaceIconPath(const WorkspaceKey &key) {
+    return settings().value(recordBase(key) + "/customIcon").toString();
+}
+
+void TokenStore::setCustomWorkspaceIconPath(const WorkspaceKey &key, const QString &path) {
+    auto s = settings();
+    if (path.isEmpty())
+        s.remove(recordBase(key) + "/customIcon");
+    else
+        s.setValue(recordBase(key) + "/customIcon", path);
+}
+
+QString TokenStore::displayIconUrl(const WorkspaceRecord &rec) {
+    const QString custom = customWorkspaceIconPath(rec.key);
+    if (!custom.isEmpty() && QFileInfo::exists(custom))
+        return QUrl::fromLocalFile(custom).toString();
+    return rec.iconUrl;
 }
