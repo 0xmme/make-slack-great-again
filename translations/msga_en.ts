@@ -1614,16 +1614,21 @@ Create a free one — it takes a minute — then paste it below. You can change 
     <name>MentionPopup</name>
     <message>
         <location filename="../src/ui/mention_popup/mention_popup.cpp" line="442"/>
+        <source>Disabled in threads</source>
+        <translation>Disabled in threads</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="465"/>
         <source>(you)</source>
         <translation>(you)</translation>
     </message>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="125"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="133"/>
         <source>Enter</source>
         <translation>Enter</translation>
     </message>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="154"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="174"/>
         <source>APP</source>
         <translation>APP</translation>
     </message>

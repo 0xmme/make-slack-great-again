@@ -1153,34 +1153,39 @@ Create a free one — it takes a minute — then paste it below. You can change 
 <context>
     <name>MentionPopup</name>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="442"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="465"/>
         <source>(you)</source>
         <translation>(あなた)</translation>
     </message>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="125"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="133"/>
         <source>Enter</source>
         <translation>Enter</translation>
     </message>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="48"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="54"/>
         <source>Notify everyone in this channel</source>
         <translation>このチャンネルの全員に通知します</translation>
     </message>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="51"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="57"/>
         <source>Notify everyone in your workspace</source>
         <translation>ワークスペースの全員に通知します</translation>
     </message>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="52"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="58"/>
         <source>Notify every online member here</source>
         <translation>ここにいるオンラインの全メンバーに通知します</translation>
     </message>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="154"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="174"/>
         <source>APP</source>
         <translation>アプリ</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="442"/>
+        <source>Disabled in threads</source>
+        <translation>スレッドでは無効</translation>
     </message>
 </context>
 <context>
