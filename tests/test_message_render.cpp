@@ -875,6 +875,38 @@ TEST_CASE("attachIsImageOnly true only for pure image-block attachments", "[rend
     CHECK(!MsgRender::attachIsImageOnly(Attachment{}));
 }
 
+TEST_CASE("media-only link previews remain identifiable as message media", "[render][media]") {
+    Attachment giphy;
+    giphy.imageUrl      = "https://media.giphy.com/media/abc123/giphy.gif";
+    giphy.isLinkPreview = true;
+    CHECK(MsgRender::isMediaAttachment(giphy));
+
+    Attachment opaquePng;
+    opaquePng.imageUrl      = "https://cdn.example.com/image/abc123";
+    opaquePng.isLinkPreview = true;
+    CHECK(MsgRender::isMediaAttachment(opaquePng));
+
+    Attachment jpegBlock;
+    jpegBlock.blocks = {
+        Block{.typeStr = "image", .imageUrl = "https://cdn.example.com/photo.jpeg?size=large"}
+    };
+    jpegBlock.isLinkPreview = true;
+    CHECK(MsgRender::isMediaAttachment(jpegBlock));
+
+    Attachment card;
+    card.title         = "Article";
+    card.text          = TextWithEntities{"Preview text", {}};
+    card.imageUrl      = "https://example.com/article-preview.png";
+    card.isLinkPreview = true;
+    CHECK_FALSE(MsgRender::isMediaAttachment(card));
+
+    Attachment sharedMessage;
+    sharedMessage.blocks        = jpegBlock.blocks;
+    sharedMessage.isMsgUnfurl   = true;
+    sharedMessage.isLinkPreview = true;
+    CHECK_FALSE(MsgRender::isMediaAttachment(sharedMessage));
+}
+
 // ── lastReplyLabel ────────────────────────────────────────────────────────────
 
 TEST_CASE("lastReplyLabel uses 'today at' wording for today's ts", "[render][reply]") {

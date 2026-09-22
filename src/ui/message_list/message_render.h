@@ -56,6 +56,12 @@ QString docStyleSheet();
 QStringList
 collectEmojiImageUrls(const Message &msg, const Session *session, bool showLinkPreviews = true);
 
+// Slack can deliver pasted images and GIF-picker results as link-unfurl
+// attachments. Media-only attachments remain message content when ordinary
+// preview cards are disabled; classification is based on their shape rather
+// than a filename extension because CDN URLs are often opaque.
+bool isMediaAttachment(const Attachment &att);
+
 // Context for rendering Block Kit "image" blocks inline (Slack GIF/Giphy
 // messages). When provided, image blocks emit a title line ("GIF ▾", a
 // collapse-toggle anchor) followed by the real <img>; the caller registers the

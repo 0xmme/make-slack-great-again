@@ -829,6 +829,16 @@ TEST_CASE(
             .imageUrl      = "https://example.com/linear.png",
             .isLinkPreview = true
         },
+        Attachment{
+            .fallback      = "Dancing GIF",
+            .imageUrl      = "https://media.giphy.com/media/abc123/giphy.gif",
+            .isLinkPreview = true,
+        },
+        Attachment{
+            .fallback      = "Photo",
+            .imageUrl      = "https://images.example.com/opaque-cdn-resource",
+            .isLinkPreview = true,
+        },
         Attachment{.title = "Bot content", .imageUrl = "https://example.com/bot.png"},
         Attachment{
             .text        = TextWithEntities{"Shared Slack message", {}},
@@ -862,6 +872,8 @@ TEST_CASE(
         CHECK_FALSE(requested.contains("https://example.com/author.png"));
     };
     checkNoPreviews();
+    CHECK(requested.contains("https://media.giphy.com/media/abc123/giphy.gif"));
+    CHECK(requested.contains("https://images.example.com/opaque-cdn-resource"));
     CHECK(requested.contains("https://example.com/bot.png"));
     CHECK_FALSE(requested.contains("https://example.com/author.png"));
     const int hiddenHeight = list.verticalScrollBar()->maximum();

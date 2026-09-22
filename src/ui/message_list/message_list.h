@@ -657,8 +657,9 @@ private:
     bool                isAttachmentHidden(const Message &msg, int ai) const {
         // Hot path (rowHeight/paint per attachment): only build the lookup key
         // when something was actually dismissed this session.
-        return (!_showLinkPreviews &&
-                (msg.attachments[ai].isLinkPreview || msg.attachments[ai].isMsgUnfurl)) ||
+        const auto &att = msg.attachments[ai];
+        return (!_showLinkPreviews && (att.isLinkPreview || att.isMsgUnfurl) &&
+                !MsgRender::isMediaAttachment(att)) ||
                (!_dismissedAttachments.isEmpty() &&
                 _dismissedAttachments.contains(msg.ts + "/" + QString::number(ai)));
     }

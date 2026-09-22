@@ -32,6 +32,25 @@
 
 namespace MsgRender {
 
+bool isMediaAttachment(const Attachment &att) {
+    if (att.isMsgUnfurl || !att.pretext.isEmpty() || !att.authorName.isEmpty() ||
+        !att.title.isEmpty() || !att.text.text.isEmpty() || !att.fields.empty() ||
+        !att.footer.isEmpty() || !att.buttons.empty() || !att.files.empty())
+        return false;
+
+    bool hasImage = !att.imageUrl.isEmpty() || !att.thumbUrl.isEmpty();
+    for (const auto &block : att.blocks) {
+        if (block.typeStr == QLatin1String("image") && !block.imageUrl.isEmpty()) {
+            hasImage = true;
+            continue;
+        }
+        if (block.typeStr == QLatin1String("divider") || !block.text.text.isEmpty() ||
+            !block.buttons.empty() || !block.tableRows.empty())
+            return false;
+    }
+    return hasImage;
+}
+
 QString resolveEmoji(const QString &name) {
     return Emoji::fromName(name);
 }
@@ -160,7 +179,7 @@ collectEmojiImageUrls(const Message &msg, const Session *session, bool showLinkP
         addBlockImage(b);
     }
     for (const auto &att : msg.attachments) {
-        if (!showLinkPreviews && (att.isLinkPreview || att.isMsgUnfurl))
+        if (!showLinkPreviews && (att.isLinkPreview || att.isMsgUnfurl) && !isMediaAttachment(att))
             continue;
         if (!att.pretext.isEmpty()) // pretext is parsed as mrkdwn at render time
             addFrom(MrkdwnParser::parse(att.pretext));
