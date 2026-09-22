@@ -781,6 +781,8 @@ void WorkspaceCache::saveReminders(const std::vector<MessageReminder> &reminders
         o["conv"] = r.conv.value;
         o["ts"]   = r.ts;
         o["due"]  = r.dueAt;
+        if (r.savedAt > 0)
+            o["saved"] = r.savedAt;
         if (!r.threadRoot.isEmpty())
             o["root"] = r.threadRoot;
         if (!r.snippet.isEmpty())
@@ -809,13 +811,14 @@ std::vector<MessageReminder> WorkspaceCache::loadReminders() const {
         r.conv         = ConversationId{o.value("conv").toString()};
         r.ts           = o.value("ts").toString();
         r.dueAt        = o.value("due").toVariant().toLongLong();
+        r.savedAt      = o.value("saved").toVariant().toLongLong();
         r.threadRoot   = o.value("root").toString();
         r.snippet      = o.value("snippet").toString();
         r.author       = UserId{o.value("author").toString()};
         r.botName      = o.value("botName").toString();
         r.botAvatarUrl = o.value("botAvatar").toString();
         r.fired        = o.value("fired").toBool();
-        if (!r.conv.value.isEmpty() && !r.ts.isEmpty() && r.dueAt > 0)
+        if (!r.conv.value.isEmpty() && !r.ts.isEmpty())
             out.push_back(std::move(r));
     }
     return out;

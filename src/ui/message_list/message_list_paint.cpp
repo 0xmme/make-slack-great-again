@@ -218,10 +218,11 @@ void MessageListWidget::paintRow(
     const int rh        = rowHeight(index);
     const int msgH      = rh - sepH;
 
+    const bool saved    = isSaved(item);
     const bool reminded = hasReminder(item);
 
     // Reminder tint covers the whole row (under hover/flash, like Slack's
-    // light-blue "saved for later" rows).
+    // light-blue reminder rows); a plain bookmark only gets the strip.
     if (reminded)
         p.fillRect(QRect(0, msgTop, vw, msgH), Th::c().message.reminderBg);
 
@@ -284,25 +285,29 @@ void MessageListWidget::paintRow(
         p.restore();
         bannerTop += kBannerH;
     }
-    if (reminded) {
-        // Reminder strip: alarm icon + "Due <time>" in the reminder accent.
-        // No extra fill — the row-wide tint above already backs it.
+    if (saved) {
+        // Saved strip in the reminder accent: alarm icon + "Reminder — <time>"
+        // for a reminder (no extra fill — the row-wide tint above backs it),
+        // bookmark + "Saved for later" for a plain bookmark.
         const QColor   stripColor = Th::c().message.reminderText;
-        static qreal   kAlarmDpr  = 0;
-        static QColor  kAlarmColor;
-        static QPixmap kAlarmPx;
+        static qreal   kStripDpr  = 0;
+        static QColor  kStripColor;
+        static QPixmap kAlarmPx, kBookmarkPx;
         if (const qreal d = p.device()->devicePixelRatioF();
-            !qFuzzyCompare(d, kAlarmDpr) || stripColor != kAlarmColor) {
-            kAlarmDpr   = d;
-            kAlarmColor = stripColor;
+            !qFuzzyCompare(d, kStripDpr) || stripColor != kStripColor) {
+            kStripDpr   = d;
+            kStripColor = stripColor;
             kAlarmPx    = svgPixmapPhys(":/ui/alarm-clock.svg", QSize(12, 12), stripColor, d);
+            kBookmarkPx = svgPixmapPhys(":/ui/bookmark.svg", QSize(12, 12), stripColor, d);
         }
-        if (!kAlarmPx.isNull())
-            p.drawPixmap(kPadH, bannerTop + (kBannerH - 12) / 2, kAlarmPx);
+        const QPixmap &stripPx = reminded ? kAlarmPx : kBookmarkPx;
+        if (!stripPx.isNull())
+            p.drawPixmap(kPadH, bannerTop + (kBannerH - 12) / 2, stripPx);
 
-        const qint64  due     = _session->messageReminderDue(_currentConv, item.msg.ts);
-        const qint64  now     = QDateTime::currentSecsSinceEpoch();
-        const QString label   = due <= now ? tr("Reminder — past due")
+        const qint64  due   = _session->messageReminderDue(_currentConv, item.msg.ts);
+        const qint64  now   = QDateTime::currentSecsSinceEpoch();
+        const QString label = !reminded    ? tr("Saved for later")
+                              : due <= now ? tr("Reminder — past due")
                                            : tr("Reminder — %1").arg(TimeFmt::formatDateTime(due));
         QFont         dueFont = QApplication::font();
         dueFont.setPointSizeF(dueFont.pointSizeF() * 0.78);
@@ -2262,12 +2267,43 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
 
 // ── Hover toolbar ─────────────────────────────────────────────────────────────
 
+int MessageListWidget::toolbarButtonCount() const {
+    return _session && _session->capabilities().messageReminders ? 4 : 3;
+}
+
+MessageListWidget::ToolbarBtn MessageListWidget::toolbarButtonKind(int btn) const {
+    // Without Save the row is Emoji/Forward/More: skip the Save slot.
+    if (toolbarButtonCount() == 3 && btn >= 2)
+        ++btn;
+    return static_cast<ToolbarBtn>(btn);
+}
+
+int MessageListWidget::toolbarCardW() const {
+    const int n = toolbarButtonCount();
+    return kToolbarPadH * 2 + n * kToolbarBtnSize + (n - 1) * kToolbarGap;
+}
+
+QString MessageListWidget::toolbarTip(int btn, int row) const {
+    switch (toolbarButtonKind(btn)) {
+    case ToolbarBtn::Emoji:
+        return tr("Add reaction");
+    case ToolbarBtn::Forward:
+        return tr("Forward message");
+    case ToolbarBtn::Save:
+        return row >= 0 && row < (int)_items.size() && isSaved(_items[row])
+                   ? tr("Remove from saved")
+                   : tr("Save for later");
+    case ToolbarBtn::More:
+        break;
+    }
+    return tr("More actions");
+}
+
 QRect MessageListWidget::toolbarButtonRect(int btn, int rowTop, int rowH) const {
     // Toolbar card sits at the top-right of the row, vertically centered.
     const int vw       = viewport()->width();
-    const int nButtons = 3;
-    const int cardW = kToolbarPadH * 2 + nButtons * kToolbarBtnSize + (nButtons - 1) * kToolbarGap;
-    const int cardH = kToolbarPadV * 2 + kToolbarBtnSize;
+    const int cardW    = toolbarCardW();
+    const int cardH    = kToolbarPadV * 2 + kToolbarBtnSize;
     const int cardTop  = rowTop - cardH / 2; // straddle the top edge (Slack style)
     const int cardLeft = vw - kToolbarRight - cardW;
 
@@ -2283,7 +2319,7 @@ int MessageListWidget::toolbarButtonAt(const QPoint &viewportPos) const {
     const int rowTop  = _tops[_hoveredRow] - scrollY;
     const int rh      = rowHeight(_hoveredRow);
     const int sep     = needsDateSep(_hoveredRow) ? kSepH : 0;
-    for (int b = 0; b < 3; ++b)
+    for (int b = 0, n = toolbarButtonCount(); b < n; ++b)
         if (toolbarButtonRect(b, rowTop + sep, rh - sep).contains(viewportPos))
             return b;
     return -1;
@@ -2296,9 +2332,9 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
     (void)msgH;
 
     const int vw       = viewport()->width();
-    const int nButtons = 3;
-    const int cardW = kToolbarPadH * 2 + nButtons * kToolbarBtnSize + (nButtons - 1) * kToolbarGap;
-    const int cardH = kToolbarPadV * 2 + kToolbarBtnSize;
+    const int nButtons = toolbarButtonCount();
+    const int cardW    = toolbarCardW();
+    const int cardH    = kToolbarPadV * 2 + kToolbarBtnSize;
     const int cardTop  = msgTop - cardH / 2;
     const int cardLeft = vw - kToolbarRight - cardW;
 
@@ -2308,14 +2344,15 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
     const QRectF cardRect(cardLeft, cardTop, cardW, cardH);
     Paint::toolbarCard(p, cardRect, kToolbarRadius);
 
-    // SVG icons: 0=emoji (smile), 1=forward, 2=more-horizontal
+    // SVG icons per ToolbarBtn: smile, forward, bookmark (filled once the
+    // message is saved, like the official client), more-horizontal.
     // Re-baked when the device pixel ratio changes (stays crisp at fractional
     // scale / after a move between differently-scaled monitors) or when the
     // theme retints icon.strong (dark vs light content area).
     static const QSize kIconSz(16, 16);
     static qreal       kIconDpr = 0;
     static QColor      kIconColor;
-    static QPixmap     kPxSmile, kPxForward, kPxMore;
+    static QPixmap     kPxSmile, kPxForward, kPxSave, kPxSaved, kPxMore;
     const QColor       iconColor = Th::c().icon.strong;
     if (const qreal d = p.device()->devicePixelRatioF();
         !qFuzzyCompare(d, kIconDpr) || iconColor != kIconColor) {
@@ -2323,12 +2360,28 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
         kIconColor = iconColor;
         kPxSmile   = svgPixmapPhys(":/ui/smile.svg", kIconSz, iconColor, d);
         kPxForward = svgPixmapPhys(":/ui/forward.svg", kIconSz, iconColor, d);
+        kPxSave    = svgPixmapPhys(":/ui/bookmark.svg", kIconSz, iconColor, d);
+        kPxSaved   = svgPixmapPhys(":/ui/bookmark-filled.svg", kIconSz, iconColor, d);
         kPxMore    = svgPixmapPhys(":/ui/more-horizontal.svg", kIconSz, iconColor, d);
     }
-    const QPixmap *kIcons[] = {&kPxSmile, &kPxForward, &kPxMore};
+    const bool saved = index >= 0 && index < (int)_items.size() && isSaved(_items[index]);
 
     for (int b = 0; b < nButtons; ++b) {
-        const QRect br = toolbarButtonRect(b, msgTop, rowH - sep);
+        const QRect    br   = toolbarButtonRect(b, msgTop, rowH - sep);
+        const QPixmap *icon = &kPxMore;
+        switch (toolbarButtonKind(b)) {
+        case ToolbarBtn::Emoji:
+            icon = &kPxSmile;
+            break;
+        case ToolbarBtn::Forward:
+            icon = &kPxForward;
+            break;
+        case ToolbarBtn::Save:
+            icon = saved ? &kPxSaved : &kPxSave;
+            break;
+        case ToolbarBtn::More:
+            break;
+        }
 
         // Hovered button gets a slight tint
         if (b == _hoveredToolBtn) {
@@ -2337,14 +2390,13 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
             p.drawRoundedRect(QRectF(br).adjusted(1, 1, -1, -1), 5, 5);
         }
 
-        if (!kIcons[b]->isNull()) {
+        if (!icon->isNull()) {
             const int ix = br.left() + (br.width() - kIconSz.width()) / 2;
             const int iy = br.top() + (br.height() - kIconSz.height()) / 2;
-            p.drawPixmap(ix, iy, *kIcons[b]);
+            p.drawPixmap(ix, iy, *icon);
         }
     }
     p.restore();
-    (void)index;
 }
 
 // ── File action bar ───────────────────────────────────────────────────────────

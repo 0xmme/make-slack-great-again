@@ -452,6 +452,7 @@ TEST_CASE_METHOD(CacheFixture, "reminders round-trip all fields", "[cache][remin
             .conv         = ConversationId{"C1"},
             .ts           = "1700000000.000100",
             .dueAt        = 1700003600,
+            .savedAt      = 1700000000,
             .threadRoot   = "1699999999.000001",
             .snippet      = "don't forget this",
             .author       = UserId{"U42"},
@@ -464,12 +465,21 @@ TEST_CASE_METHOD(CacheFixture, "reminders round-trip all fields", "[cache][remin
             .ts    = "1700000001.000200",
             .dueAt = 1700007200,
         },
+        // A plain "Save for later" bookmark: no due date, but still a saved item.
+        MessageReminder{
+            .conv    = ConversationId{"C3"},
+            .ts      = "1700000002.000300",
+            .dueAt   = 0,
+            .savedAt = 1700000002,
+            .snippet = "read this later",
+        },
     };
     cache.saveReminders(input);
     const auto out = cache.loadReminders();
-    REQUIRE(out.size() == 2);
+    REQUIRE(out.size() == 3);
     CHECK(out[0] == input[0]);
     CHECK(out[1] == input[1]);
+    CHECK(out[2] == input[2]);
 }
 
 TEST_CASE_METHOD(CacheFixture, "reminder previews round-trip", "[cache][reminder]") {
@@ -494,17 +504,21 @@ TEST_CASE_METHOD(CacheFixture, "reminder previews round-trip", "[cache][reminder
 }
 
 TEST_CASE_METHOD(
-    CacheFixture, "reminders with no due date or identity are dropped on load", "[cache][reminder]"
+    CacheFixture, "reminders without an identity are dropped on load", "[cache][reminder]"
 ) {
-    // Guards against a corrupt meta entry resurfacing as a ghost reminder.
+    // Guards against a corrupt meta entry resurfacing as a ghost item. A missing
+    // due date is NOT corruption any more: it is a plain "Save for later".
     cache.saveReminders(
         {MessageReminder{.conv = ConversationId{"C1"}, .ts = "1.2", .dueAt = 0},
          MessageReminder{.conv = ConversationId{}, .ts = "1.2", .dueAt = 5},
+         MessageReminder{.conv = ConversationId{"C1"}, .ts = "", .dueAt = 5},
          MessageReminder{.conv = ConversationId{"C1"}, .ts = "3.4", .dueAt = 9}}
     );
     const auto out = cache.loadReminders();
-    REQUIRE(out.size() == 1);
-    CHECK(out[0].ts == "3.4");
+    REQUIRE(out.size() == 2);
+    CHECK(out[0].ts == "1.2");
+    CHECK(out[0].dueAt == 0);
+    CHECK(out[1].ts == "3.4");
 }
 
 TEST_CASE_METHOD(CacheFixture, "reminders do not clobber other meta keys", "[cache][reminder]") {

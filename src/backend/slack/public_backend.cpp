@@ -1150,7 +1150,10 @@ void PublicBackend::setMessageReminder(
     params.addQueryItem("item_type", "message");
     params.addQueryItem("item_id", conv.value);
     params.addQueryItem("ts", ts);
-    params.addQueryItem("date_due", QString::number(dueAt));
+    // No date_due = a plain "Save for later" bookmark (the server answers
+    // date_due 0, todo_state "saved"; verified live).
+    if (dueAt > 0)
+        params.addQueryItem("date_due", QString::number(dueAt));
     _api->callNonIdempotent(
         "saved.add",
         params,

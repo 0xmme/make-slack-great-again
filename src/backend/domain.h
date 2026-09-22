@@ -183,7 +183,7 @@ struct Capabilities {
                                    // Separate from `threads`: a backend can support replies
                                    // without any server-side subscribed-threads feed (Slack's
                                    // feed is session-token only; IMAP/Teams have none).
-    bool messageReminders = false; // per-message "Remind me" (Slack's Later / saved items).
+    bool messageReminders = false; // per-message "Save for later" / "Remind me" (Slack's Later).
                                    // Rides the internal saved.* API family, which Slack only
                                    // serves to a session (xoxc) token — OAuth workspaces would
                                    // get every call rejected, so the menu entry is gated here.
@@ -563,19 +563,22 @@ inline std::optional<QString> decodeReloginNotifToken(const QString &token) {
     return token.mid(kPrefix.size());
 }
 
-// A per-message reminder (Slack's "Save for Later" item with a due date; see
-// Backend::loadMessageReminders). The backend fills conv/ts/dueAt from the
-// server; threadRoot/snippet/author/bot* /fired are local enrichment the Session
-// captures at set time (the server item doesn't carry them) and persists so the
-// reminder's notification can route to the thread, show a preview, and show who
-// wrote the message. `fired` marks a reminder whose notification was already
-// raised, so a restart doesn't re-announce it; the item itself stays (blue tint,
-// "remove reminder") until the user removes it — matching the official client's
-// overdue behaviour.
+// A message saved to Slack's "Later" list (see Backend::loadMessageReminders):
+// either a plain "Save for later" bookmark (dueAt == 0) or a reminder (dueAt >
+// 0, alarms when due). Both are one server item — a due date added to a saved
+// message turns it into a reminder in place. The backend fills conv/ts/dueAt/
+// savedAt from the server; threadRoot/snippet/author/bot* /fired are local
+// enrichment the Session captures at set time (the server item doesn't carry
+// them) and persists so the reminder's notification can route to the thread,
+// show a preview, and show who wrote the message. `fired` marks a reminder
+// whose notification was already raised, so a restart doesn't re-announce it;
+// the item itself stays (blue tint, "remove reminder") until the user removes
+// it — matching the official client's overdue behaviour.
 struct MessageReminder {
     ConversationId conv;
     Ts             ts;
-    qint64         dueAt = 0; // Unix seconds
+    qint64         dueAt   = 0; // Unix seconds; 0 = saved for later, no alarm
+    qint64         savedAt = 0; // Unix seconds the item was saved (orders the bookmarks)
     Ts             threadRoot;
     QString        snippet;
     UserId         author;       // message author; empty for authorless bot posts

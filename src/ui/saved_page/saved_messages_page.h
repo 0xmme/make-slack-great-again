@@ -15,9 +15,10 @@ class QLabel;
 class QScrollArea;
 class QVBoxLayout;
 
-// "Saved messages" page: every message reminder ("Later" item with a due date),
-// soonest due first, as cards with the conversation name, a chat-style message
-// row and the due time. Data is the Session's local reminder mirror — no API
+// "Saved messages" page: every saved message (Slack's "Later": reminders
+// soonest due first, then plain "Save for later" bookmarks newest first) as
+// cards with the conversation name, a chat-style message row and the due time
+// or "Saved for later". Data is the Session's local saved-item mirror — no API
 // call — so the page opens instantly and follows remindersChanged() live.
 // Lives in MainWindow's content stack like ThreadsPage; the roster entry that
 // opens it only shows while the list is non-empty.

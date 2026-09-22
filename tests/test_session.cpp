@@ -4962,6 +4962,90 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE_METHOD(
+    SessionFixture,
+    "saveMessageForLater stores a due-less bookmark and calls backend with dueAt 0",
+    "[session][reminder][saved]"
+) {
+    const ConversationId conv{"C1"};
+    session->saveMessageForLater(conv, reminderMsg("100.000001", "read later"));
+
+    // Saved, but not a reminder: no due date, no alarm, no blue tint.
+    CHECK(session->hasSavedMessage(conv, "100.000001"));
+    CHECK_FALSE(session->hasMessageReminder(conv, "100.000001"));
+    CHECK(session->messageReminderDue(conv, "100.000001") == 0);
+    CHECK_FALSE(session->hasSavedMessage(conv, "100.000002"));
+    REQUIRE(stub->setReminderCalls.size() == 1);
+    CHECK(stub->setReminderCalls[0].conv == conv);
+    CHECK(stub->setReminderCalls[0].ts == "100.000001");
+    CHECK(stub->setReminderCalls[0].dueAt == 0);
+
+    const auto all = session->messageReminders();
+    REQUIRE(all.size() == 1);
+    CHECK(all[0].dueAt == 0);
+    CHECK(all[0].savedAt > 0);
+    CHECK(all[0].snippet == "read later");
+
+    // A bookmark never alarms, however long it sits there.
+    auto [events, lt] = collectEvents();
+    session->fireDueRemindersForTest();
+    for (const auto &e : events)
+        CHECK_FALSE(std::holds_alternative<EvReminderDue>(e));
+    CHECK(session->hasSavedMessage(conv, "100.000001"));
+
+    // Removing takes the whole item — and the same call serves both kinds.
+    session->removeMessageReminder(conv, "100.000001");
+    CHECK_FALSE(session->hasSavedMessage(conv, "100.000001"));
+    REQUIRE(stub->removeReminderCalls.size() == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a due date set on a bookmark upgrades it to a reminder in place",
+    "[session][reminder][saved]"
+) {
+    const ConversationId conv{"C1"};
+    session->saveMessageForLater(conv, reminderMsg("100.000001"));
+    const qint64 savedAt = session->messageReminders()[0].savedAt;
+    const qint64 due     = QDateTime::currentSecsSinceEpoch() + 3600;
+    session->setMessageReminder(conv, reminderMsg("100.000001"), due);
+
+    CHECK(session->hasSavedMessage(conv, "100.000001"));
+    CHECK(session->messageReminderDue(conv, "100.000001") == due);
+    const auto all = session->messageReminders();
+    REQUIRE(all.size() == 1); // one item per message, not a second entry
+    CHECK(all[0].savedAt == savedAt);
+    REQUIRE(stub->setReminderCalls.size() == 2);
+    CHECK(stub->setReminderCalls[1].dueAt == due);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "messageReminders lists reminders soonest first, then bookmarks newest first",
+    "[session][reminder][saved]"
+) {
+    const ConversationId conv{"C1"};
+    const qint64         now = QDateTime::currentSecsSinceEpoch();
+    stub->remindersResult    = std::vector<MessageReminder>{
+        MessageReminder{.conv = conv, .ts = "1.000001", .dueAt = 0, .savedAt = now - 300},
+        MessageReminder{.conv = conv, .ts = "1.000002", .dueAt = now + 7200, .savedAt = now - 10},
+        MessageReminder{.conv = conv, .ts = "1.000003", .dueAt = 0, .savedAt = now - 30},
+        MessageReminder{.conv = conv, .ts = "1.000004", .dueAt = now + 3600, .savedAt = now - 900},
+    };
+    session->refreshRemindersForTest();
+
+    const auto all = session->messageReminders();
+    REQUIRE(all.size() == 4);
+    CHECK(all[0].ts == "1.000004"); // reminder, due first
+    CHECK(all[1].ts == "1.000002"); // reminder, due later
+    CHECK(all[2].ts == "1.000003"); // bookmark, saved most recently
+    CHECK(all[3].ts == "1.000001"); // bookmark, saved earliest
+    // Bookmarks synced from the server (saved on another client) are saved
+    // items too — the toolbar bookmark fills for them.
+    CHECK(session->hasSavedMessage(conv, "1.000001"));
+    CHECK_FALSE(session->hasMessageReminder(conv, "1.000001"));
+}
+
+TEST_CASE_METHOD(
     SessionFixture, "removeMessageReminder clears locally and calls backend", "[session][reminder]"
 ) {
     const ConversationId conv{"C1"};

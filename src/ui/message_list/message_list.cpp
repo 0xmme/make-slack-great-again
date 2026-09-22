@@ -1326,6 +1326,10 @@ int MessageListWidget::rowHeight(int index) const {
     return sepH + pinnedH + kPadV + std::max(kAvSize, contentH) + kPadVBottom + replyBarH + inlineH;
 }
 
+bool MessageListWidget::isSaved(const MessageItem &item) const {
+    return _session && _session->hasSavedMessage(_currentConv, item.msg.ts);
+}
+
 bool MessageListWidget::hasReminder(const MessageItem &item) const {
     return _session && _session->hasMessageReminder(_currentConv, item.msg.ts);
 }
@@ -1334,7 +1338,7 @@ int MessageListWidget::bannersH(const MessageItem &item) const {
     int h = 0;
     if (item.msg.pinned)
         h += kBannerH;
-    if (hasReminder(item))
+    if (isSaved(item))
         h += kBannerH;
     return h;
 }
@@ -2261,12 +2265,28 @@ bool MessageListWidget::tryHandleToolbarPress(const QPoint &pos) {
     const QRect  btnRect   = toolbarButtonRect(btn, rowTop + sep, rh - sep);
     const QPoint globalPos = viewport()->mapToGlobal(btnRect.bottomLeft());
 
-    if (btn == 0)
+    switch (toolbarButtonKind(btn)) {
+    case ToolbarBtn::Emoji:
         openEmojiPickerForRow(_hoveredRow, globalPos);
-    else if (btn == 1)
+        break;
+    case ToolbarBtn::Forward:
         emit forwardMessageRequested(msg);
-    else if (btn == 2)
+        break;
+    case ToolbarBtn::Save:
+        // Toggle, like the official client's bookmark: a saved message
+        // (bookmark or reminder) is removed from Later, any other is saved.
+        if (_session && !isSystemEvent(msg)) {
+            if (_session->hasSavedMessage(_currentConv, msg.ts))
+                _session->removeMessageReminder(_currentConv, msg.ts);
+            else
+                _session->saveMessageForLater(_currentConv, msg);
+            _tooltip->hide();
+        }
+        break;
+    case ToolbarBtn::More:
         showMessageContextMenu(msg, globalPos);
+        break;
+    }
     return true;
 }
 
@@ -2456,11 +2476,40 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
         );
     }
 
-    // "Remind me" / "Remove reminder" — Slack's message reminders ("Later").
-    // Session-token workspaces only (see Capabilities::messageReminders); system
-    // rows can't carry one.
+    // "Save for later" / "Remove from saved" and "Remind me" / "Remove reminder"
+    // — Slack's Later list. One saved item per message: a bookmark can gain a
+    // due date (becoming a reminder), a reminder is removed whole. Session-token
+    // workspaces only (see Capabilities::messageReminders); system rows can't
+    // carry one.
     if (caps.messageReminders && !isSystemEvent(msg)) {
-        if (_session && _session->hasMessageReminder(_currentConv, msg.ts)) {
+        const bool reminded = _session && _session->hasMessageReminder(_currentConv, msg.ts);
+        const bool saved    = _session && _session->hasSavedMessage(_currentConv, msg.ts);
+        if (saved && !reminded) {
+            menu->addItem(
+                tr("Remove from saved"),
+                {},
+                [this, conv = _currentConv, ts = msg.ts] {
+                    if (_session)
+                        _session->removeMessageReminder(conv, ts);
+                },
+                false,
+                false,
+                ":/ui/bookmark-minus.svg"
+            );
+        } else if (!saved) {
+            menu->addItem(
+                tr("Save for later"),
+                {},
+                [this, conv = _currentConv, msg] {
+                    if (_session)
+                        _session->saveMessageForLater(conv, msg);
+                },
+                false,
+                false,
+                ":/ui/bookmark.svg"
+            );
+        }
+        if (reminded) {
             menu->addItem(
                 tr("Remove reminder"),
                 {},
@@ -2470,7 +2519,7 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
                 },
                 false,
                 false,
-                ":/ui/bookmark-minus.svg"
+                ":/ui/alarm-clock.svg"
             );
         } else {
             menu->addItem(
@@ -3825,7 +3874,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const int    scrollY = verticalScrollBar()->value();
 
     const int vw    = viewport()->width();
-    const int cardW = kToolbarPadH * 2 + 3 * kToolbarBtnSize + 2 * kToolbarGap;
+    const int cardW = toolbarCardW();
     const int cardH = kToolbarPadV * 2 + kToolbarBtnSize;
 
     // If a row is already hovered, keep it as long as the mouse remains inside
@@ -3864,7 +3913,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const int rowTop = _tops[newHoveredRow] - scrollY;
         const int rh     = rowHeight(newHoveredRow);
         const int sep5   = needsDateSep(newHoveredRow) ? kSepH : 0;
-        for (int b = 0; b < 3; ++b) {
+        for (int b = 0, n = toolbarButtonCount(); b < n; ++b) {
             if (toolbarButtonRect(b, rowTop + sep5, rh - sep5).contains(pos)) {
                 newHoveredBtn = b;
                 break;
@@ -4021,15 +4070,12 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     } else if (newHoveredReaction.first >= 0 && _session) {
         showReactionTooltip(newHoveredReaction.first, newHoveredReaction.second, reactionChipRect);
     } else if (newHoveredBtn >= 0) {
-        static const QString kTips[] = {
-            tr("Add reaction"), tr("Forward message"), tr("More actions")
-        };
         const int   rowTop   = _tops[_hoveredRow] - scrollY;
         const int   rh       = rowHeight(_hoveredRow);
         const int   sep6     = needsDateSep(_hoveredRow) ? kSepH : 0;
         const QRect btnLocal = toolbarButtonRect(newHoveredBtn, rowTop + sep6, rh - sep6);
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
-        _tooltip->showAbove(kTips[newHoveredBtn], btnGlobal);
+        _tooltip->showAbove(toolbarTip(newHoveredBtn, _hoveredRow), btnGlobal);
     } else if (newHoveredFileBtn >= 0 && newHoveredFile.first >= 0) {
         static const QString kFileTips[] = {tr("Download"), tr("Share"), tr("More actions")};
         const QRect          fr = fileViewportRect(newHoveredFile.first, newHoveredFile.second);

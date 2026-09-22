@@ -322,30 +322,41 @@ public:
     int                unreadThreadCount() const { return int(_unreadThreads.size()); }
     rpl::producer<int> unreadThreadCountValue() const { return _unreadThreadCount.value(); }
 
-    // --- Message reminders ("Remind me about this message") ---
-    // Local mirror of the backend's saved-item reminders, gated by
-    // Capabilities::messageReminders. The server stores the reminder (so it
-    // syncs with the official clients), but delivers nothing when it comes due —
-    // a Session timer raises EvReminderDue instead, and MainWindow turns that
-    // into the OS notification. Set/remove are optimistic: the local entry
-    // changes immediately (blue tint, menu state) and rolls back if the server
+    // --- Saved messages ("Save for later" / "Remind me about this message") ---
+    // Local mirror of the backend's saved items (Slack's "Later"), gated by
+    // Capabilities::messageReminders. A saved item is either a plain bookmark
+    // (dueAt 0) or a reminder (dueAt set) — the same server item, so a due date
+    // set on a bookmark upgrades it in place. The server stores the item (so it
+    // syncs with the official clients), but delivers nothing when a reminder
+    // comes due — a Session timer raises EvReminderDue instead, and MainWindow
+    // turns that into the OS notification. Set/remove are optimistic: the local
+    // entry changes immediately (tint, menu state) and rolls back if the server
     // rejects the write. Reminders that came due while the app was closed fire
     // once shortly after start (unless they are stale — see fireDueReminders).
-    // 0 = no reminder on that message.
+    // 0 = no reminder on that message (a plain bookmark also answers 0).
     qint64 messageReminderDue(const ConversationId &conv, const Ts &ts) const;
     bool   hasMessageReminder(const ConversationId &conv, const Ts &ts) const {
         return messageReminderDue(conv, ts) > 0;
     }
-    // Every reminder, soonest due first (the "Saved messages" page's data; fired
-    // ones stay listed until removed, matching the blue tint in the chat).
+    // The message is saved (bookmark or reminder) — the hover-toolbar bookmark
+    // and the "Saved for later" strip key off this.
+    bool                         hasSavedMessage(const ConversationId &conv, const Ts &ts) const;
+    // Every saved item: reminders soonest due first, then the plain bookmarks
+    // newest first (the "Saved messages" page's data; fired reminders stay
+    // listed until removed, matching the blue tint in the chat).
     std::vector<MessageReminder> messageReminders() const;
     // `msg` supplies ts plus the local enrichment the server doesn't store:
     // its thread root (routes the notification click into the thread) and a
-    // text snippet (the notification body).
+    // text snippet (the notification body). dueAt 0 saves the message as a
+    // plain bookmark (saveMessageForLater is the readable spelling of that).
     void setMessageReminder(const ConversationId &conv, const Message &msg, qint64 dueAt);
-    void removeMessageReminder(const ConversationId &conv, const Ts &ts);
-    // Fires whenever the reminder set changes (set/remove/server sync/fired) —
-    // the message list re-lays out its rows on this (the due-strip adds height).
+    void saveMessageForLater(const ConversationId &conv, const Message &msg) {
+        setMessageReminder(conv, msg, 0);
+    }
+    // Removes the whole saved item, bookmark or reminder.
+    void            removeMessageReminder(const ConversationId &conv, const Ts &ts);
+    // Fires whenever the saved set changes (set/remove/server sync/fired) —
+    // the message list re-lays out its rows on this (the strip adds height).
     rpl::producer<> remindersChanged() const { return _remindersChangedHub.events(); }
 
     // Fill in the preview (snippet + author) of every reminder that carries

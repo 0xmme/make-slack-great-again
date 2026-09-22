@@ -1701,13 +1701,12 @@ TEST_CASE("toConvCounts tolerates missing groups and junk entries", "[mappers][c
 
 // ── toMessageReminders (saved.list) ──────────────────────────────────────────
 
-TEST_CASE(
-    "toMessageReminders keeps only pending message items with a due date", "[mappers][reminder]"
-) {
+TEST_CASE("toMessageReminders keeps only pending message items", "[mappers][reminder]") {
     auto reminders = JsonMappers::toMessageReminders(obj(R"({
         "ok": true,
         "saved_items": [
             {"item_type": "message", "item_id": "C1", "ts": "100.000001",
+             "date_created": 1700000000,
              "date_due": 1700003600, "state": "in_progress", "is_archived": false},
             {"item_type": "message", "item_id": "C2", "ts": "100.000002",
              "date_due": 1700003600, "state": "completed"},
@@ -1716,16 +1715,25 @@ TEST_CASE(
             {"item_type": "file", "item_id": "F1", "ts": "",
              "date_due": 1700003600, "state": "in_progress"},
             {"item_type": "message", "item_id": "C4", "ts": "100.000004",
+             "date_created": 1700000004,
+             "date_due": 0, "state": "in_progress", "todo_state": "saved"},
+            {"item_type": "message", "item_id": "", "ts": "100.000005",
              "date_due": 0, "state": "in_progress"}
         ]
     })"));
-    // Completed, archived, non-message and no-due-date items are all dropped:
-    // a plain "save for later" without a date is not a reminder.
-    REQUIRE(reminders.size() == 1);
+    // Completed, archived, non-message and keyless items are dropped; a plain
+    // "Save for later" without a date (the server's date_due 0 / todo_state
+    // "saved" shape) is kept as a bookmark next to the reminder.
+    REQUIRE(reminders.size() == 2);
     CHECK(reminders[0].conv.value == "C1");
     CHECK(reminders[0].ts == "100.000001");
     CHECK(reminders[0].dueAt == 1700003600);
+    CHECK(reminders[0].savedAt == 1700000000);
     CHECK_FALSE(reminders[0].fired);
+    CHECK(reminders[1].conv.value == "C4");
+    CHECK(reminders[1].ts == "100.000004");
+    CHECK(reminders[1].dueAt == 0);
+    CHECK(reminders[1].savedAt == 1700000004);
 }
 
 TEST_CASE("toMessageReminders tolerates an empty or junk response", "[mappers][reminder]") {

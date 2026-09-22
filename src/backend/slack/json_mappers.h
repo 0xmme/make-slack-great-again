@@ -29,9 +29,10 @@ std::vector<ConvCounts> toConvCounts(const QJsonObject &resp);
 // entry's root_msg is a complete parent message that also carries its channel.
 ThreadsViewPage toThreadsViewPage(const QJsonObject &resp);
 
-// A `saved.list` response: the message reminders among the user's saved items —
-// item_type "message" entries with a due date, not completed/archived. A saved
-// item's item_id is the hosting channel and ts the message's ts.
+// A `saved.list` response: the user's saved messages — item_type "message"
+// entries that are not completed/archived, with (reminder) or without (plain
+// "Save for later", date_due 0) a due date. A saved item's item_id is the
+// hosting channel and ts the message's ts.
 std::vector<MessageReminder> toMessageReminders(const QJsonObject &resp);
 
 // One page of a `stars.list` response: the CONVERSATION stars among the items.

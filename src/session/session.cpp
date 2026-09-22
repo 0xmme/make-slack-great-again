@@ -3240,25 +3240,42 @@ qint64 Session::messageReminderDue(const ConversationId &conv, const Ts &ts) con
     return it != _reminders.constEnd() ? it->dueAt : 0;
 }
 
+bool Session::hasSavedMessage(const ConversationId &conv, const Ts &ts) const {
+    return _reminders.contains(reminderKey(conv, ts));
+}
+
 std::vector<MessageReminder> Session::messageReminders() const {
     std::vector<MessageReminder> out;
     out.reserve(_reminders.size());
     for (const auto &r : _reminders)
         out.push_back(r);
     std::sort(out.begin(), out.end(), [](const MessageReminder &a, const MessageReminder &b) {
-        return a.dueAt < b.dueAt;
+        // Reminders (soonest first) ahead of plain bookmarks (newest first).
+        if ((a.dueAt > 0) != (b.dueAt > 0))
+            return a.dueAt > 0;
+        if (a.dueAt > 0)
+            return a.dueAt < b.dueAt;
+        if (a.savedAt != b.savedAt)
+            return a.savedAt > b.savedAt;
+        return a.ts > b.ts;
     });
     return out;
 }
 
 void Session::setMessageReminder(const ConversationId &conv, const Message &msg, qint64 dueAt) {
-    if (dueAt <= 0 || msg.ts.isEmpty())
+    if (dueAt < 0 || msg.ts.isEmpty())
         return;
     const QString   key = reminderKey(conv, msg.ts);
     MessageReminder r;
-    r.conv         = conv;
-    r.ts           = msg.ts;
-    r.dueAt        = dueAt;
+    r.conv  = conv;
+    r.ts    = msg.ts;
+    r.dueAt = dueAt;
+    // A due date set on an existing bookmark keeps its save time; a fresh item
+    // is saved now (the server's date_created replaces this on the next sync).
+    if (const auto old = _reminders.constFind(key); old != _reminders.constEnd())
+        r.savedAt = old->savedAt;
+    if (r.savedAt <= 0)
+        r.savedAt = QDateTime::currentSecsSinceEpoch();
     r.threadRoot   = msg.threadRoot.value_or(Ts{});
     r.snippet      = msg.text.text.simplified().left(120);
     r.author       = msg.author;
@@ -3286,7 +3303,9 @@ void Session::setMessageReminder(const ConversationId &conv, const Message &msg,
             reminderStoreChanged();
         }
         _errorHub.fire(
-            QCoreApplication::translate("Session", "Couldn't set the reminder: %1").arg(err)
+            dueAt > 0
+                ? QCoreApplication::translate("Session", "Couldn't set the reminder: %1").arg(err)
+                : QCoreApplication::translate("Session", "Couldn't save the message: %1").arg(err)
         );
     });
 }
@@ -3301,6 +3320,7 @@ void Session::removeMessageReminder(const ConversationId &conv, const Ts &ts) {
     reminderStoreChanged();
 
     _backend->removeMessageReminder(conv, ts, [this, key, removed](bool ok, QString err) {
+        const bool wasReminder = removed.dueAt > 0;
         if (ok)
             return;
         // Unknown fate: the delete may have landed. Leave the row gone — the
@@ -3315,7 +3335,11 @@ void Session::removeMessageReminder(const ConversationId &conv, const Ts &ts) {
             reminderStoreChanged();
         }
         _errorHub.fire(
-            QCoreApplication::translate("Session", "Couldn't remove the reminder: %1").arg(err)
+            wasReminder
+                ? QCoreApplication::translate("Session", "Couldn't remove the reminder: %1")
+                      .arg(err)
+                : QCoreApplication::translate("Session", "Couldn't remove the saved message: %1")
+                      .arg(err)
         );
     });
 }
@@ -3342,7 +3366,7 @@ void Session::scheduleReminderStoreFlush() {
 void Session::armReminderTimer() {
     qint64 nearest = 0;
     for (const auto &r : _reminders)
-        if (!r.fired && (nearest == 0 || r.dueAt < nearest))
+        if (r.dueAt > 0 && !r.fired && (nearest == 0 || r.dueAt < nearest))
             nearest = r.dueAt;
     if (nearest == 0) {
         _reminderTimer.stop();
@@ -3362,7 +3386,8 @@ void Session::fireDueReminders() {
     bool         changed = false;
     QStringList  due;
     for (auto it = _reminders.begin(); it != _reminders.end(); ++it) {
-        if (it->fired || it->dueAt > now)
+        // Plain bookmarks (dueAt 0) never alarm.
+        if (it->dueAt <= 0 || it->fired || it->dueAt > now)
             continue;
         it->fired = true;
         changed   = true;
@@ -3467,6 +3492,8 @@ void Session::refreshReminders() {
                         r.botName      = it->botName;
                         r.botAvatarUrl = it->botAvatarUrl;
                         r.fired        = (it->dueAt == r.dueAt) && it->fired;
+                        if (r.savedAt <= 0)
+                            r.savedAt = it->savedAt;
                     }
                     // Whatever the local record couldn't supply — because there
                     // is none, or it lost its enrichment — comes from the

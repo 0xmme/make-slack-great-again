@@ -252,12 +252,16 @@ public:
                 .arg(th.fonts.lg)
         );
         // Overdue reminders already alarmed — tint the clock line like the
-        // mention badge so "waiting for you" is visible at a glance.
-        const bool    overdue = _item.dueAt <= QDateTime::currentSecsSinceEpoch();
-        const QColor &dueCol  = overdue ? th.badge.mention : th.text.secondary;
-        _dueIcon->setPixmap(
-            svgPixmap(QStringLiteral(":/ui/alarm-clock.svg"), QSize(13, 13), dueCol)
-        );
+        // mention badge so "waiting for you" is visible at a glance. A plain
+        // bookmark (no due date) shows a bookmark instead of the clock.
+        const bool    reminder = _item.dueAt > 0;
+        const bool    overdue  = reminder && _item.dueAt <= QDateTime::currentSecsSinceEpoch();
+        const QColor &dueCol   = overdue ? th.badge.mention : th.text.secondary;
+        _dueIcon->setPixmap(svgPixmap(
+            reminder ? QStringLiteral(":/ui/alarm-clock.svg") : QStringLiteral(":/ui/bookmark.svg"),
+            QSize(13, 13),
+            dueCol
+        ));
         _dueIcon->setStyleSheet(QStringLiteral("background: transparent;"));
         _dueLabel->setStyleSheet(QString("background: transparent; color: %1; font-size: %2px;")
                                      .arg(Th::qss(dueCol))
@@ -286,6 +290,8 @@ private:
     }
 
     QString dueText() const {
+        if (_item.dueAt <= 0)
+            return tr("Saved for later");
         return tr("Reminder set for %1").arg(TimeFmt::formatDateTime(_item.dueAt));
     }
 
@@ -406,7 +412,10 @@ void SavedMessagesPage::rebuild() {
         _listLayout->insertWidget(_listLayout->count() - 1, card);
         _cards.push_back(card);
     }
-    setStatus(_cards.empty() ? tr("Messages you set reminders on will appear here.") : QString());
+    setStatus(
+        _cards.empty() ? tr("Messages you save for later or set reminders on will appear here.")
+                       : QString()
+    );
 }
 
 void SavedMessagesPage::setStatus(const QString &text) {

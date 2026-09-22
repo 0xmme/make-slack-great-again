@@ -899,19 +899,20 @@ std::vector<MessageReminder> toMessageReminders(const QJsonObject &resp) {
     out.reserve(items.size());
     for (const auto v : items) {
         const auto it = v.toObject();
-        // Saved items also cover plain "save for later" (no due date) and files;
-        // a reminder is a message item with a due date that is still pending.
+        // Saved items also cover files; we keep the pending message items —
+        // reminders (date_due set) and plain "save for later" ones (date_due 0).
         if (it.value("item_type").toString() != QLatin1String("message"))
             continue;
         if (it.value("state").toString() == QLatin1String("completed") ||
             it.value("is_archived").toBool())
             continue;
         MessageReminder r;
-        r.conv  = ConversationId{it.value("item_id").toString()};
-        r.ts    = it.value("ts").toString();
+        r.conv    = ConversationId{it.value("item_id").toString()};
+        r.ts      = it.value("ts").toString();
         // date_due can exceed int range (Unix seconds) — read as double.
-        r.dueAt = static_cast<qint64>(it.value("date_due").toDouble());
-        if (r.conv.value.isEmpty() || r.ts.isEmpty() || r.dueAt <= 0)
+        r.dueAt   = static_cast<qint64>(it.value("date_due").toDouble());
+        r.savedAt = static_cast<qint64>(it.value("date_created").toDouble());
+        if (r.conv.value.isEmpty() || r.ts.isEmpty())
             continue;
         out.push_back(std::move(r));
     }

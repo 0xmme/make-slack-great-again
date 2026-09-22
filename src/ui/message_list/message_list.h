@@ -346,11 +346,15 @@ private:
     void rebuildLayout();
     int  rowHeight(int index) const;
     // Total height of the mini-banners stacked at the very top of a row (before
-    // padV): the "Pinned by …" strip and/or the reminder "Due …" strip. Every
-    // geometry path (rowHeight, paint, hit-tests) offsets content by this.
+    // padV): the "Pinned by …" strip and/or the saved strip ("Reminder — …" /
+    // "Saved for later"). Every geometry path (rowHeight, paint, hit-tests)
+    // offsets content by this.
     int  bannersH(const MessageItem &item) const;
-    // The message carries a reminder (Session store; drives the blue row tint,
-    // the due strip and the context-menu entry).
+    // The message is saved for later — bookmark or reminder (Session store;
+    // drives the strip, the filled toolbar bookmark and the menu entries).
+    bool isSaved(const MessageItem &item) const;
+    // The message carries a reminder, a saved item WITH a due date (drives the
+    // blue row tint and the "Reminder — …" wording of the strip).
     bool hasReminder(const MessageItem &item) const;
     // Index of the first row whose bottom edge can be at/below document-space y
     // `docY` — binary search over the monotonic _tops, so paint and hit-test
@@ -563,10 +567,22 @@ private:
     QPixmap coverPreview(const QString &key, const QPixmap &src, QSize tile, qreal dpr) const;
     // Returns index of the message whose reply bar is at viewportPos, or -1.
     int     replyBarIndexAt(const QPoint &viewportPos) const;
-    // Returns which toolbar button (0-2) is under pos for the hovered row, or -1.
+    // Returns which toolbar button (index into the visible row of buttons) is
+    // under pos for the hovered row, or -1.
     int     toolbarButtonAt(const QPoint &viewportPos) const;
     // Rect of toolbar button i for the given row top/height, in viewport coords.
     QRect   toolbarButtonRect(int btn, int rowTop, int rowH) const;
+    // The hover toolbar's buttons, left to right. Save is only offered where the
+    // workspace can hold saved items (Capabilities::messageReminders), so the
+    // visible row is either Emoji/Forward/Save/More or Emoji/Forward/More.
+    enum class ToolbarBtn { Emoji, Forward, Save, More };
+    int        toolbarButtonCount() const;
+    ToolbarBtn toolbarButtonKind(int btn) const;
+    // Full width of the toolbar card for the current button count.
+    int        toolbarCardW() const;
+    // Tooltip of the button at index `btn` for row `row` ("Save for later" flips
+    // to "Remove from saved" on a saved message).
+    QString    toolbarTip(int btn, int row) const;
 
     // Returns {msgIdx, reactionIdx} of the reaction chip under viewportPos, else {-1,-1}.
     // When a chip is hit and outChipRect is non-null, it receives the chip's viewport rect.
@@ -828,7 +844,7 @@ private:
     QPoint        _lastDblClickPos;
 
     int                 _hoveredRow     = -1; // index of the row the mouse is over, or -1
-    int                 _hoveredToolBtn = -1; // 0=emoji, 1=forward, 2=more; -1=none
+    int                 _hoveredToolBtn = -1; // index into the toolbar buttons; -1=none
     // {msgIdx, attachIdx} of the attachment preview the cursor is over, else {-1,-1}
     std::pair<int, int> _hoveredAttach  = {-1, -1};
     // {msgIdx, fileIdx} of the file chip/image the cursor is over, else {-1,-1}
