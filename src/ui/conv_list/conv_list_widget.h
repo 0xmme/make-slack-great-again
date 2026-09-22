@@ -42,10 +42,18 @@ struct RowItem {
     int     count     = 0;  // for ShowMore: number of hidden items
 };
 
+#if defined(MSGA_DEMO)
+namespace demo {
+class Tour;
+}
+#endif
 // Virtual-painted conversation list with section grouping and collapse/expand.
 // Zero QWidgets per row — scales to thousands of conversations.
 class ConvListWidget : public VirtualListWidget {
     Q_OBJECT
+#if defined(MSGA_DEMO)
+    friend class demo::Tour; // the scripted demo drives real widgets (--demo-tour)
+#endif
 public:
     explicit ConvListWidget(ImageCache *imgCache, QWidget *parent = nullptr);
     ~ConvListWidget() override;

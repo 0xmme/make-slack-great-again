@@ -9,8 +9,16 @@
 // channel canvas tab. With no canvas the second tab reads "Add canvas" with a
 // sticky-note-plus icon; with one it shows the canvas title. The active tab
 // gets a 2px underline sitting on the strip's bottom divider.
+#if defined(MSGA_DEMO)
+namespace demo {
+class Tour;
+}
+#endif
 class ConvTabsWidget : public QWidget {
     Q_OBJECT
+#if defined(MSGA_DEMO)
+    friend class demo::Tour; // the scripted demo drives real widgets (--demo-tour)
+#endif
 public:
     enum class Tab { Messages, Canvas };
 

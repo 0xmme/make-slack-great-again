@@ -25,6 +25,20 @@ struct AutoReply {
     QString text; // mrkdwn
     int     afterMs  = 1200;
     int     typingMs = 1500;
+    // Answers a reply sent into a thread (and lands in that thread) instead of
+    // a top-level send — so a scripted thread reply doesn't eat the channel's
+    // canned answer.
+    bool    inThread = false;
+};
+
+// A conversation's channel canvas ("canvas": {"title", "html"} on the
+// conversation): the rendered document as Slack's url_private serves it — the
+// inner HTML of <div class="quip-canvas-content">, read from a fixture file.
+struct Canvas {
+    QString conv;
+    QString fileId;
+    QString title;
+    QString html;
 };
 
 // A link preview the fake workspace attaches to a sent message that contains
@@ -57,6 +71,7 @@ struct Fixture {
     // threadKey(conv, rootTs) → replies, oldest first.
     std::unordered_map<QString, std::vector<Message>> threads;
     std::vector<AutoReply>                            autoReplies;
+    std::vector<Canvas>                               canvases;
     std::vector<Unfurl>                               unfurls;
     std::vector<AiReply>                              aiReplies;
     QString                                           aiDefault;

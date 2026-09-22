@@ -37,7 +37,7 @@ using K = TourStep::Kind;
 struct Verb {
     const char *name;
     K           kind;
-    enum Arg { None, Text, Number, Pair, Special } arg;
+    enum Arg { None, Text, Number, Pair, Special, Post } arg;
 };
 
 // The verb is whichever known key the step object carries — QJsonObject
@@ -70,6 +70,11 @@ constexpr Verb kVerbs[] = {
     {"play", K::Play, Verb::Text},
     {"openImage", K::OpenImage, Verb::Text},
     {"closeImage", K::CloseImage, Verb::None},
+    {"openThreads", K::OpenThreads, Verb::None},
+    {"openSaved", K::OpenSaved, Verb::None},
+    {"canvas", K::Canvas, Verb::None},
+    {"messagesTab", K::MessagesTab, Verb::None},
+    {"post", K::Post, Verb::Post},
     {"quit", K::Quit, Verb::None},
 };
 
@@ -156,6 +161,16 @@ std::optional<TourScript> parseTour(const QByteArray &json, QString *error) {
                         QStringLiteral("tour: step %1: unknown settings page \"%2\"").arg(n).arg(p)
                     );
             break;
+        case Verb::Post: { // post: {"conv": id, "user": id, "text": mrkdwn, "thread": fragment}
+            const auto o2 = val.toObject();
+            st.conv       = o2.value("conv").toString();
+            st.user       = o2.value("user").toString();
+            st.arg        = o2.value("text").toString();
+            st.arg2       = o2.value("thread").toString();
+            if (st.conv.isEmpty() || st.user.isEmpty() || st.arg.isEmpty())
+                return fail(QStringLiteral("tour: step %1: post needs conv, user and text").arg(n));
+            break;
+        }
         }
         if (st.kind == K::Type)
             st.num = o.value("cps").toDouble(16);

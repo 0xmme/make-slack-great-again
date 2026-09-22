@@ -32,20 +32,33 @@ DemoBackend::DemoBackend(Fixture fx) : _fx(std::move(fx)) {
     _autoReplies.assign(_fx.autoReplies.begin(), _fx.autoReplies.end());
     for (const auto &c : _fx.conversations)
         _convInfo[c.id.value] = c;
+    for (const auto &cv : _fx.canvases) {
+        _convCanvas[cv.conv]    = cv.fileId;
+        _canvasHtml[cv.fileId]  = cv.html;
+        _canvasTitle[cv.fileId] = cv.title;
+    }
+    // Every fixture thread starts out read: the recording opens on a quiet
+    // workspace and the tour makes the Threads entry light up itself.
+    for (const auto &[key, replies] : _threads)
+        if (!replies.empty())
+            _threadRead[key] = replies.back().ts;
 }
 
 Capabilities DemoBackend::capabilities() const {
     Capabilities c;
-    c.typing        = true;
-    c.presence      = true;
-    c.livePresence  = true;
-    c.reactions     = true;
-    c.editMessage   = true;
-    c.deleteMessage = true;
-    c.threads       = true;
-    c.fileUpload    = true;
-    c.moveToThread  = true;
-    c.slashCommands = true;
+    c.typing           = true;
+    c.presence         = true;
+    c.livePresence     = true;
+    c.reactions        = true;
+    c.editMessage      = true;
+    c.deleteMessage    = true;
+    c.threads          = true;
+    c.fileUpload       = true;
+    c.moveToThread     = true;
+    c.slashCommands    = true;
+    c.canvases         = true;
+    c.threadsView      = true;
+    c.messageReminders = true;
     return c;
 }
 
@@ -165,6 +178,79 @@ rpl::producer<std::vector<SearchResult>> DemoBackend::searchMessages(const QStri
         });
     }
     return later(std::move(out), kReadLatencyMs * 4);
+}
+
+rpl::producer<ThreadsViewPage> DemoBackend::loadThreadsView(const QString &) {
+    // subscriptions.thread.getView shape: the threads I started or replied in,
+    // the root with its channel, the last few replies, my read cursor.
+    ThreadsViewPage page;
+    for (const auto &[key, replies] : _threads) {
+        if (replies.empty())
+            continue;
+        const ConversationId conv{key.left(key.indexOf(QLatin1Char('/')))};
+        const Message       *root = nullptr;
+        if (const auto it = _history.find(conv.value); it != _history.end())
+            for (const auto &m : it->second)
+                if (m.ts == key.mid(key.indexOf(QLatin1Char('/')) + 1))
+                    root = &m;
+        if (!root)
+            continue;
+        bool mine = root->author == _fx.me;
+        for (const auto &r : replies)
+            mine = mine || r.author == _fx.me;
+        if (!mine)
+            continue;
+        ThreadOverview t;
+        t.conv         = conv;
+        t.root         = *root;
+        const size_t n = std::min<size_t>(replies.size(), 3);
+        t.latestReplies.assign(replies.end() - n, replies.end());
+        t.lastRead = _threadRead.count(key) ? _threadRead.at(key) : Ts{};
+        for (const auto &r : replies)
+            if (r.ts > t.lastRead)
+                ++page.totalUnreadReplies;
+        page.threads.push_back(std::move(t));
+    }
+    std::sort(page.threads.begin(), page.threads.end(), [](const auto &a, const auto &b) {
+        return a.latestReplies.back().ts > b.latestReplies.back().ts;
+    });
+    return later(std::move(page), kReadLatencyMs * 2);
+}
+
+void DemoBackend::markThreadRead(ConversationId conv, Ts root, Ts ts) {
+    Ts &cursor = _threadRead[Fixture::threadKey(conv, root)];
+    if (ts > cursor)
+        cursor = ts;
+}
+
+rpl::producer<std::vector<MessageReminder>> DemoBackend::loadMessageReminders() {
+    return later(_saved);
+}
+
+void DemoBackend::setMessageReminder(
+    ConversationId conv, Ts ts, qint64 dueAt, std::function<void(bool ok, QString err)> done
+) {
+    auto it = std::find_if(_saved.begin(), _saved.end(), [&](const MessageReminder &r) {
+        return r.conv == conv && r.ts == ts;
+    });
+    if (it == _saved.end()) {
+        MessageReminder r;
+        r.conv    = conv;
+        r.ts      = ts;
+        r.savedAt = QDateTime::currentSecsSinceEpoch();
+        it        = _saved.insert(_saved.end(), std::move(r));
+    }
+    it->dueAt = dueAt;
+    if (done)
+        QTimer::singleShot(kReadLatencyMs, &_timerGuard, [done] { done(true, {}); });
+}
+
+void DemoBackend::removeMessageReminder(
+    ConversationId conv, Ts ts, std::function<void(bool ok, QString err)> done
+) {
+    std::erase_if(_saved, [&](const MessageReminder &r) { return r.conv == conv && r.ts == ts; });
+    if (done)
+        QTimer::singleShot(kReadLatencyMs, &_timerGuard, [done] { done(true, {}); });
 }
 
 // ── writes ────────────────────────────────────────────────────────────────────
@@ -306,6 +392,20 @@ Ts DemoBackend::postAs(
     return ts;
 }
 
+std::optional<Ts> DemoBackend::findTs(const ConversationId &conv, const QString &fragment) const {
+    if (const auto it = _history.find(conv.value); it != _history.end())
+        for (const auto &m : it->second)
+            if (m.text.text.contains(fragment, Qt::CaseInsensitive))
+                return m.ts;
+    const QString prefix = conv.value + QLatin1Char('/');
+    for (const auto &[key, replies] : _threads)
+        if (key.startsWith(prefix))
+            for (const auto &m : replies)
+                if (m.text.text.contains(fragment, Qt::CaseInsensitive))
+                    return m.ts;
+    return std::nullopt;
+}
+
 // ── internals ─────────────────────────────────────────────────────────────────
 
 Ts DemoBackend::nextTs() {
@@ -417,7 +517,7 @@ void DemoBackend::scheduleUnfurl(const ConversationId &conv, const Message &msg)
 
 void DemoBackend::scheduleAutoReply(const ConversationId &conv, std::optional<Ts> threadRoot) {
     auto it = std::find_if(_autoReplies.begin(), _autoReplies.end(), [&](const AutoReply &r) {
-        return r.conv == conv.value;
+        return r.conv == conv.value && r.inThread == threadRoot.has_value();
     });
     if (it == _autoReplies.end())
         return;

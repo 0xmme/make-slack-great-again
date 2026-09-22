@@ -31,6 +31,18 @@ public:
     rpl::producer<Message>     loadMessageAt(ConversationId, Ts) override;
     rpl::producer<std::vector<ConversationId>> loadStarredConversations() override;
     rpl::producer<std::vector<SearchResult>>   searchMessages(const QString &) override;
+    // The Threads overview: every fixture thread the signed-in user took part
+    // in, newest activity first, with the read cursor markThreadRead() moved.
+    rpl::producer<ThreadsViewPage>             loadThreadsView(const QString &cursor) override;
+    void markThreadRead(ConversationId, Ts root, Ts ts) override;
+    // Saved messages ("Save for later" / reminders): an in-memory list.
+    rpl::producer<std::vector<MessageReminder>> loadMessageReminders() override;
+    void                                        setMessageReminder(
+        ConversationId, Ts, qint64 dueAt, std::function<void(bool ok, QString err)> done = {}
+    ) override;
+    void removeMessageReminder(
+        ConversationId, Ts, std::function<void(bool ok, QString err)> done = {}
+    ) override;
 
     void sendMessage(
         ConversationId, OutgoingMessage, std::function<void(bool ok, QString err)> done = {}
@@ -56,6 +68,9 @@ public:
     // Post a message as another fixture user right now (tour scripts / tests).
     // Returns the ts it got.
     Ts postAs(ConversationId, UserId, const QString &mrkdwn, std::optional<Ts> threadRoot = {});
+    // The ts of the first message in `conv` (top-level or reply) whose text
+    // contains `fragment`, case-insensitively — how tour scripts name messages.
+    std::optional<Ts> findTs(const ConversationId &conv, const QString &fragment) const;
 
     const Fixture &fixture() const { return _fx; }
 
@@ -82,7 +97,9 @@ private:
     void updateConversation(const ConversationId &id, const std::function<void(Conversation &)> &);
 
     Fixture                                           _fx;
-    std::unordered_map<QString, std::vector<Message>> _threads; // threadKey → replies
+    std::unordered_map<QString, std::vector<Message>> _threads;    // threadKey → replies
+    std::unordered_map<QString, Ts>                   _threadRead; // threadKey → read cursor
+    std::vector<MessageReminder>                      _saved;
     std::deque<AutoReply>                             _autoReplies;
     qint64                                            _lastUsec  = 0;
     int                                               _fileIndex = 1000;

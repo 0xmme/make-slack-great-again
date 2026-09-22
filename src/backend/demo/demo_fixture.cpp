@@ -333,6 +333,20 @@ std::optional<Fixture> loadFixture(const QString &path, QString *error, const QD
         }
         if (c.memberCount == 0 && !c.members.empty())
             c.memberCount = int(c.members.size());
+        if (o.contains("canvas")) {
+            const auto cv = o.value("canvas").toObject();
+            Canvas     canvas;
+            canvas.conv   = c.id.value;
+            canvas.fileId = QStringLiteral("F0CANVAS-%1").arg(c.id.value);
+            canvas.title  = cv.value("title").toString();
+            QFile html(QDir(fx.dir).filePath(cv.value("html").toString()));
+            if (cv.value("html").toString().isEmpty() || !html.open(QIODevice::ReadOnly))
+                return fail(QStringLiteral("conversation %1: canvas needs a readable \"html\" file")
+                                .arg(c.id.value));
+            canvas.html    = QString::fromUtf8(html.readAll());
+            c.canvasFileId = canvas.fileId;
+            fx.canvases.push_back(std::move(canvas));
+        }
         convIndex.insert(c.id.value, int(fx.conversations.size()));
         fx.conversations.push_back(std::move(c));
     }
@@ -460,6 +474,7 @@ std::optional<Fixture> loadFixture(const QString &path, QString *error, const QD
         r.text     = o.value("text").toString();
         r.afterMs  = o.value("afterMs").toInt(r.afterMs);
         r.typingMs = o.value("typingMs").toInt(r.typingMs);
+        r.inThread = o.value("inThread").toBool();
         if (!convIndex.contains(r.conv) || !userIds.contains(r.user.value) || r.text.isEmpty())
             return fail(QStringLiteral("autoReplies: each needs a known conv, user and a text"));
         fx.autoReplies.push_back(std::move(r));

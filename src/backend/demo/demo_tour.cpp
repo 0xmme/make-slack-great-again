@@ -3,22 +3,28 @@
 #include "demo_tour.h"
 
 #include "backend/backend.h"
+#include "backend/demo/demo_backend.h"
 #include "session/session.h"
 #include "ui/app_dialog/app_dialog.h"
+#include "ui/canvas_page/canvas_page.h"
 #include "ui/composer/composer_widget.h"
 #include "ui/context_menu/context_menu.h"
 #include "ui/conv_list/conv_list_widget.h"
+#include "ui/conv_tabs/conv_tabs_widget.h"
 #include "ui/gif_picker/gif_picker_popup.h"
 #include "ui/image_viewer/image_viewer.h"
 #include "ui/main_window.h"
 #include "ui/message_list/message_list.h"
 #include "ui/message_list/message_render.h"
+#include "ui/saved_page/saved_messages_page.h"
 #include "ui/search/search_widget.h"
 #include "ui/settings/settings_dialog.h"
 #include "ui/styled_button/styled_button.h"
 #include "ui/theme_manager.h"
 #include "ui/thread_panel/thread_panel.h"
+#include "ui/threads_page/threads_page.h"
 
+#include <QAbstractScrollArea>
 #include <QApplication>
 #include <QCursor>
 #include <QDateTime>
@@ -28,6 +34,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScreen>
+#include <QStackedWidget>
 #include <QToolButton>
 #include <QScrollBar>
 #include <QTimer>
@@ -118,7 +125,15 @@ void Tour::run(const TourStep &step, Done done) {
     }
 
     case K::Scroll: {
-        auto *bar = _win->_messageList->verticalScrollBar();
+        // Whatever page the content stack shows: the canvas body or an
+        // overview page's scroll area instead of the message list.
+        QAbstractScrollArea *area = _win->_messageList;
+        if (QWidget *cur = _win->_contentStack ? _win->_contentStack->currentWidget() : nullptr;
+            cur &&
+            (cur == _win->_canvasPage || cur == _win->_threadsPage || cur == _win->_savedPage))
+            if (auto *inner = cur->findChild<QAbstractScrollArea *>())
+                area = inner;
+        auto *bar = area->verticalScrollBar();
         parkCursor([this, bar, delta = int(step.num), done] {
             const int from = bar->value();
             const int to   = std::clamp(from + delta, bar->minimum(), bar->maximum());
@@ -151,13 +166,15 @@ void Tour::run(const TourStep &step, Done done) {
             done();
             return;
         }
+        if (!scrollIntoView(*ts, [this, step, done] { run(step, done); }))
+            return;
         const ConversationId conv = _win->_currentConvId;
         if (step.kind == K::Hover) {
             moveCursor(messagePoint(*ts, 220, 34), done);
         } else if (step.kind == K::MessageMenu) {
             // The message menu lives behind the hover toolbar's "…" button.
             moveCursor(messagePoint(*ts, 220, 34), [this, ts = *ts, done] {
-                after(250, [this, ts, done] { click(toolbarButtonPoint(ts, 2), done); });
+                after(250, [this, ts, done] { click(toolbarButtonPoint(ts, moreButton()), done); });
             });
         } else if (step.kind == K::Thread) {
             // The "N replies" footer sits at the bottom of the row.
@@ -365,6 +382,8 @@ void Tour::run(const TourStep &step, Done done) {
             done();
             return;
         }
+        if (!scrollIntoView(*ts, [this, step, done] { run(step, done); }))
+            return;
         auto pressMove = [this, done] {
             auto *dlg = AppDialog::topmostVisible(_win);
             if (dlg)
@@ -389,7 +408,9 @@ void Tour::run(const TourStep &step, Done done) {
         };
         moveCursor(messagePoint(*ts, 220, 34), [this, ts = *ts, pickItem] {
             after(250, [this, ts, pickItem] {
-                click(toolbarButtonPoint(ts, 2), [this, pickItem] { after(700, pickItem); });
+                click(toolbarButtonPoint(ts, moreButton()), [this, pickItem] {
+                    after(700, pickItem);
+                });
             });
         });
         return;
@@ -449,6 +470,60 @@ void Tour::run(const TourStep &step, Done done) {
             viewer->hide();
         done();
         return;
+
+    case K::OpenThreads:
+    case K::OpenSaved: {
+        const bool   threads = step.kind == K::OpenThreads;
+        const QPoint pt      = fixedRowPoint(int(threads ? RowKind::Threads : RowKind::SavedMsgs));
+        if (pt.isNull()) {
+            fprintf(stderr, "tour: no %s entry in the sidebar\n", threads ? "Threads" : "Saved");
+            done();
+            return;
+        }
+        click(pt, done);
+        return;
+    }
+
+    case K::Canvas:
+    case K::MessagesTab: {
+        ConvTabsWidget *tabs = _win->_convTabs;
+        const QRect     r    = tabs ? tabs->_tabs[step.kind == K::Canvas ? 1 : 0].rect : QRect();
+        if (r.isEmpty() || !tabs->isVisible()) {
+            fprintf(stderr, "tour: no %s tab\n", step.kind == K::Canvas ? "canvas" : "Messages");
+            done();
+            return;
+        }
+        click(tabs->mapToGlobal(r.center()), done);
+        return;
+    }
+
+    case K::Post: {
+        // Someone else posts now — the fixture backend fires it like an incoming
+        // event, so badges, the Threads entry and notifications all react.
+        auto *backend = dynamic_cast<DemoBackend *>(_win->_session->backend());
+        if (!backend) {
+            done();
+            return;
+        }
+        const ConversationId conv{step.conv};
+        std::optional<Ts>    root;
+        if (!step.arg2.isEmpty()) {
+            root = backend->findTs(conv, step.arg2);
+            if (!root) {
+                fprintf(
+                    stderr,
+                    "tour: no message in %s contains \"%s\"\n",
+                    qPrintable(step.conv),
+                    qPrintable(step.arg2)
+                );
+                done();
+                return;
+            }
+        }
+        backend->postAs(conv, UserId{step.user}, step.arg, root);
+        done();
+        return;
+    }
 
     case K::Quit:
         finish();
@@ -641,6 +716,24 @@ std::optional<QString> Tour::findMessageTs(const QString &fragment) const {
     return std::nullopt;
 }
 
+bool Tour::scrollIntoView(const QString &ts, Done retry) {
+    // One jump per step: a row taller than the viewport never fits entirely,
+    // and the re-run must not jump again (the tour would spin forever).
+    if (std::exchange(_jumped, false))
+        return true;
+    MessageListWidget *list = _win->_messageList;
+    const QRect        r    = list->rowViewportRect(ts);
+    const QRect        vp   = list->viewport()->rect();
+    if (r.isEmpty() || (r.top() >= 0 && r.bottom() <= vp.bottom()))
+        return true;
+    // jumpToTs scrolls smoothly: row rectangles are only right once the
+    // animation has settled, so the step re-runs after it (visible by then).
+    list->jumpToTs(ts);
+    _jumped = true;
+    after(700, std::move(retry));
+    return false;
+}
+
 QPoint Tour::messagePoint(const QString &ts, int dxFromLeft, int dyFromTop) const {
     MessageListWidget *list = _win->_messageList;
     QRect              r    = list->rowViewportRect(ts);
@@ -654,6 +747,11 @@ QPoint Tour::messagePoint(const QString &ts, int dxFromLeft, int dyFromTop) cons
     return list->viewport()->mapToGlobal(
         QPoint(r.left() + dxFromLeft, r.top() + std::clamp(dyFromTop, 4, r.height() - 4))
     );
+}
+
+int Tour::moreButton() const {
+    // The "…" button is always the toolbar's last one (Emoji, Forward, [Save], More).
+    return _win->_messageList->toolbarButtonCount() - 1;
 }
 
 QPoint Tour::toolbarButtonPoint(const QString &ts, int btn) const {
@@ -677,6 +775,21 @@ QPoint Tour::conversationPoint(const QString &convId) const {
     if (r.isEmpty())
         return {};
     return list->viewport()->mapToGlobal(QPoint(r.left() + r.width() / 3, r.center().y()));
+}
+
+QPoint Tour::fixedRowPoint(int rowKind) const {
+    ConvListWidget *list = _win->_convList;
+    for (int r = 0; r < int(list->_rows.size()); ++r) {
+        if (int(list->_rows[r].kind) != rowKind)
+            continue;
+        const QRect rect = list->rowViewportRect(r);
+        if (rect.isEmpty())
+            return {};
+        return list->viewport()->mapToGlobal(
+            QPoint(rect.left() + rect.width() / 3, rect.center().y())
+        );
+    }
+    return {};
 }
 
 QPoint Tour::centerOf(const QWidget *w) const {

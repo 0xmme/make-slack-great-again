@@ -43,12 +43,20 @@ struct TourStep {
         Play,         // arg = message text fragment — press play/pause on its audio clip
         OpenImage,    // arg = message text fragment — open its image in the viewer
         CloseImage,   //
+        OpenThreads,  // click the roster's "Threads" entry — the threads overview page
+        OpenSaved,    // click the roster's "Saved messages" entry
+        Canvas,       // click the open conversation's canvas tab
+        MessagesTab,  // click the "Messages" tab (back from the canvas)
+        Post,         // conv + user + arg = mrkdwn: another user posts right now;
+                      // arg2 = root text fragment → as a reply in that thread
         Quit,         //
     };
     Kind        kind;
     QString     arg;
     QString     arg2;
     QStringList list;
+    QString     conv; // Post: conversation id
+    QString     user; // Post: author id
     int         ms  = 0;
     double      num = 0;
 };

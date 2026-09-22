@@ -58,14 +58,21 @@ private:
     // Global centre of hover-toolbar button `btn` (0 react, 1 forward, 2 more) of
     // the row showing `ts`; the row must be hovered for the list to act on it.
     QPoint                 toolbarButtonPoint(const QString &ts, int btn) const;
+    // True when the message row is fully on screen; otherwise starts the smooth
+    // jump to it and schedules `retry` for when it has settled (returns false).
+    bool                   scrollIntoView(const QString &ts, Done retry);
+    int                    moreButton() const; // index of the hover toolbar's "…" button
     QPoint                 conversationPoint(const QString &convId) const;
+    // Centre of the roster's fixed "Threads" / "Saved messages" entry (by row kind).
+    QPoint                 fixedRowPoint(int rowKind) const;
     QPoint                 centerOf(const QWidget *w) const;
     void                   finish();
 
     MainWindow       *_win;
     TourScript        _script;
     size_t            _index = 0;
-    QPointF           _pos;     // where the pointer is (global)
+    QPointF           _pos;            // where the pointer is (global)
+    bool              _jumped = false; // scrollIntoView jumped for the step being re-run
     QPointer<QWidget> _hovered; // last widget that got Enter, for the matching Leave (menus die)
     bool              _done = false;
 };

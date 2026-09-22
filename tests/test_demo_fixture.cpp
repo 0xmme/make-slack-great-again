@@ -652,3 +652,226 @@ TEST_CASE("parseTour: the phase-3 verbs", "[demo][tour]") {
     );
     CHECK(err.contains("unknown settings page"));
 }
+
+// ── canvases, thread-aware auto replies, threads view, saved messages ─────────
+
+const QByteArray kWithCanvas = R"({
+  "workspace": {"id": "T1", "name": "Acme"},
+  "me": "U1",
+  "users": [
+    {"id": "U1", "name": "me", "displayName": "Me"},
+    {"id": "U2", "name": "mira", "displayName": "Mira"}
+  ],
+  "conversations": [
+    {"id": "C1", "kind": "channel", "name": "general", "canvas": {"title": "Notes", "html": "canvas.html"}},
+    {"id": "C2", "kind": "channel", "name": "design"}
+  ],
+  "messages": [
+    {"conv": "C1", "user": "U2", "time": "-1d 09:00", "text": "mine by reply",
+     "replies": [{"user": "U1", "time": "+10m", "text": "I replied"}, {"user": "U2", "time": "+5m", "text": "and back"}]},
+    {"conv": "C1", "user": "U2", "time": "-1d 10:00", "text": "not mine",
+     "replies": [{"user": "U2", "time": "+1m", "text": "talking to myself"}]},
+    {"conv": "C2", "user": "U1", "time": "-1d 11:00", "text": "mine by root",
+     "replies": [{"user": "U2", "time": "+1m", "text": "answer"}]}
+  ],
+  "autoReplies": [
+    {"conv": "C2", "user": "U2", "afterMs": 0, "typingMs": 0, "text": "in the thread", "inThread": true},
+    {"conv": "C2", "user": "U2", "afterMs": 0, "typingMs": 0, "text": "top level"}
+  ]
+})";
+
+QString writeCanvasFixture(const QTemporaryDir &dir) {
+    QFile html(dir.filePath("canvas.html"));
+    REQUIRE(html.open(QIODevice::WriteOnly));
+    html.write("<h1 id=\"t\">Notes</h1><p id=\"p\" class=\"line\">Body</p>");
+    html.close();
+    return writeFixture(dir, kWithCanvas);
+}
+
+TEST_CASE("loadFixture: a conversation canvas is read from its html file", "[demo][fixture]") {
+    QTemporaryDir dir;
+    QString       err;
+    auto          fx = loadFixture(writeCanvasFixture(dir), &err, kNow);
+    REQUIRE(fx.has_value());
+    REQUIRE(fx->canvases.size() == 1);
+    CHECK(fx->canvases[0].conv == "C1");
+    CHECK(fx->canvases[0].title == "Notes");
+    CHECK(fx->canvases[0].html.contains("Body"));
+    CHECK(fx->conversations[0].canvasFileId == fx->canvases[0].fileId);
+    CHECK(fx->conversations[1].canvasFileId.isEmpty());
+    REQUIRE(fx->autoReplies.size() == 2);
+    CHECK(fx->autoReplies[0].inThread);
+    CHECK_FALSE(fx->autoReplies[1].inThread);
+
+    // A missing html file is an error, not a silently empty canvas.
+    QTemporaryDir bad;
+    QByteArray    json = kWithCanvas;
+    json.replace("canvas.html", "nope.html");
+    CHECK_FALSE(loadFixture(writeFixture(bad, json), &err, kNow).has_value());
+    CHECK(err.contains("canvas"));
+}
+
+TEST_CASE("DemoBackend: canvases, threads view and saved messages", "[demo][backend]") {
+    int              argc   = 1;
+    char             arg0[] = "test";
+    char            *argv[] = {arg0, nullptr};
+    QCoreApplication app(argc, argv);
+
+    QTemporaryDir dir;
+    QString       err;
+    auto          fx = loadFixture(writeCanvasFixture(dir), &err, kNow);
+    REQUIRE(fx.has_value());
+    DemoBackend be(*fx);
+    CHECK(be.capabilities().canvases);
+    CHECK(be.capabilities().threadsView);
+    CHECK(be.capabilities().messageReminders);
+
+    // Canvas: the fixture file is served as the quip document, titled.
+    QString fileId;
+    be.loadChannelCanvas(ConversationId{"C1"}, [&](QString id, bool empty) {
+        fileId = id;
+        CHECK_FALSE(empty);
+    });
+    REQUIRE(fileId == fx->canvases[0].fileId);
+    QString html;
+    be.loadCanvasContent(fileId, [&](QString h) { html = h; });
+    CHECK(html.contains("quip-canvas-content"));
+    CHECK(html.contains("Body"));
+    QString title;
+    be.loadCanvasMeta(fileId, [&](QString t, QString, CanvasMetaState) { title = t; });
+    CHECK(title == "Notes");
+    be.loadChannelCanvas(ConversationId{"C2"}, [&](QString id, bool empty) {
+        CHECK(id.isEmpty());
+        CHECK(empty);
+    });
+
+    // Threads view: only the threads I took part in, newest activity first,
+    // all read at start; a new reply is unread until markThreadRead.
+    rpl::lifetime                  lt;
+    std::optional<ThreadsViewPage> page;
+    be.loadThreadsView({}) | rpl::on_next([&](ThreadsViewPage p) { page = p; }, lt);
+    REQUIRE(waitFor([&] { return page.has_value(); }));
+    REQUIRE(page->threads.size() == 2);
+    CHECK(page->threads[0].root.text.text == "mine by root"); // 11:01 beats 09:15
+    CHECK(page->threads[1].root.text.text == "mine by reply");
+    CHECK(page->threads[1].latestReplies.size() == 2);
+    CHECK(page->totalUnreadReplies == 0);
+    for (const auto &t : page->threads)
+        CHECK(t.lastRead == t.latestReplies.back().ts);
+
+    const Ts root  = fx->history.at("C2")[0].ts;
+    const Ts reply = be.postAs(ConversationId{"C2"}, UserId{"U2"}, "more", root);
+    page.reset();
+    be.loadThreadsView({}) | rpl::on_next([&](ThreadsViewPage p) { page = p; }, lt);
+    REQUIRE(waitFor([&] { return page.has_value(); }));
+    CHECK(page->totalUnreadReplies == 1);
+    CHECK(page->threads[0].lastRead < reply);
+    be.markThreadRead(ConversationId{"C2"}, root, reply);
+    page.reset();
+    be.loadThreadsView({}) | rpl::on_next([&](ThreadsViewPage p) { page = p; }, lt);
+    REQUIRE(waitFor([&] { return page.has_value(); }));
+    CHECK(page->totalUnreadReplies == 0);
+
+    // Saved messages: set, list, remove.
+    bool ok = false;
+    be.setMessageReminder(ConversationId{"C1"}, root, 0, [&](bool o, QString) { ok = o; });
+    REQUIRE(waitFor([&] { return ok; }));
+    std::optional<std::vector<MessageReminder>> saved;
+    be.loadMessageReminders() |
+        rpl::on_next([&](std::vector<MessageReminder> v) { saved = v; }, lt);
+    REQUIRE(waitFor([&] { return saved.has_value(); }));
+    REQUIRE(saved->size() == 1);
+    CHECK(saved->front().ts == root);
+    CHECK(saved->front().dueAt == 0);
+    CHECK(saved->front().savedAt > 0);
+    ok = false;
+    be.removeMessageReminder(ConversationId{"C1"}, root, [&](bool o, QString) { ok = o; });
+    REQUIRE(waitFor([&] { return ok; }));
+    saved.reset();
+    be.loadMessageReminders() |
+        rpl::on_next([&](std::vector<MessageReminder> v) { saved = v; }, lt);
+    REQUIRE(waitFor([&] { return saved.has_value(); }));
+    CHECK(saved->empty());
+
+    // findTs looks through top-level messages and replies alike.
+    CHECK(be.findTs(ConversationId{"C1"}, "I REPLIED").has_value());
+    CHECK(be.findTs(ConversationId{"C1"}, "mine by root") == std::nullopt);
+}
+
+TEST_CASE("DemoBackend: thread-aware auto replies", "[demo][backend]") {
+    int              argc   = 1;
+    char             arg0[] = "test";
+    char            *argv[] = {arg0, nullptr};
+    QCoreApplication app(argc, argv);
+
+    QTemporaryDir dir;
+    QString       err;
+    auto          fx = loadFixture(writeCanvasFixture(dir), &err, kNow);
+    REQUIRE(fx.has_value());
+    DemoBackend be(*fx);
+
+    std::vector<Event> events;
+    rpl::lifetime      lt;
+    be.events() | rpl::on_next([&](Event e) { events.push_back(std::move(e)); }, lt);
+
+    // A top-level send skips the inThread entry and draws the top-level one.
+    be.sendMessage(ConversationId{"C2"}, OutgoingMessage{.rawText = "hi"});
+    REQUIRE(waitFor([&] {
+        for (const auto &e : events)
+            if (const auto *n = std::get_if<EvMessageNew>(&e); n && n->msg.author.value == "U2")
+                return true;
+        return false;
+    }));
+    const auto *top = std::get_if<EvMessageNew>(&events.back());
+    REQUIRE(top);
+    CHECK(top->msg.text.text == "top level");
+    CHECK_FALSE(top->msg.threadRoot.has_value());
+
+    // A reply into a thread draws the inThread entry, in that thread.
+    events.clear();
+    const Ts root = fx->history.at("C2")[0].ts;
+    be.sendMessage(ConversationId{"C2"}, OutgoingMessage{.rawText = "reply", .threadRoot = root});
+    REQUIRE(waitFor([&] {
+        for (const auto &e : events)
+            if (const auto *n = std::get_if<EvMessageNew>(&e); n && n->msg.author.value == "U2")
+                return true;
+        return false;
+    }));
+    const EvMessageNew *canned = nullptr;
+    for (const auto &e : events)
+        if (const auto *n = std::get_if<EvMessageNew>(&e); n && n->msg.author.value == "U2")
+            canned = n;
+    REQUIRE(canned);
+    CHECK(canned->msg.text.text == "in the thread");
+    CHECK(canned->msg.threadRoot == root);
+}
+
+TEST_CASE("parseTour: overview, canvas and post verbs", "[demo][tour]") {
+    QString    err;
+    const auto t = parseTour(
+        R"({"steps": [
+        {"openThreads": true}, {"openSaved": true}, {"canvas": true}, {"messagesTab": true},
+        {"post": {"conv": "C1", "user": "U2", "text": "hello", "thread": "root text"}},
+        {"post": {"conv": "C1", "user": "U2", "text": "top level"}}
+      ]})",
+        &err
+    );
+    REQUIRE(t.has_value());
+    using K = TourStep::Kind;
+    REQUIRE(t->steps.size() == 6);
+    CHECK(t->steps[0].kind == K::OpenThreads);
+    CHECK(t->steps[1].kind == K::OpenSaved);
+    CHECK(t->steps[2].kind == K::Canvas);
+    CHECK(t->steps[3].kind == K::MessagesTab);
+    CHECK(t->steps[4].kind == K::Post);
+    CHECK(t->steps[4].conv == "C1");
+    CHECK(t->steps[4].user == "U2");
+    CHECK(t->steps[4].arg == "hello");
+    CHECK(t->steps[4].arg2 == "root text");
+    CHECK(t->steps[5].arg2.isEmpty());
+
+    CHECK_FALSE(
+        parseTour(R"({"steps": [{"post": {"conv": "C1", "text": "x"}}]})", &err).has_value()
+    );
+    CHECK(err.contains("post needs"));
+}
