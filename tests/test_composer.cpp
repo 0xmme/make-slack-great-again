@@ -665,6 +665,8 @@ TEST_CASE("adjacent mention pills serialize independently", "[composer][mention]
 // ── Inline :emoji: autocomplete ───────────────────────────────────────────────
 
 #include "ui/composer/mention_completer.h"
+#include "ui/mention_popup/mention_popup.h"
+#include "ui/theme.h"
 #include <QEventLoop>
 #include <QKeyEvent>
 #include <QPushButton>
@@ -690,6 +692,105 @@ static void releaseKey(ComposerWidget *c, int key, const QString &txt) {
 
 static MentionCompleter *completerOf(ComposerWidget *c) {
     return c->findChild<MentionCompleter *>();
+}
+
+TEST_CASE("broadcast autocomplete highlights and sends Slack tokens", "[composer][mention]") {
+    Session session(std::make_unique<StubBackend2>(), "T_TEST");
+    session.start();
+    QWidget host;
+    host.resize(600, 600);
+    ComposerWidget c(&host);
+    c.setGeometry(0, 450, 600, 150);
+    c.setSession(&session);
+    host.show();
+
+    for (const auto &name : {"channel", "here", "everyone"}) {
+        const QString alias = "@" + QString(name);
+        const QString token = "<!" + QString(name) + ">";
+        typeText(&c, alias);
+        releaseKey(&c, Qt::Key_E, "e");
+        auto *popup = host.findChild<MentionPopup *>();
+        REQUIRE(popup);
+        REQUIRE(popup->isOpen());
+        REQUIRE(popup->handleKey(Qt::Key_Return));
+        CHECK(editOf(&c)->toPlainText() == alias + " ");
+        CHECK(c.currentText() == token + " ");
+        QTextCursor cursor(editOf(&c)->document());
+        cursor.setPosition(1);
+        CHECK(cursor.charFormat().foreground().color() == Th::c().message.replyLink);
+
+        // Draft restoration and editing must keep the visible label and wire token.
+        const auto draft = c.takeDraft();
+        c.restoreDraft(draft);
+        CHECK(editOf(&c)->toPlainText() == alias + " ");
+        CHECK(c.currentText() == token + " ");
+        QString sent;
+        auto    connection =
+            QObject::connect(&c, &ComposerWidget::sendRequested, [&](const QString &text) {
+                sent = text;
+            });
+        QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+        QApplication::sendEvent(editOf(&c), &enter);
+        CHECK(sent == token);
+        QObject::disconnect(connection);
+
+        c.enterEditMode("100.000", token);
+        CHECK(editOf(&c)->toPlainText() == alias);
+        CHECK(c.currentText() == token);
+        c.exitEditMode();
+    }
+}
+
+TEST_CASE(
+    "thread broadcasts explain the restriction and insert literal text", "[composer][mention]"
+) {
+    auto *stub = new StubBackend2;
+    User  user;
+    user.id      = UserId{"U42"};
+    user.name    = "maria";
+    stub->_users = std::vector<User>{user};
+    Session session(std::unique_ptr<Backend>(stub), "T_TEST");
+    session.start();
+    QWidget host;
+    host.resize(400, 600);
+    ComposerWidget c(&host);
+    c.setGeometry(0, 450, 400, 150);
+    c.setSession(&session);
+    c.setThreadMode(true);
+    host.show();
+
+    for (const auto &alias : {"@channel", "@here", "@everyone"}) {
+        typeText(&c, alias);
+        releaseKey(&c, Qt::Key_E, "e");
+        auto *popup = host.findChild<MentionPopup *>();
+        REQUIRE(popup);
+        REQUIRE(popup->isOpen());
+        bool notice = false;
+        for (auto *row : popup->findChildren<QWidget *>())
+            if (row->accessibleName() == alias)
+                notice = row->accessibleDescription() == "Disabled in threads";
+        CHECK(notice);
+        CHECK(popup->width() <= host.width());
+        REQUIRE(popup->handleKey(Qt::Key_Tab));
+        CHECK(c.currentText() == QString(alias) + " ");
+        QTextCursor cursor(editOf(&c)->document());
+        cursor.setPosition(1);
+        CHECK_FALSE(cursor.charFormat().hasProperty(QTextFormat::UserProperty));
+    }
+
+    typeText(&c, "@maria");
+    releaseKey(&c, Qt::Key_A, "a");
+    auto *popup = host.findChild<MentionPopup *>();
+    REQUIRE(popup->isOpen());
+    REQUIRE(popup->handleKey(Qt::Key_Return));
+    CHECK(c.currentText() == "<@U42> ");
+
+    for (const auto kind : {ConvKind::Im, ConvKind::Mpim}) {
+        c.setConvKind(kind);
+        typeText(&c, "@here");
+        releaseKey(&c, Qt::Key_E, "e");
+        CHECK_FALSE(popup->isOpen());
+    }
 }
 
 TEST_CASE("typing :letters at text start opens the emoji completer", "[composer][emoji]") {

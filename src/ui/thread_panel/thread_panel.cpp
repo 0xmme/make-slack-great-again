@@ -123,6 +123,7 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     });
 
     _composer = new ComposerWidget(this);
+    _composer->setThreadMode(true);
     _composer->setImageCache(imgCache);
     _composer->setEnabled(false);
     layout->addWidget(_composer);
@@ -230,8 +231,10 @@ void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
     const bool changed = (_conv != conv || _rootTs != rootTs);
     if (changed)
         stashDraft();
-    _conv   = conv;
-    _rootTs = rootTs;
+    _conv                 = conv;
+    _rootTs               = rootTs;
+    const Conversation *c = _session ? _session->findConversation(conv) : nullptr;
+    _composer->setConvKind(c ? c->kind : ConvKind::PublicChannel);
     if (changed)
         _composer->restoreDraft(_drafts.value(threadDraftKey(_session, _conv, _rootTs)));
     _msgList->openThread(conv, rootTs);
