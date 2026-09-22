@@ -19,10 +19,13 @@
 #include <QVBoxLayout>
 
 namespace {
-constexpr int kRowH       = 38;
-constexpr int kMaxVisible = 8;
-constexpr int kWidth      = 360;
-constexpr int kMargins    = 4;
+constexpr int kRowH        = 38;
+constexpr int kMaxVisible  = 8;
+constexpr int kWidth       = 360;
+// Wider in threads: the alias rows there carry the "Disabled in threads"
+// notice next to the description and the Enter badge.
+constexpr int kThreadWidth = 560;
+constexpr int kMargins     = 4;
 
 constexpr int kAvatar = 26; // avatar / alias-icon box
 constexpr int kPadX   = 8;
@@ -354,7 +357,7 @@ void MentionPopup::open(const QPoint &anchor, const QString &query, bool isDm, b
     // above the '@' that triggered it. When filtering shrinks the list the
     // popup must shrink toward the anchor instead of leaving a gap above it.
     QWidget *par = parentWidget();
-    setFixedWidth(qMin(isThread && !isDm ? 560 : kWidth, par->width()));
+    setFixedWidth(qMin(isThread && !isDm ? kThreadWidth : kWidth, par->width()));
     const QPoint local = par->mapFromGlobal(anchor);
     // Bottom edge just above the '@'; flip below + clamp within the parent if
     // there's no room above (previously y was never clamped → ran off-screen).
