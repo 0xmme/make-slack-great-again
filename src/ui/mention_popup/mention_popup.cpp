@@ -73,7 +73,6 @@ public:
         setMouseTracking(true);
         setAccessibleName(_data.name);
         setAccessibleDescription(_data.status.isEmpty() ? _data.subtitle : _data.status);
-        setToolTip(_data.status.isEmpty() ? _data.subtitle : _data.status);
 
         if (_cache && !_data.isAlias && !_data.avatarUrl.isEmpty()) {
             _cache->get(_data.avatarUrl); // kick off the download
