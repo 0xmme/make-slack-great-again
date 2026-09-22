@@ -1453,6 +1453,64 @@ static TextWithEntities sliceEntities(const TextWithEntities &src, int from, int
     return out;
 }
 
+static bool isLinkEntity(EntityType type) {
+    return type == EntityType::Link || type == EntityType::MessageLink;
+}
+
+// Slack can omit a titled link from rich_text while retaining its URL in the
+// fallback text. Only reuse spans when the text matches exactly; rich-text
+// links, code and formatting remain authoritative. This also repairs cached
+// messages without needing a refetch or showing their unfurl attachments.
+static TextWithEntities
+withFallbackLinks(const TextWithEntities &rich, const TextWithEntities &fallback) {
+    auto merged = rich;
+    if (rich.text != fallback.text)
+        return merged;
+    for (const auto &link : fallback.entities) {
+        if (!isLinkEntity(link.type))
+            continue;
+        if (link.data.isEmpty() || link.offset < 0 || link.length <= 0 ||
+            link.offset > rich.text.size() || link.length > rich.text.size() - link.offset)
+            continue;
+        // A bare permalink reaches rich_text as a plain `link` element, so the
+        // block holds a URL anchor where the fallback parsed a message chip —
+        // same span, same target. Take the chip (what the official client
+        // shows); the block's URL carries nothing the chip lacks.
+        if (link.type == EntityType::MessageLink) {
+            const auto same = std::find_if(
+                merged.entities.begin(), merged.entities.end(), [&](const TextEntity &entity) {
+                    return entity.type == EntityType::Link && entity.offset == link.offset &&
+                           entity.length == link.length &&
+                           SlackLinks::refToToken(SlackLinks::parseMessageLink(entity.data)) ==
+                               link.data;
+                }
+            );
+            if (same != merged.entities.end()) {
+                same->type = EntityType::MessageLink;
+                same->data = link.data;
+                continue;
+            }
+        }
+        const int  end      = link.offset + link.length;
+        const bool conflict = std::any_of(
+            merged.entities.begin(), merged.entities.end(), [&](const TextEntity &entity) {
+                const int otherEnd = entity.offset + entity.length;
+                if (link.offset >= otherEnd || entity.offset >= end)
+                    return false;
+                // Never nest anchors or turn literal code into a link. Other
+                // styles can nest, but crossing spans cannot form valid HTML.
+                return entity.type == EntityType::Link || entity.type == EntityType::MessageLink ||
+                       entity.type == EntityType::Code || entity.type == EntityType::Pre ||
+                       !((link.offset <= entity.offset && end >= otherEnd) ||
+                         (entity.offset <= link.offset && otherEnd >= end));
+            }
+        );
+        if (!conflict)
+            merged.entities.push_back(link);
+    }
+    return merged;
+}
+
 QString buildMsgHtml(
     const Message          &msg,
     const Session          *session,
@@ -1473,10 +1531,25 @@ QString buildMsgHtml(
     }
 
     if (!msg.blocks.empty()) {
-        QString html;
-        bool    anyImage = false;
-        for (int bi = 0; bi < (int)msg.blocks.size(); ++bi)
-            anyImage = blockHtml(html, msg.blocks[bi], session, gif, bi) || anyImage;
+        QString    html;
+        bool       anyImage      = false;
+        // Most rich_text blocks mirror the fallback text; only copy one when the
+        // fallback actually has a link to lend it.
+        const bool fallbackLinks = std::any_of(
+            msg.text.entities.begin(), msg.text.entities.end(), [](const TextEntity &e) {
+                return isLinkEntity(e.type);
+            }
+        );
+        for (int bi = 0; bi < (int)msg.blocks.size(); ++bi) {
+            const auto &block = msg.blocks[bi];
+            if (fallbackLinks && block.typeStr == "rich_text" && block.text.text == msg.text.text) {
+                auto linked = block;
+                linked.text = withFallbackLinks(block.text, msg.text);
+                anyImage    = blockHtml(html, linked, session, gif, bi) || anyImage;
+            } else {
+                anyImage = blockHtml(html, block, session, gif, bi) || anyImage;
+            }
+        }
         // An embedded image block fully represents the message — never fall back
         // to the text field (it duplicates the alt text).
         if (!html.isEmpty() || anyImage)
