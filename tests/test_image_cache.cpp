@@ -224,6 +224,107 @@ TEST_CASE("A held movie pins its entry; releaseMovie unpins it") {
     cache.releaseMovie(QStringLiteral("never-seen"));
 }
 
+// ── Animation retention (Settings → Appearance → Visual effects) ─────────────
+//
+// Turning animations off is meant to save memory: the cache's share is the
+// encoded bytes it keeps for every animated download so a QMovie can be built
+// later. With retention off those bytes must never be held, and switching
+// back on must bring the animation back (via a re-fetch) rather than leave a
+// still behind.
+
+TEST_CASE("Animations not retained: no bytes kept, movie() is null, re-enable re-fetches") {
+    static const QByteArray gif   = makeTwoFrameGif();
+    static const QByteArray png   = makePng();
+    int                     loads = 0;
+    ImageCache              cache;
+    cache.setSynchronousDecode(true);
+    cache.setDiskCache(
+        [&](const QString &url) {
+            ++loads;
+            return url.startsWith(u"anim") ? gif : png;
+        },
+        [](const QString &, const QByteArray &) {}
+    );
+
+    cache.setAnimationsRetained(false);
+    REQUIRE_FALSE(cache.animationsRetained());
+    REQUIRE_FALSE(cache.get(QStringLiteral("anim")).isNull()); // the still first frame
+    REQUIRE(loads == 1);
+    // A 1×1 still costs 4 bytes; the retained GIF would add its encoded size.
+    REQUIRE(cache.memoryBytes() < gif.size());
+    REQUIRE(cache.movie(QStringLiteral("anim")) == nullptr);
+    REQUIRE_FALSE(cache.get(QStringLiteral("anim")).isNull()); // still cached, no refetch
+    REQUIRE(loads == 1);
+
+    // Back on: the still is forgotten so the next get() fetches the animation.
+    cache.setAnimationsRetained(true);
+    REQUIRE_FALSE(cache.get(QStringLiteral("anim")).isNull());
+    REQUIRE(loads == 2);
+    REQUIRE(cache.memoryBytes() >= gif.size());
+    QMovie *m = cache.movie(QStringLiteral("anim"));
+    REQUIRE(m != nullptr);
+    cache.releaseMovie(QStringLiteral("anim"));
+}
+
+TEST_CASE("Turning retention off drops the animation bytes already held, except a played one") {
+    static const QByteArray gif = makeTwoFrameGif();
+    ImageCache              cache;
+    cache.setSynchronousDecode(true);
+    cache.setDiskCache(
+        [](const QString &) { return gif; }, [](const QString &, const QByteArray &) {}
+    );
+    REQUIRE_FALSE(cache.get(QStringLiteral("anim-a")).isNull());
+    REQUIRE_FALSE(cache.get(QStringLiteral("anim-b")).isNull());
+    const qint64 both = cache.memoryBytes();
+    REQUIRE(both >= 2 * gif.size());
+    QMovie *held = cache.movie(QStringLiteral("anim-b"));
+    REQUIRE(held != nullptr);
+
+    cache.setAnimationsRetained(false);
+    // anim-a lost its bytes; anim-b is being played and keeps them until released.
+    REQUIRE(cache.memoryBytes() < both);
+    REQUIRE(cache.memoryBytes() >= gif.size());
+    REQUIRE(cache.movie(QStringLiteral("anim-a")) == nullptr);
+    REQUIRE(cache.movie(QStringLiteral("anim-b")) == held);
+    cache.releaseMovie(QStringLiteral("anim-b"));
+    cache.releaseMovie(QStringLiteral("anim-b"));
+}
+
+TEST_CASE("discardAnimation frees one url's bytes; restoreDiscardedAnimations re-fetches it") {
+    static const QByteArray gif   = makeTwoFrameGif();
+    int                     loads = 0;
+    ImageCache              cache;
+    cache.setSynchronousDecode(true);
+    cache.setDiskCache(
+        [&](const QString &) {
+            ++loads;
+            return gif;
+        },
+        [](const QString &, const QByteArray &) {}
+    );
+    REQUIRE_FALSE(cache.get(QStringLiteral("emoji")).isNull());
+    REQUIRE_FALSE(cache.get(QStringLiteral("giphy")).isNull());
+    const qint64 both = cache.memoryBytes();
+
+    cache.discardAnimation(QStringLiteral("giphy"));
+    REQUIRE(cache.memoryBytes() < both);
+    REQUIRE(cache.movie(QStringLiteral("giphy")) == nullptr);
+    QMovie *m = cache.movie(QStringLiteral("emoji")); // the other kind is untouched
+    REQUIRE(m != nullptr);
+    cache.releaseMovie(QStringLiteral("emoji"));
+    cache.discardAnimation(QStringLiteral("never-seen")); // harmless
+
+    // Only the discarded url is forgotten and re-fetched.
+    cache.restoreDiscardedAnimations();
+    REQUIRE(loads == 2);
+    REQUIRE_FALSE(cache.get(QStringLiteral("emoji")).isNull());
+    REQUIRE(loads == 2);
+    REQUIRE_FALSE(cache.get(QStringLiteral("giphy")).isNull());
+    REQUIRE(loads == 3);
+    REQUIRE(cache.movie(QStringLiteral("giphy")) != nullptr);
+    cache.releaseMovie(QStringLiteral("giphy"));
+}
+
 // ── Sizing without decoding (the layout treadmill) ───────────────────────────
 //
 // rebuildLayout() measures EVERY row in the conversation, and it used to size

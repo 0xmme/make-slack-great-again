@@ -53,8 +53,15 @@ QString docStyleSheet();
 // All image URLs a message's docs reference as <img>: custom emoji plus Block
 // Kit image-block urls (top-level and attachment-embedded), deduplicated.
 // Used to register QTextDocument image resources and trigger downloads.
-QStringList
-collectEmojiImageUrls(const Message &msg, const Session *session, bool showLinkPreviews = true);
+// `mediaUrls`, when given, receives the subset that is in-message media (the
+// image blocks — Giphy and pasted GIFs) rather than emoji or icons, so a
+// caller can apply the per-kind animation settings.
+QStringList collectEmojiImageUrls(
+    const Message &msg,
+    const Session *session,
+    bool           showLinkPreviews = true,
+    QSet<QString> *mediaUrls        = nullptr
+);
 
 // Slack can deliver pasted images and GIF-picker results as link-unfurl
 // attachments. Media-only attachments remain message content when ordinary

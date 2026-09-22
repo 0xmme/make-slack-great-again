@@ -575,6 +575,33 @@ void SettingsDialog::buildPanel() {
     connect(_unreadsOnly, &QCheckBox::toggled, this, syncDaysEnabled);
 
     alay->addWidget(sidebarBox);
+
+    // ── Visual effects ────────────────────────────────────────────────
+    // Each animation kind is a separate toggle because they cost differently
+    // — a channel of Giphy GIFs is megabytes of frames per second, custom
+    // emoji are tiny — and off means the app spends neither memory nor CPU
+    // on that kind (stills are shown instead).
+    auto *effectsHeading = new QLabel(tr("Visual effects"), appearPage);
+    effectsHeading->setObjectName("sectionHeading");
+    alay->addWidget(effectsHeading);
+
+    auto *effectsBox = new QGroupBox(appearPage);
+    effectsBox->setObjectName("sidebarBox"); // same flat frame as the block above
+    auto *effectsLayout = new QVBoxLayout(effectsBox);
+    effectsLayout->setSpacing(sp.md);
+    effectsLayout->setContentsMargins(0, 0, 0, 0);
+    _animateEmoji = new QCheckBox(tr("Animate emoji"), effectsBox);
+    effectsLayout->addWidget(_animateEmoji);
+    _animateMedia = new QCheckBox(tr("Animate GIFs and images in messages"), effectsBox);
+    effectsLayout->addWidget(_animateMedia);
+    auto *effectsDesc = new QLabel(
+        tr("Turning an effect off shows a still image instead and saves memory and CPU."),
+        effectsBox
+    );
+    effectsDesc->setObjectName("effectsDesc"); // themed alongside daysDesc
+    effectsDesc->setWordWrap(true);
+    effectsLayout->addWidget(effectsDesc);
+    alay->addWidget(effectsBox);
     alay->addStretch();
 
     auto *aBtnRow = new QHBoxLayout;
@@ -2101,6 +2128,8 @@ void SettingsDialog::applyTheme() {
     _showAgentsApps->setStyleSheet(checkQss);
     _unreadsOnly->setStyleSheet(checkQss);
     _showLinkPreviews->setStyleSheet(checkQss);
+    _animateEmoji->setStyleSheet(checkQss);
+    _animateMedia->setStyleSheet(checkQss);
     // The explicit colours here override the disabled palette, so the labels
     // that grey out with the activity window (see the unreads-only toggle) carry
     // their own :disabled rule.
@@ -2113,7 +2142,7 @@ void SettingsDialog::applyTheme() {
                              .arg(Th::qss(th.text.primary), Th::qss(th.text.tertiary)));
     }
     _relevantDays->setStyleSheet(spinQss);
-    for (const char *name : {"daysDesc", "unreadsDesc", "linkPreviewsDesc"}) {
+    for (const char *name : {"daysDesc", "unreadsDesc", "effectsDesc", "linkPreviewsDesc"}) {
         if (auto *w = _panel->findChild<QLabel *>(QLatin1String(name))) {
             w->setStyleSheet(QString(
                                  "QLabel { font-size: %1px; color: %2; }"
@@ -2322,6 +2351,12 @@ void SettingsDialog::loadAppearance() {
     _showLinkPreviews->setChecked(
         QSettings("msga", "msga").value("appearance/showLinkPreviews", true).toBool()
     );
+    _animateEmoji->setChecked(
+        QSettings("msga", "msga").value("appearance/animateEmoji", true).toBool()
+    );
+    _animateMedia->setChecked(
+        QSettings("msga", "msga").value("appearance/animateMedia", true).toBool()
+    );
 
     auto &mgr = ThemeManager::instance();
     switch (mgr.mode()) {
@@ -2413,6 +2448,11 @@ void SettingsDialog::saveAppearance() {
     const bool showLinkPreviews = _showLinkPreviews->isChecked();
     QSettings("msga", "msga").setValue("appearance/showLinkPreviews", showLinkPreviews);
 
+    const bool animateEmoji = _animateEmoji->isChecked();
+    QSettings("msga", "msga").setValue("appearance/animateEmoji", animateEmoji);
+    const bool animateMedia = _animateMedia->isChecked();
+    QSettings("msga", "msga").setValue("appearance/animateMedia", animateMedia);
+
     const bool ctrlEnter        = _ctrlEnterSends->isChecked();
     const bool sendKeyDidChange = ctrlEnter != Ui::Shortcuts::ctrlEnterSends();
     QSettings("msga", "msga").setValue(Ui::Shortcuts::kCtrlEnterSendsKey, ctrlEnter);
@@ -2433,6 +2473,8 @@ void SettingsDialog::saveAppearance() {
     emit agentsAppsVisibilityChanged(showAgents);
     emit unreadsOnlyChanged(unreadsOnly);
     emit linkPreviewsChanged(showLinkPreviews);
+    emit emojiAnimationsChanged(animateEmoji);
+    emit mediaAnimationsChanged(animateMedia);
 }
 
 static QString formatBytes(qint64 bytes) {

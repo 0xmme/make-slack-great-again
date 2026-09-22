@@ -189,6 +189,41 @@ void ImageCache::releaseMovie(const QString &url) {
     evictIfNeeded(QString());
 }
 
+void ImageCache::setAnimationsRetained(bool on) {
+    if (_retainAnimations == on)
+        return;
+    _retainAnimations = on;
+    if (on) {
+        restoreDiscardedAnimations();
+        return;
+    }
+    const auto urls = _cache.keys();
+    for (const auto &url : urls)
+        discardAnimation(url);
+}
+
+void ImageCache::discardAnimation(const QString &url) {
+    auto it = _cache.find(url);
+    // A held player still reads the bytes through its QBuffer; the holder
+    // releases it first (releaseGifMovies) and the next paint discards.
+    if (it == _cache.end() || it->animatedBytes.isEmpty() || it->movie)
+        return;
+    it->animatedBytes    = QByteArray();
+    it->animationDropped = true;
+    account(url);
+}
+
+void ImageCache::restoreDiscardedAnimations() {
+    for (auto it = _cache.begin(); it != _cache.end();) {
+        if (!it->animationDropped || it->inFlight) {
+            ++it;
+            continue;
+        }
+        _memBytes -= it->cost;
+        it = _cache.erase(it);
+    }
+}
+
 void ImageCache::setDiskCache(
     std::function<QByteArray(const QString &)>               load,
     std::function<void(const QString &, const QByteArray &)> save
@@ -334,8 +369,12 @@ void ImageCache::finishDecode(
     if (!img.isNull()) {
         e.pixmap = QPixmap::fromImage(std::move(img));
         noteSize(url, e.pixmap.size());
-        if (isAnimatedImage(bytes))
-            e.animatedBytes = bytes;
+        if (isAnimatedImage(bytes)) {
+            if (_retainAnimations)
+                e.animatedBytes = bytes;
+            else
+                e.animationDropped = true;
+        }
         if (saveToDisk && _diskSave)
             _diskSave(url, bytes);
     } else {

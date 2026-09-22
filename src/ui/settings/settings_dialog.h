@@ -81,6 +81,10 @@ signals:
     // Emitted when the "Show only unread conversations" toggle is saved.
     void unreadsOnlyChanged(bool on);
     void linkPreviewsChanged(bool on);
+    // Emitted when the Visual effects toggles are saved (Appearance →
+    // Conversations): emoji animations / in-message media animations.
+    void emojiAnimationsChanged(bool on);
+    void mediaAnimationsChanged(bool on);
     // Emitted from show/hideEvent so chrome outside the overlay (the macOS
     // unified header) can follow the dialog without sniffing app-wide events.
     void visibilityChanged(bool visible);
@@ -198,6 +202,8 @@ private:
     QCheckBox                *_ctrlEnterSends   = nullptr;
     QLabel                   *_notificationTestResult = nullptr;
     QCheckBox                *_showLinkPreviews       = nullptr;
+    QCheckBox                *_animateEmoji           = nullptr;
+    QCheckBox                *_animateMedia           = nullptr;
     QList<ThemePreviewCard *> _themeCards; // every preset + custom: light row then dark row
     QWidget                  *_customSection = nullptr; // heading + editor; shown when custom
     CustomThemeEditor        *_customEditor  = nullptr;

@@ -285,6 +285,14 @@ void ThreadPanel::setLinkPreviewsEnabled(bool on) {
     _msgList->setLinkPreviewsEnabled(on);
 }
 
+void ThreadPanel::setEmojiAnimationsEnabled(bool on) {
+    _msgList->setEmojiAnimationsEnabled(on);
+}
+
+void ThreadPanel::setMediaAnimationsEnabled(bool on) {
+    _msgList->setMediaAnimationsEnabled(on);
+}
+
 void ThreadPanel::pauseGifPlayback() {
     _msgList->pauseGifPlayback();
 }

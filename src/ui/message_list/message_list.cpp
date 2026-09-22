@@ -755,6 +755,40 @@ void MessageListWidget::setThreadsInline(bool on) {
     viewport()->update();
 }
 
+void MessageListWidget::setEmojiAnimationsEnabled(bool on) {
+    if (_animateEmoji == on)
+        return;
+    _animateEmoji = on;
+    // Players of the other kind are recreated from cached bytes on the next
+    // paint; dropping them all keeps this a one-liner (the toggle is rare).
+    releaseGifMovies();
+    if (on && _imgCache)
+        _imgCache->restoreDiscardedAnimations(); // stills re-fetch as animations
+    // Docs hold the frame that was current when they were built.
+    invalidateAllDocs();
+}
+
+void MessageListWidget::setMediaAnimationsEnabled(bool on) {
+    if (_animateMedia == on)
+        return;
+    _animateMedia = on;
+    releaseGifMovies();
+    if (on && _imgCache)
+        _imgCache->restoreDiscardedAnimations();
+    // Uploaded previews are keyed by url and the url itself changes with the
+    // setting (animated vs. static thumbnail ladder): start over.
+    _fileImages.clear();
+    _scaledPreviews.clear();
+    ++_fileImagesGen;
+    for (auto &item : _items)
+        item.fileImgsRequested = false;
+    for (auto &[root, thread] : _inlineThreads)
+        for (auto &reply : thread.replies)
+            reply.fileImgsRequested = false;
+    invalidateAllDocs();
+    triggerMissingDownloads();
+}
+
 void MessageListWidget::setLinkPreviewsEnabled(bool on) {
     if (_showLinkPreviews == on)
         return;
@@ -1081,6 +1115,7 @@ void MessageListWidget::invalidateAllDocs() {
         item.attachDocs.clear();
         item.docWidth = -1;
         item.emojiUrls.clear();
+        item.mediaUrls.clear();
         item.emojiUrlsCollected  = false;
         item.attachImgsRequested = false;
         item.fileImgBaseH        = -1;
@@ -1122,7 +1157,10 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
     // MsgRender::toHtml render; ImageCache::get() also kicks off the download
     // for anything missing (the loaded() handler resets the docs to re-render).
     if (!item.emojiUrlsCollected) {
-        item.emojiUrls = MsgRender::collectEmojiImageUrls(item.msg, _session, _showLinkPreviews);
+        item.mediaUrls.clear();
+        item.emojiUrls = MsgRender::collectEmojiImageUrls(
+            item.msg, _session, _showLinkPreviews, &item.mediaUrls
+        );
         item.emojiUrlsCollected = true;
     }
     // Chevron pixmaps for image-block title lines ("GIF ▾") — only rendered
@@ -1594,11 +1632,19 @@ int MessageListWidget::attachTotalH(const MessageItem &item, int ai) const {
 
 // ── Animated images (GIF / animated WebP) ─────────────────────────────────────
 
-QMovie *MessageListWidget::gifMovieFor(const QString &url) const {
+QMovie *MessageListWidget::gifMovieFor(const QString &url, AnimKind kind) const {
     const auto it = _gifMovies.constFind(url);
     if (it != _gifMovies.constEnd())
         return it.value();
-    QMovie *m = _imgCache ? _imgCache->movie(url) : nullptr;
+    if (!_imgCache)
+        return nullptr;
+    if (!animationsEnabled(kind)) {
+        // Cheap (one hash lookup) when the bytes are already gone; the first
+        // paint after the download is what frees them.
+        _imgCache->discardAnimation(url);
+        return nullptr;
+    }
+    QMovie *m = _imgCache->movie(url);
     if (m)
         watchGifMovie(url, m);
     return m;
@@ -1618,7 +1664,9 @@ void MessageListWidget::watchGifMovie(const QString &url, QMovie *movie) const {
 }
 
 void MessageListWidget::maybeCreateFileGifMovie(const QString &url, const QByteArray &bytes) const {
-    if (_gifMovies.contains(url) || !ImageCache::isAnimatedImage(bytes))
+    // With media animations off the preview url is the static ladder anyway
+    // (filePreviewUrl); this also covers a legacy upload with no such ladder.
+    if (!_animateMedia || _gifMovies.contains(url) || !ImageCache::isAnimatedImage(bytes))
         return;
     auto *buf = new QBuffer;
     buf->setData(bytes);
@@ -1670,7 +1718,8 @@ void MessageListWidget::markGifVisible(const QString &url, const QRect &vpRect) 
 
 void MessageListWidget::pullGifFrames(const MessageItem &item, const QRect &vpRect) const {
     for (const auto &url : item.emojiUrls) {
-        QMovie *m = gifMovieFor(url);
+        QMovie *m =
+            gifMovieFor(url, item.mediaUrls.contains(url) ? AnimKind::Media : AnimKind::Emoji);
         if (!m)
             continue;
         markGifVisible(url, vpRect);
@@ -2721,7 +2770,7 @@ void MessageListWidget::showReactionTooltip(int mi, int ri, const QRect &chipVpR
     // first frame (which is often an odd pose — see paintReactions). The pill's movie
     // is already running, so this shows the current clinked/mid-motion frame.
     if (!emoji.imageUrl.isEmpty()) {
-        if (QMovie *mv = gifMovieFor(emoji.imageUrl)) {
+        if (QMovie *mv = gifMovieFor(emoji.imageUrl, AnimKind::Emoji)) {
             const QPixmap frame = mv->currentPixmap();
             if (!frame.isNull())
                 img = frame;

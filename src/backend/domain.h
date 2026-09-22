@@ -774,13 +774,17 @@ struct File {
 
     // Preview source covering physW physical pixels: the smallest thumbnail wide
     // enough, else the largest available (never the original — it can be huge),
-    // else the legacy thumbUrl, else the original file.
-    QString previewUrl(int physW) const {
-        for (const auto &t : animThumbs)
-            if (t.width >= physW)
-                return t.url;
-        if (!animThumbs.empty())
-            return animThumbs.back().url;
+    // else the legacy thumbUrl, else the original file. animated=false skips
+    // the animated ladder (a viewer with animations disabled wants the small
+    // static render, not a multi-megabyte GIF it would only show one frame of).
+    QString previewUrl(int physW, bool animated = true) const {
+        if (animated) {
+            for (const auto &t : animThumbs)
+                if (t.width >= physW)
+                    return t.url;
+            if (!animThumbs.empty())
+                return animThumbs.back().url;
+        }
         for (const auto &t : thumbs)
             if (t.width >= physW)
                 return t.url;

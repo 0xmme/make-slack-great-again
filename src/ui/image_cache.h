@@ -62,6 +62,27 @@ public:
     // True when bytes decode to a multi-frame animation.
     static bool isAnimatedImage(const QByteArray &bytes);
 
+    // Animation playback is a user setting (Settings → Appearance → Visual
+    // effects), and the point of turning it off is to spend neither RAM nor
+    // CPU on it. The cache's share is the retained encoded bytes of every
+    // animated download — a Giphy GIF is megabytes — so:
+    //
+    // setAnimationsRetained(false) stops keeping them at all (every animated
+    // image is then a still first frame; movie() answers nullptr) and drops the
+    // bytes already held by entries no one is playing. Switching back on
+    // forgets those stills so the next get() re-fetches (from the disk cache)
+    // and the animation comes back. Pass the OR of the per-kind toggles.
+    //
+    // discardAnimation(url) is the per-kind form for callers that know what
+    // kind of image a url is (a custom emoji vs. in-message media — the cache
+    // can't tell): it drops one entry's animation bytes when no one holds its
+    // player. restoreDiscardedAnimations() forgets every discarded still (a
+    // kind was re-enabled) so they re-fetch as animations.
+    void setAnimationsRetained(bool on);
+    bool animationsRetained() const { return _retainAnimations; }
+    void discardAnimation(const QString &url);
+    void restoreDiscardedAnimations();
+
     // Longest side a decoded pixmap may have. Inline images are painted into at
     // most ~400×300 logical px, yet a 4000×3000 unfurl or file preview decoded
     // at native size is 48 MB of pixels for an 800×600 preview — a handful of
@@ -116,13 +137,17 @@ signals:
 
 private:
     struct Entry {
-        QPixmap    pixmap;              // first frame for animated images
-        QByteArray animatedBytes;       // raw bytes, kept only for multi-frame images
-        QMovie    *movie     = nullptr; // lazily created from animatedBytes
-        int        movieRefs = 0;       // movie() acquisitions not yet released
-        bool       inFlight  = false;
-        qint64     cost      = 0; // last accounted bytes (pixmap + animatedBytes)
-        quint64    lastUsed  = 0; // _useTick at the last get()/account(); eviction order
+        QPixmap    pixmap;                     // first frame for animated images
+        QByteArray animatedBytes;              // raw bytes, kept only for multi-frame images
+        QMovie    *movie            = nullptr; // lazily created from animatedBytes
+        int        movieRefs        = 0;       // movie() acquisitions not yet released
+        bool       inFlight         = false;
+        // The bytes were an animation but were not kept (retention off, or
+        // discardAnimation): the pixmap is a still that must be re-fetched
+        // once animations are wanted again.
+        bool       animationDropped = false;
+        qint64     cost             = 0; // last accounted bytes (pixmap + animatedBytes)
+        quint64    lastUsed         = 0; // _useTick at the last get()/account(); eviction order
     };
 
     // Issue the network fetch for url and install the in-flight sentinel.
@@ -180,8 +205,9 @@ private:
     qint64                 _memoryCap = kDefaultMemoryCap;
     QNetworkAccessManager *_nam;
     QQueue<QString>        _fetchQueue; // urls waiting for a fetch slot
-    int                    _activeFetches = 0;
-    bool                   _syncDecode    = false;
+    int                    _activeFetches    = 0;
+    bool                   _syncDecode       = false;
+    bool                   _retainAnimations = true;
 
     std::function<QByteArray(const QString &)>               _diskLoad;
     std::function<void(const QString &, const QByteArray &)> _diskSave;

@@ -102,13 +102,29 @@ void ConvListWidget::hideEvent(QHideEvent *e) {
     VirtualListWidget::hideEvent(e);
 }
 
+void ConvListWidget::setEmojiAnimationsEnabled(bool on) {
+    if (_animateEmoji == on)
+        return;
+    _animateEmoji = on;
+    releaseStatusEmojiMovies();
+    if (on && _imgCache)
+        _imgCache->restoreDiscardedAnimations(); // stills re-fetch as animations
+    viewport()->update();
+}
+
 QMovie *ConvListWidget::statusEmojiMovie(const QString &url) const {
     const auto it = _statusEmojiMovies.constFind(url);
     if (it != _statusEmojiMovies.constEnd())
         return it.value();
+    if (!_imgCache)
+        return nullptr;
+    if (!_animateEmoji) {
+        _imgCache->discardAnimation(url); // one hash lookup once the bytes are gone
+        return nullptr;
+    }
     // Non-null only once the bytes are in and decode to several frames; the
     // caller's get() has already started the download.
-    QMovie *m = _imgCache ? _imgCache->movie(url) : nullptr;
+    QMovie *m = _imgCache->movie(url);
     if (!m)
         return nullptr;
     _statusEmojiMovies.insert(url, m);

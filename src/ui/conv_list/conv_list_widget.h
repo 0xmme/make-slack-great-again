@@ -67,6 +67,9 @@ public:
     // Also the custom-emoji resolver for status emoji: a status set to a
     // workspace emoji (":finland:") is an image from emoji.list, not a glyph.
     void setSession(Session *s);
+    // Settings → Appearance → Visual effects: off releases every status-emoji
+    // player, paints stills, and has the cache drop their animation bytes.
+    void setEmojiAnimationsEnabled(bool on);
 
     void setConversations(std::vector<Conversation> convs);
     // Call with the full user list so DM names, avatars, and status can be resolved.
@@ -294,6 +297,7 @@ protected:
     UserId        _meUserId;
     bool          _selfPhantomAway = false;
 
+    bool _animateEmoji      = true; // see setEmojiAnimationsEnabled()
     bool _starredCollapsed  = false;
     bool _channelsCollapsed = false;
     bool _dmsCollapsed      = false;

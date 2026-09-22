@@ -152,8 +152,9 @@ QString docStyleSheet() {
     return QString("p { line-height: %1%; margin: 0; }").arg(pct);
 }
 
-QStringList
-collectEmojiImageUrls(const Message &msg, const Session *session, bool showLinkPreviews) {
+QStringList collectEmojiImageUrls(
+    const Message &msg, const Session *session, bool showLinkPreviews, QSet<QString> *mediaUrls
+) {
     QStringList   out;
     QSet<QString> seen;
     auto          addFrom = [&](const TextWithEntities &twe) {
@@ -171,6 +172,8 @@ collectEmojiImageUrls(const Message &msg, const Session *session, bool showLinkP
         if (b.typeStr == "image" && !b.imageUrl.isEmpty() && !seen.contains(b.imageUrl)) {
             seen.insert(b.imageUrl);
             out << b.imageUrl;
+            if (mediaUrls)
+                mediaUrls->insert(b.imageUrl);
         }
     };
     addFrom(msg.text);

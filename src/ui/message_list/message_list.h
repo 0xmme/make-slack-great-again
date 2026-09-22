@@ -54,22 +54,25 @@ struct MessageItem {
     mutable std::vector<AttachDoc> attachDocs;    // one per msg.attachments entry
     mutable bool fileImgsRequested = false; // true once file image download has been triggered
     mutable bool attachImgsRequested =
-        false;                     // true once attachment image/favicon download triggered
-    mutable QStringList emojiUrls; // custom-emoji image URLs referenced by this message
-    mutable bool        emojiUrlsCollected = false;
+        false;                       // true once attachment image/favicon download triggered
+    mutable QStringList   emojiUrls; // custom-emoji image URLs referenced by this message
+    // The emojiUrls entries that are in-message media (Block Kit image blocks),
+    // for the per-kind animation settings; the rest are emoji and icons.
+    mutable QSet<QString> mediaUrls;
+    mutable bool          emojiUrlsCollected = false;
     // Memoized layoutFileImages(…, hasAbove=false).height for rowHeight(),
     // which runs O(n) per rebuildLayout — computing the full layout (two heap
     // allocations) each call is measurable. Valid while fileImgGen matches the
     // widget's _fileImagesGen; reset to -1 when msg is replaced in place.
-    mutable int         fileImgBaseH       = -1;
-    mutable quint32     fileImgGen         = 0;
+    mutable int           fileImgBaseH       = -1;
+    mutable quint32       fileImgGen         = 0;
     // Shaped-text caches for the header line (author name, timestamp) —
     // QPainter::drawText re-shapes its string on every call, and
     // paintMessageHeader runs per visible row per frame. Keyed by the source
     // string so a display-name change or time-format switch rebuilds in place.
-    mutable QStaticText stName, stTs;
-    mutable QString     stNameSrc, stTsSrc;
-    mutable int         stNameW = 0;
+    mutable QStaticText   stName, stTs;
+    mutable QString       stNameSrc, stTsSrc;
+    mutable int           stNameW = 0;
 };
 
 // Aggregates the constant viewport geometry computed at the start of every paint/hit-test.
@@ -122,6 +125,14 @@ public:
     // the standalone panel. Switching modes collapses any inline expansions.
     void setThreadsInline(bool on);
     void setLinkPreviewsEnabled(bool on);
+    // Settings → Appearance → Visual effects. Off means no player is ever
+    // created for that kind of image (no per-frame decoding, no frame pixmaps)
+    // and the ImageCache is told to drop the animation bytes it retains for
+    // those urls; the image shows as a still. Media also switches uploaded
+    // GIFs to their static thumbnail ladder, so the multi-megabyte GIF is
+    // never downloaded.
+    void setEmojiAnimationsEnabled(bool on);
+    void setMediaAnimationsEnabled(bool on);
     // The thread root currently shown in the standalone panel ({} when none).
     // Drives the reply-bar "Close thread" copy in standalone mode. Pass {} when
     // the panel is closed — this only clears the open-root, it never collapses an
@@ -592,9 +603,18 @@ private:
     void showReactionTooltip(int mi, int ri, const QRect &chipVpRect);
 
     // ── Animated images (GIF / animated WebP) ──
+    // What a public-URL animation is, for the per-kind settings (see
+    // setEmojiAnimationsEnabled): custom emoji anywhere (text, reactions) vs.
+    // in-message media (image blocks, Giphy-style attachment previews).
+    enum class AnimKind { Emoji, Media };
+    bool animationsEnabled(AnimKind kind) const {
+        return kind == AnimKind::Emoji ? _animateEmoji : _animateMedia;
+    }
     // Shared player for a public-URL image, or nullptr while loading / static.
     // First sighting wires frameChanged → viewport repaint (gated on visibility).
-    QMovie    *gifMovieFor(const QString &url) const;
+    // With that kind's animations disabled it answers nullptr and instead has
+    // the cache drop the url's retained animation bytes.
+    QMovie    *gifMovieFor(const QString &url, AnimKind kind) const;
     void       watchGifMovie(const QString &url, QMovie *movie) const;
     // Create a widget-owned player for an auth-downloaded file when its bytes
     // decode to an animation (public-URL ones are owned by ImageCache).
@@ -872,6 +892,8 @@ private:
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;
     bool          _showLinkPreviews = true;
+    bool          _animateEmoji     = true; // see setEmojiAnimationsEnabled
+    bool          _animateMedia     = true; // see setMediaAnimationsEnabled
 
     // Image blocks the user collapsed via their "GIF ▾" title line.
     // Key: ts [+ "/a" + attachIndex] + "/b" + blockIndex (see GifRenderContext).

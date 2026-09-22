@@ -956,7 +956,7 @@ void MessageListWidget::paintAttachments(
                 p.setRenderHint(QPainter::SmoothPixmapTransform);
                 // Animated previews (legacy Giphy attachments) draw the current
                 // movie frame; static ones use the cached pre-scaled pixmap.
-                QMovie *movie = gifMovieFor(imgUrl);
+                QMovie *movie = gifMovieFor(imgUrl, AnimKind::Media);
                 QPixmap frame = movie ? movie->currentPixmap() : QPixmap();
                 if (movie)
                     markGifVisible(imgUrl, target);
@@ -1057,7 +1057,7 @@ MessageListWidget::layoutFileImages(const MessageItem &item, int width, bool has
 }
 
 QString MessageListWidget::filePreviewUrl(const File &f) const {
-    return f.previewUrl(qCeil(kImgMaxW * devicePixelRatioF()));
+    return f.previewUrl(qCeil(kImgMaxW * devicePixelRatioF()), /*animated=*/_animateMedia);
 }
 
 QString MessageListWidget::attachPreviewUrl(const Attachment &att) const {
@@ -1540,7 +1540,7 @@ void MessageListWidget::paintReactions(
             // read as a "cut/swapped" glyph). gifMovieFor() is non-null only for animated
             // images; the get() above has populated the bytes it needs. syncGifPlayback()
             // (end of doPaint) starts/pauses movies by _visibleGifs membership.
-            if (QMovie *mv = gifMovieFor(emoji.imageUrl)) {
+            if (QMovie *mv = gifMovieFor(emoji.imageUrl, AnimKind::Emoji)) {
                 markGifVisible(emoji.imageUrl, chip);
                 const QPixmap frame = mv->currentPixmap();
                 if (!frame.isNull())

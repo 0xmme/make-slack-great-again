@@ -627,6 +627,23 @@ QWidget *MainWindow::buildMainPage() {
         _threadPanel,
         &ThreadPanel::setLinkPreviewsEnabled
     );
+    // Visual effects. The cache's retention switch is the OR of the kinds: it
+    // can't tell an emoji from a GIF, the per-kind discards happen in the views.
+    const auto applyAnimationSettings = [this] {
+        QSettings  st("msga", "msga");
+        const bool emoji = st.value("appearance/animateEmoji", true).toBool();
+        const bool media = st.value("appearance/animateMedia", true).toBool();
+        _imgCache->setAnimationsRetained(emoji || media);
+        _messageList->setEmojiAnimationsEnabled(emoji);
+        _messageList->setMediaAnimationsEnabled(media);
+        _threadPanel->setEmojiAnimationsEnabled(emoji);
+        _threadPanel->setMediaAnimationsEnabled(media);
+        if (_convList)
+            _convList->setEmojiAnimationsEnabled(emoji);
+    };
+    applyAnimationSettings();
+    connect(_settingsDialog, &SettingsDialog::emojiAnimationsChanged, this, applyAnimationSettings);
+    connect(_settingsDialog, &SettingsDialog::mediaAnimationsChanged, this, applyAnimationSettings);
     // Enter vs Ctrl+Enter: the composers read the registry per keypress; only
     // the welcome screen's shortcut panel holds built rows to refresh.
     connect(
