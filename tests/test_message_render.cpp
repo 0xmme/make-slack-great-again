@@ -18,6 +18,7 @@
 #include <QAbstractTextDocumentLayout>
 #include <QTextBlock>
 #include <QTextDocument>
+#include <QTextCursor>
 
 #include "ui/message_list/message_render.h"
 #include "ui/theme.h"
@@ -34,6 +35,53 @@ int main(int argc, char **argv) {
     app.setApplicationName("msga-test-message-render");
     app.setOrganizationName("msga-test");
     return Catch::Session().run(argc, argv);
+}
+
+TEST_CASE("rich text preserves titled links from matching fallback text", "[render][links]") {
+    const QString url = "https://linear.app/example/issue/IP-123/lab-rename";
+    Message       msg;
+    msg.text = MrkdwnParser::parse("Please check <" + url + "|[BE] Lab rename>");
+    Block block;
+    block.typeStr   = "rich_text";
+    block.text.text = msg.text.text;
+    // Slack's block can lose the link while retaining other formatting.
+    block.text.entities.push_back({EntityType::Bold, 13, 4, {}});
+    msg.blocks = {block};
+
+    const QString html = MsgRender::buildMsgHtml(msg, nullptr);
+    CHECK(html.contains("href='" + url + "'"));
+    CHECK(html.contains("<b>[BE]</b>"));
+    CHECK(html.count("href=") == 1);
+    QTextDocument document;
+    document.setHtml(html);
+    const auto title = document.find("Lab rename");
+    REQUIRE_FALSE(title.isNull());
+    CHECK(title.charFormat().anchorHref() == url);
+    // Rendering also repairs already-cached messages without mutating them.
+    CHECK(msg.blocks.front().text.entities.size() == 1);
+}
+
+TEST_CASE("fallback links do not override authoritative rich text", "[render][links]") {
+    const QString url = "https://linear.app/example/issue/IP-123/lab-rename";
+    Message       msg;
+    msg.text = MrkdwnParser::parse("<" + url + "|Lab rename>");
+    Block block;
+    block.typeStr   = "rich_text";
+    block.text.text = msg.text.text;
+    SECTION("different text cannot share offsets") {
+        block.text.text = "Other content";
+    }
+    SECTION("explicit block link wins") {
+        block.text.entities.push_back({EntityType::Link, 0, 10, "https://example.com/actual"});
+    }
+    SECTION("inline code stays literal") {
+        block.text.entities.push_back({EntityType::Code, 0, 10, {}});
+    }
+    SECTION("code blocks stay literal") {
+        block.text.entities.push_back({EntityType::Pre, 0, 10, {}});
+    }
+    msg.blocks = {block};
+    CHECK_FALSE(MsgRender::buildMsgHtml(msg, nullptr).contains(url));
 }
 
 // ── resolveEmojiRich ──────────────────────────────────────────────────────────

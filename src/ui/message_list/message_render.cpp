@@ -1453,6 +1453,41 @@ static TextWithEntities sliceEntities(const TextWithEntities &src, int from, int
     return out;
 }
 
+// Slack can omit a titled link from rich_text while retaining its URL in the
+// fallback text. Only reuse spans when the text matches exactly; rich-text
+// links, code and formatting remain authoritative. This also repairs cached
+// messages without needing a refetch or showing their unfurl attachments.
+static TextWithEntities
+withFallbackLinks(const TextWithEntities &rich, const TextWithEntities &fallback) {
+    auto merged = rich;
+    if (rich.text != fallback.text)
+        return merged;
+    for (const auto &link : fallback.entities) {
+        if (link.type != EntityType::Link && link.type != EntityType::MessageLink)
+            continue;
+        if (link.data.isEmpty() || link.offset < 0 || link.length <= 0 ||
+            link.offset > rich.text.size() || link.length > rich.text.size() - link.offset)
+            continue;
+        const int  end      = link.offset + link.length;
+        const bool conflict = std::any_of(
+            merged.entities.begin(), merged.entities.end(), [&](const TextEntity &entity) {
+                const int otherEnd = entity.offset + entity.length;
+                if (link.offset >= otherEnd || entity.offset >= end)
+                    return false;
+                // Never nest anchors or turn literal code into a link. Other
+                // styles can nest, but crossing spans cannot form valid HTML.
+                return entity.type == EntityType::Link || entity.type == EntityType::MessageLink ||
+                       entity.type == EntityType::Code || entity.type == EntityType::Pre ||
+                       !((link.offset <= entity.offset && end >= otherEnd) ||
+                         (entity.offset <= link.offset && otherEnd >= end));
+            }
+        );
+        if (!conflict)
+            merged.entities.push_back(link);
+    }
+    return merged;
+}
+
 QString buildMsgHtml(
     const Message          &msg,
     const Session          *session,
@@ -1475,8 +1510,16 @@ QString buildMsgHtml(
     if (!msg.blocks.empty()) {
         QString html;
         bool    anyImage = false;
-        for (int bi = 0; bi < (int)msg.blocks.size(); ++bi)
-            anyImage = blockHtml(html, msg.blocks[bi], session, gif, bi) || anyImage;
+        for (int bi = 0; bi < (int)msg.blocks.size(); ++bi) {
+            const auto &block = msg.blocks[bi];
+            if (block.typeStr == "rich_text" && block.text.text == msg.text.text) {
+                auto linked = block;
+                linked.text = withFallbackLinks(block.text, msg.text);
+                anyImage    = blockHtml(html, linked, session, gif, bi) || anyImage;
+            } else {
+                anyImage = blockHtml(html, block, session, gif, bi) || anyImage;
+            }
+        }
         // An embedded image block fully represents the message — never fall back
         // to the text field (it duplicates the alt text).
         if (!html.isEmpty() || anyImage)
