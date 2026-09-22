@@ -101,12 +101,12 @@ public:
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
     rpl::producer<QHash<QString, QString>>   loadEmojiList() override;
     void                                     uploadFiles(
-                                            ConversationId,
-                                            const QStringList                          &filePaths,
-                                            const QString                              &initialComment,
-                                            std::optional<Ts>                           threadRoot,
-                                            std::function<void(bool ok, QString error)> done
-                                        ) override;
+        ConversationId,
+        const QStringList                          &filePaths,
+        const QString                              &initialComment,
+        std::optional<Ts>                           threadRoot,
+        std::function<void(bool ok, QString error)> done
+    ) override;
     void downloadFile(
         const QString                  &url,
         std::function<void(QByteArray)> onData,

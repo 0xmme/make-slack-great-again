@@ -189,7 +189,7 @@ Message buildMessage(const MsgRef &ref, const QByteArray &rawBody) {
             f.imageWidth     = img.width();
             f.imageHeight    = img.height();
             f.urlPrivate     = QStringLiteral("data:") + a.mimeType + ";base64," +
-                           QString::fromLatin1(a.content.toBase64());
+                               QString::fromLatin1(a.content.toBase64());
         } else {
             // Other attachments: a lazy ref the user can download/open on click;
             // downloadFile re-fetches the part (avoids holding bytes in memory).
@@ -1174,7 +1174,7 @@ Backend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
                                     uids = uids.mid(uids.size() - kFolderWindow);
                                 const QByteArray set = QByteArray::number(uids.first()) + ":" +
                                                        QByteArray::number(uids.last());
-                                const QString olderCursor =
+                                const QString    olderCursor =
                                     more ? QString::number(uids.first()) : QString();
                                 _client->uidFetch(
                                     set,
@@ -1401,8 +1401,10 @@ void Backend::submitMail(
                     root = &m;
                     break;
                 }
-        } else if (conv.value.startsWith(QLatin1String("dm:")) ||
-                   conv.value.startsWith(QLatin1String("mpim:"))) {
+        } else if (
+            conv.value.startsWith(QLatin1String("dm:")) ||
+            conv.value.startsWith(QLatin1String("mpim:"))
+        ) {
             for (const MsgRef &m : cd.messages)
                 if (!root || m.internalDate > root->internalDate)
                     root = &m;

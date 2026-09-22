@@ -595,7 +595,7 @@ TEST_CASE("FakeServices: serves gifs and completions over HTTP", "[demo][service
         QNetworkReply *reply = post.isEmpty() ? nam.get(req) : nam.post(req, post);
         REQUIRE(waitFor([&] { return reply->isFinished(); }, 3000));
         const int  status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QByteArray body = reply->readAll();
+        QByteArray body   = reply->readAll();
         reply->deleteLater();
         return std::make_pair(status, body);
     };

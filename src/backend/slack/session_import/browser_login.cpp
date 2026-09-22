@@ -271,7 +271,7 @@ QList<TeamSession> parseLocalConfig(const QString &json) {
         s.workspaceUrl        = url;
         const QJsonObject ico = t.value(QStringLiteral("icon")).toObject();
         s.iconUrl             = ico.value(QStringLiteral("image_88"))
-                        .toString(ico.value(QStringLiteral("image_68")).toString());
+                                    .toString(ico.value(QStringLiteral("image_68")).toString());
         // Useless without either a token to validate or a host to derive one from.
         if (s.token.isEmpty() && s.workspaceUrl.isEmpty())
             continue;
@@ -624,12 +624,12 @@ void BrowserLogin::handleHandoff(
     _hosts.insert(url);
     // Serve a placeholder in place of the handoff page: no slack:// link ever runs,
     // and the window closes on its own a moment later.
-    const QString body = QStringLiteral(
-                             "<!doctype html><meta charset=utf-8>"
-                             "<body style=\"font:16px system-ui;text-align:center;"
-                             "margin-top:20vh;color:#444\">%1</body>"
+    const QString     body = QStringLiteral(
+                                 "<!doctype html><meta charset=utf-8>"
+                                 "<body style=\"font:16px system-ui;text-align:center;"
+                                 "margin-top:20vh;color:#444\">%1</body>"
     )
-                             .arg(tr("Signed in — finishing up in msga. You can close this."));
+                                 .arg(tr("Signed in — finishing up in msga. You can close this."));
     const QJsonObject fulfill{
         {QStringLiteral("requestId"), requestId},
         {QStringLiteral("responseCode"), 200},

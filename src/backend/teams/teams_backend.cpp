@@ -167,11 +167,11 @@ void Backend::resolveMessageMedia(const ConversationId &conv, const Message &msg
     for (const int idx : attachIdx) {
         const QString contentUrl = base->files[idx].permalink;
         // Graph "shares" share-id: "u!" + base64url(url) without padding.
-        const QString shareId    = QStringLiteral("u!") +
+        const QString shareId = QStringLiteral("u!") +
                                 QString::fromLatin1(contentUrl.toUtf8().toBase64(
                                     QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals
                                 ));
-        QUrlQuery q;
+        QUrlQuery     q;
         q.addQueryItem("$expand", "thumbnails");
         _client->get(
             "shares/" + shareId + "/driveItem",
@@ -1036,8 +1036,8 @@ void Backend::uploadFiles(
     // Build a "reference" attachment from an uploaded driveItem. Teams keys the
     // attachment by the file's eTag GUID (must match the body's <attachment id>).
     auto attachmentFor = [](const QJsonObject &item, const QString &name, const QString &url) {
-        const auto m = QRegularExpression(QStringLiteral("[0-9a-fA-F-]{36}"))
-                           .match(item.value("eTag").toString());
+        const auto    m = QRegularExpression(QStringLiteral("[0-9a-fA-F-]{36}"))
+                              .match(item.value("eTag").toString());
         const QString id =
             m.hasMatch() ? m.captured(0) : QUuid::createUuid().toString(QUuid::WithoutBraces);
         return QJsonObject{
@@ -1230,9 +1230,9 @@ void Backend::doRefresh(std::function<void(bool)> done) {
         // leave the session intact so the next call retries the refresh.
         const QString err                   = obj.value("error").toString();
         const bool    definitiveAuthFailure = err == QLatin1String("invalid_grant") ||
-                                           err == QLatin1String("invalid_client") ||
-                                           err == QLatin1String("unauthorized_client") ||
-                                           err == QLatin1String("interaction_required");
+                                              err == QLatin1String("invalid_client") ||
+                                              err == QLatin1String("unauthorized_client") ||
+                                              err == QLatin1String("interaction_required");
         if (!success)
             qWarning() << "teams token refresh failed:" << (err.isEmpty() ? "(transport)" : err)
                        << (definitiveAuthFailure ? "— signing out" : "— will retry");

@@ -209,8 +209,8 @@ struct StubBackend : Backend {
     // emulate the server's verdict (see moveMessageToThread).
     std::vector<std::function<void(bool, QString)>> sendDone;
     void                                            sendMessage(
-                                                   ConversationId c, OutgoingMessage m, std::function<void(bool, QString)> done
-                                               ) override {
+        ConversationId c, OutgoingMessage m, std::function<void(bool, QString)> done
+    ) override {
         sentMessages.push_back({c, std::move(m)});
         sendDone.push_back(std::move(done));
     }
@@ -226,8 +226,8 @@ struct StubBackend : Backend {
     };
     std::vector<AttachmentDelete> attachmentDeletes;
     void                          deleteAttachment(
-                                 ConversationId c, Ts ts, int id, std::function<void(bool, QString)> done
-                             ) override {
+        ConversationId c, Ts ts, int id, std::function<void(bool, QString)> done
+    ) override {
         attachmentDeletes.push_back({c, ts, id, std::move(done)});
     }
     struct EditCall {
@@ -273,12 +273,12 @@ struct StubBackend : Backend {
     };
     std::vector<UploadCall> uploadCalls;
     void                    uploadFiles(
-                           ConversationId                     c,
-                           const QStringList                 &paths,
-                           const QString                     &comment,
-                           std::optional<Ts>                  threadRoot = std::nullopt,
-                           std::function<void(bool, QString)> done       = {}
-                       ) override {
+        ConversationId                     c,
+        const QStringList                 &paths,
+        const QString                     &comment,
+        std::optional<Ts>                  threadRoot = std::nullopt,
+        std::function<void(bool, QString)> done       = {}
+    ) override {
         uploadCalls.push_back({c, paths, comment, threadRoot, std::move(done)});
     }
 
@@ -340,8 +340,8 @@ struct StubBackend : Backend {
     std::vector<QString>                 deleteCanvasCalls;
     bool                                 deleteCanvasOk = true;
     void                                 loadCanvasMeta(
-                                        const QString &fileId, std::function<void(QString, QString, CanvasMetaState)> done
-                                    ) override {
+        const QString &fileId, std::function<void(QString, QString, CanvasMetaState)> done
+    ) override {
         if (!done)
             return;
         if (!canvasHtml.count(fileId)) {
@@ -532,10 +532,10 @@ struct StubBackend : Backend {
     ConversationId      openDmResultId;
     QString             openDmError;
     void                openDm(
-                       UserId                              user,
-                       std::function<void(ConversationId)> onSuccess = {},
-                       std::function<void(QString)>        onError   = {}
-                   ) override {
+        UserId                              user,
+        std::function<void(ConversationId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    ) override {
         openDmCalls.push_back(user);
         if (openDmShouldFail) {
             if (onError)
@@ -648,11 +648,11 @@ struct StubBackend : Backend {
     std::vector<RunCommandCall> runCommandCalls;
     bool                        runCommandShouldFail = false;
     void                        runCommand(
-                               ConversationId                     c,
-                               const QString                     &command,
-                               const QString                     &text,
-                               std::function<void(bool, QString)> done = {}
-                           ) override {
+        ConversationId                     c,
+        const QString                     &command,
+        const QString                     &text,
+        std::function<void(bool, QString)> done = {}
+    ) override {
         runCommandCalls.push_back({c, command, text});
         if (done)
             done(!runCommandShouldFail, runCommandShouldFail ? "missing_scope" : QString());
@@ -3079,16 +3079,16 @@ TEST_CASE_METHOD(
         kGeneral,
         kDmBob,
         Conversation{
-                   .id       = ConversationId{"D2"},
-                   .kind     = ConvKind::Im,
-                   .isMember = true,
-                   .dmUser   = UserId{"B1"}
+            .id       = ConversationId{"D2"},
+            .kind     = ConvKind::Im,
+            .isMember = true,
+            .dmUser   = UserId{"B1"}
         },
         Conversation{
-                   .id       = ConversationId{"D3"},
-                   .kind     = ConvKind::Im,
-                   .isMember = true,
-                   .dmUser   = UserId{"U1"}
+            .id       = ConversationId{"D3"},
+            .kind     = ConvKind::Im,
+            .isMember = true,
+            .dmUser   = UserId{"U1"}
         },
         kMpdm,
     };
@@ -3120,10 +3120,10 @@ TEST_CASE_METHOD(
     stub->_users        = std::vector<User>{kAlice, kBob};
     stub->_convs        = std::vector<Conversation>{
         Conversation{
-                   .id       = ConversationId{"D1"},
-                   .kind     = ConvKind::Im,
-                   .isMember = true,
-                   .dmUser   = UserId{"U2"}
+            .id       = ConversationId{"D1"},
+            .kind     = ConvKind::Im,
+            .isMember = true,
+            .dmUser   = UserId{"U2"}
         },
     };
     QCoreApplication::processEvents();

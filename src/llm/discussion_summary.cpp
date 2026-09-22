@@ -79,7 +79,7 @@ Llm::Request buildRequest(const std::vector<Entry> &entries, const QString &lang
     Llm::Request req;
     req.maxTokens = 512;
     req.system    = QStringLiteral(
-                     "You summarize workplace chat discussions.\n"
+                        "You summarize workplace chat discussions.\n"
                         "Write in %1 only, no matter what language the transcript is in.\n"
                         "Use plain, everyday language — short sentences, simple words, like a "
                         "colleague catching someone up. No corporate or bureaucratic phrasing.\n"
@@ -94,11 +94,11 @@ Llm::Request buildRequest(const std::vector<Entry> &entries, const QString &lang
                         "whole sentences.\n"
                         "Keep the whole summary under 100 words. No preamble, no closing remarks."
     )
-                     .arg(language);
+                        .arg(language);
     // The language instruction is repeated AFTER the transcript: small models
     // otherwise drift into the transcript's language — a system-prompt line
     // thousands of tokens back loses to the content in front of the answer.
-    req.messages = {
+    req.messages  = {
         {Llm::Message::Role::User,
          QStringLiteral(
              "Summarize the following discussion transcript. Lines starting with "

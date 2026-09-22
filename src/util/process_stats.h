@@ -93,9 +93,9 @@ inline std::int64_t rssBytes() {
     // The set can grow between the probe and the real read, so over-allocate and
     // retry a few times if it outgrows the buffer again.
     for (int attempt = 0; attempt < 4 && entries > 0; ++attempt) {
-        const SIZE_T capacity = entries + 1024; // slack for growth
-        const SIZE_T bytes    = sizeof(PSAPI_WORKING_SET_INFORMATION) +
-                             (capacity - 1) * sizeof(PSAPI_WORKING_SET_BLOCK);
+        const SIZE_T      capacity = entries + 1024; // slack for growth
+        const SIZE_T      bytes    = sizeof(PSAPI_WORKING_SET_INFORMATION) +
+                                     (capacity - 1) * sizeof(PSAPI_WORKING_SET_BLOCK);
         std::vector<char> buf(bytes);
         auto             *info = reinterpret_cast<PSAPI_WORKING_SET_INFORMATION *>(buf.data());
         if (!QueryWorkingSet(proc, info, static_cast<DWORD>(bytes))) {

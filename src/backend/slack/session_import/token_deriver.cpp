@@ -166,7 +166,7 @@ void TokenDeriver::fetchIconThenCommit(slack::Credentials creds) {
             const auto team = obj.value(QStringLiteral("team")).toObject();
             const auto icon = team.value(QStringLiteral("icon")).toObject();
             creds.iconUrl   = icon.value(QStringLiteral("image_88"))
-                                .toString(icon.value(QStringLiteral("image_68")).toString());
+                                  .toString(icon.value(QStringLiteral("image_68")).toString());
             if (creds.teamName.isEmpty())
                 creds.teamName = team.value(QStringLiteral("name")).toString();
         }

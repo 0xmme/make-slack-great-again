@@ -86,9 +86,9 @@ QByteArray FakeServices::giphyJson(const QString &baseUrl, const std::vector<Gif
     for (const auto &g : gifs) {
         const QString url = baseUrl + QStringLiteral("/gif/") + g.file;
         QJsonObject   rendition{
-              {"url", url},
-              {"width", QString::number(g.width)},
-              {"height", QString::number(g.height)},
+            {"url", url},
+            {"width", QString::number(g.width)},
+            {"height", QString::number(g.height)},
         };
         data.append(
             QJsonObject{

@@ -505,11 +505,11 @@ const ChromeSpec kAubergineChrome = {
     .workspaceBubble = QColor("#4A154B"),
     .itemTextDim     = QColor("#CFC3CF"),
     .accent          = {
-                 .def      = QColor("#4A154B"),
-                 .hover    = QColor("#611F69"),
-                 .pressed  = QColor("#350D36"),
-                 .dark     = QColor("#350D36"),
-                 .subtleBg = QColor("#F4E5F5"),
+        .def      = QColor("#4A154B"),
+        .hover    = QColor("#611F69"),
+        .pressed  = QColor("#350D36"),
+        .dark     = QColor("#350D36"),
+        .subtleBg = QColor("#F4E5F5"),
     },
 };
 
@@ -552,11 +552,11 @@ const ChromeSpec kOceanChrome = {
     .workspaceBubble = QColor("#15405E"),
     .itemTextDim     = QColor("#C3CCD4"),
     .accent          = {
-                 .def      = QColor("#1264A3"),
-                 .hover    = QColor("#1B7CC4"),
-                 .pressed  = QColor("#0B4F82"),
-                 .dark     = QColor("#0B4F82"),
-                 .subtleBg = QColor("#E5F0F8"),
+        .def      = QColor("#1264A3"),
+        .hover    = QColor("#1B7CC4"),
+        .pressed  = QColor("#0B4F82"),
+        .dark     = QColor("#0B4F82"),
+        .subtleBg = QColor("#E5F0F8"),
     },
 };
 
@@ -568,11 +568,11 @@ const ChromeSpec kForestChrome = {
     .workspaceBubble = QColor("#15543E"),
     .itemTextDim     = QColor("#C3D4CC"),
     .accent          = {
-                 .def      = QColor("#007A5A"),
-                 .hover    = QColor("#148567"),
-                 .pressed  = QColor("#055C42"),
-                 .dark     = QColor("#055C42"),
-                 .subtleBg = QColor("#E5F4EE"),
+        .def      = QColor("#007A5A"),
+        .hover    = QColor("#148567"),
+        .pressed  = QColor("#055C42"),
+        .dark     = QColor("#055C42"),
+        .subtleBg = QColor("#E5F4EE"),
     },
 };
 
@@ -668,11 +668,11 @@ ChromeSpec chromeFromCustom(const CustomTheme &t, bool darkContent) {
     // itself over dark content where a pale rail would break the depth order.
     const QColor primary  = t.primary.color;
     const bool   paleRail = !t.sidebarInverted && !darkContent;
-    c.rail                = paleRail ? withLightness(primary, 0.93 + shift)
-                            : shift == 0.0 ? primary // exact: the HSL round trip may move a channel by one
-                                           : withLightness(primary, primary.lightnessF() + shift);
-    const bool lightRail  = c.rail.lightnessF() > 0.5;
-    c.workspaceBubble     = lightRail ? scaleRgb(c.rail, 0.90) : scaleRgb(c.rail, 1.25);
+    c.rail = paleRail       ? withLightness(primary, 0.93 + shift)
+             : shift == 0.0 ? primary // exact: the HSL round trip may move a channel by one
+                            : withLightness(primary, primary.lightnessF() + shift);
+    const bool lightRail = c.rail.lightnessF() > 0.5;
+    c.workspaceBubble    = lightRail ? scaleRgb(c.rail, 0.90) : scaleRgb(c.rail, 1.25);
 
     // Highlight 1: the selection pill carries ink of the opposite polarity, and
     // doubles as the accent (hover/pressed stepped around it).
@@ -683,11 +683,11 @@ ChromeSpec chromeFromCustom(const CustomTheme &t, bool darkContent) {
                                                    : QColor("#FFFFFF");
     const double l  = h1.lightnessF();
     c.accent        = {
-               .def      = h1,
-               .hover    = withLightness(h1, l + 0.06),
-               .pressed  = withLightness(h1, l - 0.06),
-               .dark     = withLightness(h1, l - 0.10),
-               .subtleBg = withLightness(h1, 0.95),
+        .def      = h1,
+        .hover    = withLightness(h1, l + 0.06),
+        .pressed  = withLightness(h1, l - 0.06),
+        .dark     = withLightness(h1, l - 0.10),
+        .subtleBg = withLightness(h1, 0.95),
     };
     // A pale highlight can't be lifted into a readable filled control over
     // dark content — drop it to the dark-mode floor instead of lifting it.

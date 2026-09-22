@@ -90,7 +90,6 @@ public:
     // lets header-only measurement (sizeOf) agree with the decoded pixmap.
     static QSize boundedSize(QSize sz, int maxDim = 0);
 
-
     // Wire a persistent backing store: load is called before any network fetch;
     // save is called after each successful download so the bytes survive restarts.
     // Passing empty functions disables the backing store.
@@ -180,7 +179,7 @@ private:
     qint64                 _memBytes  = 0;
     qint64                 _memoryCap = kDefaultMemoryCap;
     QNetworkAccessManager *_nam;
-    QQueue<QString>        _fetchQueue;   // urls waiting for a fetch slot
+    QQueue<QString>        _fetchQueue; // urls waiting for a fetch slot
     int                    _activeFetches = 0;
     bool                   _syncDecode    = false;
 

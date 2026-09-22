@@ -1015,8 +1015,9 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
             const auto &conv = _convs[_rows[row].convIdx];
             if (conv.kind == ConvKind::Mpim) {
                 showMpdmContextMenu(row, e->globalPosition().toPoint());
-            } else if (conv.kind == ConvKind::PublicChannel ||
-                       conv.kind == ConvKind::PrivateChannel) {
+            } else if (
+                conv.kind == ConvKind::PublicChannel || conv.kind == ConvKind::PrivateChannel
+            ) {
                 showChannelContextMenu(row, e->globalPosition().toPoint());
             } else if (conv.kind == ConvKind::Im) {
                 showDmContextMenu(row, e->globalPosition().toPoint());
@@ -1470,7 +1471,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     // quiet for regular messages — no badge at all).
     const bool showBlue = !stale && !conv.locallyMuted && lvl == NotificationLevel::All && !isDm &&
                           conv.mentionCount == 0 && conv.unread > 0;
-    const int badgeW = showRed ? (redCount > 9 ? 28 : 20) : showBlue ? 14 : 0;
+    const int  badgeW   = showRed ? (redCount > 9 ? 28 : 20) : showBlue ? 14 : 0;
 
     // Live-huddle indicator (host avatar + accent pill with headphones + count),
     // right-aligned like Slack. Compute its width up front so the name doesn't

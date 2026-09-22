@@ -11,10 +11,10 @@ ProviderInfo providerForMxHost(const QString &mxHost) {
     const QString h = mxHost.trimmed().toLower();
     ProviderInfo  p;
     auto          set = [&](const QString &name,
-                   const QString &imap,
-                   const QString &smtp,
-                   AuthMethod     auth,
-                   const QString &help) {
+                            const QString &imap,
+                            const QString &smtp,
+                            AuthMethod     auth,
+                            const QString &help) {
         p.name               = name;
         p.imapHost           = imap;
         p.smtpHost           = smtp;
@@ -131,10 +131,10 @@ ProviderInfo detectProvider(const QString &email) {
 
     ProviderInfo p;
     auto         set = [&](const QString &name,
-                   const QString &imap,
-                   const QString &smtp,
-                   AuthMethod     auth,
-                   const QString &help) {
+                           const QString &imap,
+                           const QString &smtp,
+                           AuthMethod     auth,
+                           const QString &help) {
         p.name               = name;
         p.imapHost           = imap;
         p.smtpHost           = smtp;
@@ -149,8 +149,10 @@ ProviderInfo detectProvider(const QString &email) {
             "smtp.gmail.com",
             AuthMethod::OAuthGoogle,
             "https://myaccount.google.com/apppasswords");
-    } else if (domain == "outlook.com" || domain == "hotmail.com" || domain == "live.com" ||
-               domain == "msn.com") {
+    } else if (
+        domain == "outlook.com" || domain == "hotmail.com" || domain == "live.com" ||
+        domain == "msn.com"
+    ) {
         set("Outlook",
             "outlook.office365.com",
             "smtp.office365.com",

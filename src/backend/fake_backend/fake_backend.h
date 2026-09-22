@@ -53,21 +53,21 @@ public:
 
     rpl::producer<std::vector<SlashCommand>> listCommands() override;
     void                                     runCommand(
-                                            ConversationId,
-                                            const QString                     &command,
-                                            const QString                     &text,
-                                            std::function<void(bool, QString)> done = {}
-                                        ) override;
+        ConversationId,
+        const QString                     &command,
+        const QString                     &text,
+        std::function<void(bool, QString)> done = {}
+    ) override;
 
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override;
     rpl::producer<QHash<QString, QString>>   loadEmojiList() override;
     void                                     uploadFiles(
-                                            ConversationId,
-                                            const QStringList &,
-                                            const QString &,
-                                            std::optional<Ts>                       = std::nullopt,
-                                            std::function<void(bool, QString)> done = {}
-                                        ) override {
+        ConversationId,
+        const QStringList &,
+        const QString &,
+        std::optional<Ts>                       = std::nullopt,
+        std::function<void(bool, QString)> done = {}
+    ) override {
         if (done)
             done(true, {});
     }

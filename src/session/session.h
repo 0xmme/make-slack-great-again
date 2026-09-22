@@ -298,12 +298,12 @@ public:
     void markThreadFollowed(const ConversationId &conv, const Ts &root);
     // sendMessage() with an outcome callback (see Backend::sendMessage).
     Ts   postMessage(
-          ConversationId                            conv,
-          const QString                            &text,
-          std::optional<Ts>                         threadRoot,
-          const QString                            &subject,
-          std::function<void(bool ok, QString err)> done
-      );
+        ConversationId                            conv,
+        const QString                            &text,
+        std::optional<Ts>                         threadRoot,
+        const QString                            &subject,
+        std::function<void(bool ok, QString err)> done
+    );
 
     // The user read this thread up to `upTo`: move the server-side thread read
     // cursor (so the official clients agree) and record it as the Threads-feed

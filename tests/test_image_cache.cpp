@@ -149,9 +149,12 @@ TEST_CASE("Eviction drops the least recently used entry, and a hit counts as a u
 TEST_CASE("Asynchronous decode: get() returns null, then loaded() delivers the pixmap") {
     ImageCache cache; // default: decode on a pool thread
     wireDisk(cache);
-    int         loads = 0;
-    QString     last;
-    QObject::connect(&cache, &ImageCache::loaded, [&](const QString &u) { ++loads; last = u; });
+    int     loads = 0;
+    QString last;
+    QObject::connect(&cache, &ImageCache::loaded, [&](const QString &u) {
+        ++loads;
+        last = u;
+    });
 
     // Disk hit: sentinel now, pixels later — same contract as a download.
     REQUIRE(cache.get(QStringLiteral("async-0")).isNull());
@@ -188,7 +191,7 @@ TEST_CASE("A held movie pins its entry; releaseMovie unpins it") {
     static const QByteArray gif = makeTwoFrameGif();
     REQUIRE(ImageCache::isAnimatedImage(gif));
 
-    ImageCache              cache;
+    ImageCache cache;
     cache.setSynchronousDecode(true);
     static const QByteArray png = makePng();
     cache.setDiskCache(
@@ -257,8 +260,8 @@ TEST_CASE("Oversized sources decode bounded to maxDecodeDim, aspect kept") {
     // preview (issue #64). The bound caps any one entry at ~2 MB at 2×.
     const int maxDim = ImageCache::maxDecodeDim();
     REQUIRE(maxDim >= 2 * ImageCache::kMaxDecodeLogical); // never below 2× quality
-    REQUIRE(maxDim % 4 == 0);                              // the size arithmetic below is exact
-    const QSize wide   = ImageCache::boundedSize(QSize(4000, 3000));
+    REQUIRE(maxDim % 4 == 0);                             // the size arithmetic below is exact
+    const QSize wide = ImageCache::boundedSize(QSize(4000, 3000));
     CHECK(wide == QSize(maxDim, maxDim * 3 / 4));
     CHECK(ImageCache::boundedSize(QSize(300, 4000)) == QSize(maxDim * 300 / 4000, maxDim));
     // Never upscaled.
@@ -312,7 +315,7 @@ TEST_CASE("sizeOf agrees with the decoded pixmap size") {
 }
 
 TEST_CASE("Measuring a working set larger than the cap decodes each url once") {
-    ImageCache              cache;
+    ImageCache cache;
     cache.setSynchronousDecode(true);
     static const QByteArray png   = makePng();
     int                     loads = 0;
@@ -350,7 +353,7 @@ TEST_CASE("Bytes that are not an image are fetched once, never again") {
     // 200 OK with an HTML body: what a CDN serves for an expired preview url.
     server.enqueueStatus(200, "OK", "text/html", "<html><body>gone</body></html>");
 
-    ImageCache              cache;
+    ImageCache cache;
     cache.setSynchronousDecode(true);
     static const QByteArray png = makePng();
     // Only "img-" urls exist on disk, so the broken one must go to the network.

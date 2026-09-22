@@ -111,8 +111,8 @@ struct StubBackend : Backend {
     };
     std::vector<AttachmentDelete> attachmentDeletes;
     void                          deleteAttachment(
-                                 ConversationId c, Ts ts, int id, std::function<void(bool, QString)> done
-                             ) override {
+        ConversationId c, Ts ts, int id, std::function<void(bool, QString)> done
+    ) override {
         attachmentDeletes.push_back({c, ts, id, std::move(done)});
     }
     void addReaction(ConversationId, Ts, QString) override {}

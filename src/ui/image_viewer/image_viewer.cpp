@@ -83,8 +83,8 @@ void ImageViewerOverlay::applyTheme() {
     )
                                .arg(kBtnSz / 2)
                                .arg(Th::qss(Th::c().surface.viewerBtnHover));
-    const QColor ic    = Th::c().icon.onDark;
-    const auto   style = [&](QToolButton *b, const QString &icon) {
+    const QColor  ic     = Th::c().icon.onDark;
+    const auto    style  = [&](QToolButton *b, const QString &icon) {
         b->setStyleSheet(btnQss);
         b->setIcon(svgIcon(icon, kBtnIconSz, ic));
     };

@@ -169,7 +169,7 @@ void OAuthLoopbackFlow::postTokenRequest(const QList<QPair<QString, QString>> &p
         if (reply->error() != QNetworkReply::NoError) {
             const QString detail = obj.value("error_description")
                                        .toString(obj.value("error").toString(reply->errorString()));
-            emit failed(detail);
+            emit          failed(detail);
             return;
         }
         if (!obj.contains("access_token")) {

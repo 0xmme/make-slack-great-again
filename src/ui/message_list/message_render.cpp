@@ -592,24 +592,24 @@ static QString renderRange(
         const auto &e = ents[idx];
         if (e.offset > pos)
             html += escapeAndBr(text.mid(pos, e.offset - pos));
-        const auto rawInner  = text.mid(e.offset, e.length);
-        const bool container = e.type == EntityType::Bold || e.type == EntityType::Italic ||
-                               e.type == EntityType::Underline || e.type == EntityType::Strike ||
-                               e.type == EntityType::Link || e.type == EntityType::Blockquote;
+        const auto    rawInner  = text.mid(e.offset, e.length);
+        const bool    container = e.type == EntityType::Bold || e.type == EntityType::Italic ||
+                                  e.type == EntityType::Underline || e.type == EntityType::Strike ||
+                                  e.type == EntityType::Link || e.type == EntityType::Blockquote;
         // Only blockquotes deepen the table-nesting budget (other containers are
         // cheap inline spans/anchors).
         const int     childQuoteDepth = quoteDepth + (e.type == EntityType::Blockquote ? 1 : 0);
         const QString inner           = container ? renderRange(
-                                              text,
-                                              e.offset,
-                                              e.offset + e.length,
-                                              kids[idx],
-                                              ents,
-                                              kids,
-                                              session,
-                                              style,
-                                              childQuoteDepth
-                                          )
+                                                        text,
+                                                        e.offset,
+                                                        e.offset + e.length,
+                                                        kids[idx],
+                                                        ents,
+                                                        kids,
+                                                        session,
+                                                        style,
+                                                        childQuoteDepth
+                                                    )
                                                   : rawInner.toHtmlEscaped();
         switch (e.type) {
         case EntityType::Bold:
@@ -1654,8 +1654,8 @@ msgUnfurlHtml(const Attachment &att, const Session *session, const GifRenderCont
             // Section/rich_text/header text goes through the budget; images,
             // tables and button rows render whole (they're one visual unit).
             const bool   plainText = blk.typeStr != QLatin1String("image") &&
-                                   blk.typeStr != QLatin1String("table") && blk.buttons.empty() &&
-                                   !blk.text.text.isEmpty();
+                                     blk.typeStr != QLatin1String("table") && blk.buttons.empty() &&
+                                     !blk.text.text.isEmpty();
             if (plainText)
                 addText(blk.text);
             else
@@ -2072,8 +2072,8 @@ void paintAudioCard(QPainter &p, const File &f, const QRect &rect, const AudioCh
     // Slider: track, played part, knob
     const qint64 dur  = audio->durationMs > 0 ? audio->durationMs : f.durationMs;
     const bool   live = audio->phase == Phase::Playing || audio->phase == Phase::Paused ||
-                      audio->phase == Phase::Ended || audio->scrubMs >= 0;
-    qint64 pos = audio->scrubMs >= 0 ? audio->scrubMs : audio->positionMs;
+                        audio->phase == Phase::Ended || audio->scrubMs >= 0;
+    qint64       pos  = audio->scrubMs >= 0 ? audio->scrubMs : audio->positionMs;
     if (audio->phase == Phase::Ended && audio->scrubMs < 0)
         pos = dur;
     if (!live)

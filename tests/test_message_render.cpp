@@ -222,7 +222,7 @@ TEST_CASE("quotedTrailerCut catches a localized Outlook From:/Sent:/To: block", 
     TextWithEntities twe; // Chinese Outlook header block, no blockquote or '>' marks
     const QString    body = QStringLiteral(
         "Dear Nikita,\n\nThank you for your email.\n\n"
-           "Best regards,\nLeo\n\n"
+        "Best regards,\nLeo\n\n"
     );
     const QString quoted = QStringLiteral(
         "发件人: Nikita Bragin <branikita@gmail.com>\n"
@@ -927,12 +927,12 @@ struct RenderStubBackend : Backend {
     }
     rpl::producer<QHash<QString, QString>> loadEmojiList() override { return _emoji.value(); }
     void                                   uploadFiles(
-                                          ConversationId,
-                                          const QStringList &,
-                                          const QString &,
-                                          std::optional<Ts>                  = std::nullopt,
-                                          std::function<void(bool, QString)> = {}
-                                      ) override {}
+        ConversationId,
+        const QStringList &,
+        const QString &,
+        std::optional<Ts>                  = std::nullopt,
+        std::function<void(bool, QString)> = {}
+    ) override {}
     void downloadFile(
         const QString &, std::function<void(QByteArray)>, std::function<void(QString)>
     ) override {}

@@ -88,7 +88,7 @@ void ConvTabsWidget::relayout() {
         }
         const int w = kTabPadH + kIconSz + kIconGap +
                       fm.horizontalAdvance(fm.elidedText(tab.text, Qt::ElideRight, 240)) + kTabPadH;
-        tab.rect = QRect(x, 4, w, kStripH - 4 - kUnderlnH - 1);
+        tab.rect    = QRect(x, 4, w, kStripH - 4 - kUnderlnH - 1);
         x += w + kTabGap;
     }
 }

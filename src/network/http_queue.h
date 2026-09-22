@@ -170,31 +170,31 @@ private:
     QString                _cookie; // Slack `d` session cookie (session auth); empty for OAuth
     QString                _baseUrl;
     QQueue<PendingCall>    _queue;
-    bool                   _inflight  = false;
+    bool                   _inflight = false;
 
     struct PendingDownload {
-        QNetworkRequest                  req;
-        std::function<void(QByteArray)>  onData;
-        OnError                          onError;
+        QNetworkRequest                 req;
+        std::function<void(QByteArray)> onData;
+        OnError                         onError;
     };
-    void                   issueDownload(PendingDownload d);
+    void                    issueDownload(PendingDownload d);
     QQueue<PendingDownload> _downloadQueue;
-    int                    _activeDownloads = 0;
-    bool                   _throttled = false; // global pause: token refresh / transport backoff
-    int                    _retryBaseDelayMs  = 1000;
-    int                    _transferTimeoutMs = 30000;
-    OnTokenExpired         _onTokenExpired;
+    int                     _activeDownloads = 0;
+    bool                    _throttled = false; // global pause: token refresh / transport backoff
+    int                     _retryBaseDelayMs  = 1000;
+    int                     _transferTimeoutMs = 30000;
+    OnTokenExpired          _onTokenExpired;
     // Per-method 429 backpressure. Slack throttles per method, so a rate-limited
     // method waits out its Retry-After here while OTHER methods keep flowing —
     // instead of one 429 head-of-line blocking the whole queue. Value is the
     // epoch-ms instant the method may run again.
-    QHash<QString, qint64> _methodReadyAtMs;
-    qint64                 _scheduledWakeMs  = -1; // epoch ms of the pending wake timer; -1 = none
+    QHash<QString, qint64>  _methodReadyAtMs;
+    qint64                  _scheduledWakeMs  = -1; // epoch ms of the pending wake timer; -1 = none
     // Background-lane pacing. _backgroundReadyAtMs is the earliest epoch-ms a
     // Background call may dispatch; armed to now+_backgroundPaceMs each time one
     // starts, so spacing holds regardless of how fast each reply lands.
-    int                    _backgroundPaceMs = 0;
-    qint64                 _backgroundReadyAtMs = 0;
+    int                     _backgroundPaceMs = 0;
+    qint64                  _backgroundReadyAtMs = 0;
 };
 
 } // namespace net

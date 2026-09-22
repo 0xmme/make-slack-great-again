@@ -109,9 +109,9 @@ ThemeManager::ThemeManager(QObject *parent) : QObject(parent) {
     // The singleton is first touched (via Th::c()) before any widget paints,
     // so the persisted theme is active from the very first frame.
     QSettings settings = openSettings();
-    _fontSizeId = settings.value("appearance/fontSize", QStringLiteral("medium")).toString();
-    _custom     = Th::parseCustomTheme(settings.value(QLatin1String(kCustomKey)).toString())
-                  .value_or(Th::defaultCustomTheme());
+    _fontSizeId        = settings.value("appearance/fontSize", QStringLiteral("medium")).toString();
+    _custom            = Th::parseCustomTheme(settings.value(QLatin1String(kCustomKey)).toString())
+                             .value_or(Th::defaultCustomTheme());
     rebuildCustom();
 
     if (settings.contains(QLatin1String(kModeKey))) {

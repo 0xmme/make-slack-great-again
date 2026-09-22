@@ -300,9 +300,7 @@ TEST_CASE("ThemeManager switches, persists and ignores unknown ids", "[theme]") 
     mgr.setThemeById("purple");
     CHECK(mgr.themeId() == "purple");
     CHECK(spy.count() == 2);
-    CHECK(
-        testSettings().value("appearance/theme").toString() == QStringLiteral("purple")
-    );
+    CHECK(testSettings().value("appearance/theme").toString() == QStringLiteral("purple"));
 }
 
 TEST_CASE("registry classifies content darkness", "[theme]") {

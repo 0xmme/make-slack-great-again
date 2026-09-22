@@ -309,7 +309,7 @@ std::vector<Chunk> documentChunks(QTextDocument *doc) {
         const bool viaHtml = g.kind == Chunk::Kind::List || g.kind == Chunk::Kind::Table;
         Chunk      chunk{
             g.kind,
-                 {},
+            {},
             g.fragile,
             viaHtml ? rangeMd(doc, g.from, g.to) : blocksMd(doc, g.from, g.to)
         };

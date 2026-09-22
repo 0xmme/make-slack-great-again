@@ -214,7 +214,7 @@ void Tour::run(const TourStep &step, Done done) {
         const bool fieldFocused = QApplication::activePopupWidget() ||
                                   AppDialog::topmostVisible(_win) ||
                                   (_win->_searchWidget && _win->_searchWidget->isVisible());
-        auto typeIt = [this, text = step.arg, cps = step.num, done] {
+        auto       typeIt       = [this, text = step.arg, cps = step.num, done] {
             typeText(text, cps > 0 ? cps : 16, done);
         };
         if (fieldFocused || !composer) {

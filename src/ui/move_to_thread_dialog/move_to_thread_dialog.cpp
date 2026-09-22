@@ -99,7 +99,7 @@ void MoveToThreadDialog::buildItems() {
             t.replyCount == 1 ? tr("1 reply") : tr("%1 replies").arg(t.replyCount);
         it.subtitle = t.author + QStringLiteral(" · ") +
                       TimeFmt::formatDateTime(t.date / 1'000'000) + QStringLiteral(" · ") + replies;
-        it.isPerson  = true; // avatar disc of the root's author
+        it.isPerson = true; // avatar disc of the root's author
         it.avatarUrl = t.avatarUrl;
         it.initial   = t.author.left(1);
         it.searchKey = (t.text + ' ' + t.author).toLower();

@@ -10,6 +10,10 @@ die()  { printf "  ${RED}error${NC} %s\n" "$*" >&2; exit 1; }
 CMAKE_MIN_MAJOR=3
 CMAKE_MIN_MINOR=21
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# clang-format discovery + its version floor, shared with format.sh and the hook.
+source "${SCRIPT_DIR}/clang-format-env.sh"
+
 # Xcode Command Line Tools (provides clang, git, make)
 if xcode-select -p &>/dev/null 2>&1; then
     ok "Xcode Command Line Tools ($(xcode-select -p))"
@@ -43,6 +47,7 @@ BREW_PACKAGES=(
 )
 
 to_install=()
+to_upgrade=()
 for pkg in "${BREW_PACKAGES[@]}"; do
     if brew list "$pkg" &>/dev/null 2>&1; then
         ok "$pkg ($(brew list --versions "$pkg" | awk '{print $2}'))"
@@ -52,10 +57,29 @@ for pkg in "${BREW_PACKAGES[@]}"; do
     fi
 done
 
+# clang-format: Xcode's toolchain does not ship one, and the tree is formatted
+# with >= ${MSGA_CLANG_FORMAT_MIN} — older releases produce DIFFERENT output from
+# the same .clang-format (see clang-format-env.sh), so an old brew install must
+# be upgraded, not merely present.
+if msga_resolve_clang_format; then
+    ok "clang-format (${MSGA_CLANG_FORMAT_VERSION}, >= ${MSGA_CLANG_FORMAT_MIN} required)"
+elif brew list clang-format &>/dev/null 2>&1; then
+    miss "clang-format too old (${MSGA_CLANG_FORMAT_VERSION}) — need >= ${MSGA_CLANG_FORMAT_MIN}"
+    to_upgrade+=(clang-format)
+else
+    miss "clang-format (>= ${MSGA_CLANG_FORMAT_MIN})"
+    to_install+=(clang-format)
+fi
+
 if [[ ${#to_install[@]} -gt 0 ]]; then
     echo ""
     echo "Installing: ${to_install[*]}"
     brew install "${to_install[@]}"
+fi
+if [[ ${#to_upgrade[@]} -gt 0 ]]; then
+    echo ""
+    echo "Upgrading: ${to_upgrade[*]}"
+    brew upgrade "${to_upgrade[@]}"
 fi
 
 # cmake version check
@@ -69,11 +93,11 @@ else
     die "cmake $cmake_ver is too old — need >= ${CMAKE_MIN_MAJOR}.${CMAKE_MIN_MINOR}. Run: brew upgrade cmake"
 fi
 
-# Linting tools — clang-format ships with Xcode CLT; clazy requires brew.
-if command -v clang-format &>/dev/null 2>&1; then
-    ok "clang-format"
+# Linting tools — clang-format re-checked after the brew step; clazy requires brew.
+if msga_resolve_clang_format; then
+    ok "clang-format (${MSGA_CLANG_FORMAT_VERSION})"
 else
-    miss "clang-format — install via: brew install clang-format"
+    miss "clang-format >= ${MSGA_CLANG_FORMAT_MIN} still not on PATH${MSGA_CLANG_FORMAT_VERSION:+ (found: ${MSGA_CLANG_FORMAT_VERSION})} — run: brew install clang-format"
 fi
 for tool in clazy clazy-standalone; do
     if command -v "$tool" &>/dev/null 2>&1; then

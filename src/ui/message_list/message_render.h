@@ -175,11 +175,11 @@ QVector<QRectF> dataTableRects(const QTextDocument *doc);
 // the trailing quoted history + signature so a reply shows only what the sender
 // added. Chat services pass false and keep their intentional quotes.
 QString         buildMsgHtml(
-            const Message          &msg,
-            const Session          *session,
-            const GifRenderContext *gif                   = nullptr,
-            bool                    collapseQuotedReplies = false
-        );
+    const Message          &msg,
+    const Session          *session,
+    const GifRenderContext *gif                   = nullptr,
+    bool                    collapseQuotedReplies = false
+);
 QString buildAttachHtml(
     const Attachment &att, const Session *session, const GifRenderContext *gif = nullptr
 );

@@ -170,7 +170,7 @@ void FaviconResolver::fetch(
             reply->deleteLater();
             const int  status  = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             const bool aborted = reply->error() == QNetworkReply::OperationCanceledError;
-            const bool ok      = status == 200 &&
+            const bool ok = status == 200 &&
                             (reply->error() == QNetworkReply::NoError || (aborted && keepPartial));
             done(ok ? *body : QByteArray{}, reply->url());
         }

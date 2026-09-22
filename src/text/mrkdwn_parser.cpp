@@ -119,8 +119,9 @@ static QString formatDateToken(qint64 secs, const QString &fmt) {
             val = date.toString(Qt::ISODate);
         } else if (name == QLatin1String("date") || name == QLatin1String("date_short")) {
             val = TimeFmt::formatDate(date);
-        } else if (name == QLatin1String("date_pretty") ||
-                   name == QLatin1String("date_short_pretty")) {
+        } else if (
+            name == QLatin1String("date_pretty") || name == QLatin1String("date_short_pretty")
+        ) {
             val = prettyDay(date, TimeFmt::formatDate(date));
         } else if (name == QLatin1String("date_long")) {
             val = TimeFmt::locale().dayName(date.dayOfWeek()) + ", " + TimeFmt::formatDate(date);

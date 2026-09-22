@@ -176,35 +176,35 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
     m.subtype    = QString{"bot_message"};
     m.reactions  = {Reaction{"thumbsup", 2, {UserId{"U1"}, UserId{"U2"}}}};
     m.files      = {File{
-             .id                 = "F1",
-             .name               = "img.png",
-             .mimeType           = "image/png",
-             .urlPrivate         = "https://files.slack.com/img.png",
-             .urlPrivateDownload = "https://files.slack.com/download/img.png",
-             .thumbUrl           = "https://thumb.example.com/img.png",
-             .imageWidth         = 640,
-             .imageHeight        = 480,
-             .size               = 12345,
-             .thumbs =
-                 {FileThumb{360, 270, "https://thumb.example.com/img_360.png"},
-                  FileThumb{480, 360, "https://thumb.example.com/img_480.png"}},
-             .durationMs        = 5041,
-             .aacUrl            = "https://files.slack.com/files-tmb/T1-F1/img_audio.mp4",
-             .subtype           = "slack_audio",
-             .transcriptStatus  = "complete",
-             .transcriptPreview = "Test, test, battery.",
-             .transcriptVttUrl  = "https://files.slack.com/files-tmb/T1-F1/file.vtt",
+        .id                 = "F1",
+        .name               = "img.png",
+        .mimeType           = "image/png",
+        .urlPrivate         = "https://files.slack.com/img.png",
+        .urlPrivateDownload = "https://files.slack.com/download/img.png",
+        .thumbUrl           = "https://thumb.example.com/img.png",
+        .imageWidth         = 640,
+        .imageHeight        = 480,
+        .size               = 12345,
+        .thumbs =
+            {FileThumb{360, 270, "https://thumb.example.com/img_360.png"},
+             FileThumb{480, 360, "https://thumb.example.com/img_480.png"}},
+        .durationMs        = 5041,
+        .aacUrl            = "https://files.slack.com/files-tmb/T1-F1/img_audio.mp4",
+        .subtype           = "slack_audio",
+        .transcriptStatus  = "complete",
+        .transcriptPreview = "Test, test, battery.",
+        .transcriptVttUrl  = "https://files.slack.com/files-tmb/T1-F1/file.vtt",
     }};
     m.blocks     = {
         Block{
-                .typeStr = "section",
-                .text    = TextWithEntities{"block text", {TextEntity{EntityType::Italic, 0, 5, ""}}},
+            .typeStr = "section",
+            .text    = TextWithEntities{"block text", {TextEntity{EntityType::Italic, 0, 5, ""}}},
         },
         Block{
-                .typeStr   = "table",
-                .tableRows = {
+            .typeStr   = "table",
+            .tableRows = {
                 {TextWithEntities{"Header", {TextEntity{EntityType::Bold, 0, 6, ""}}},
-                     TextWithEntities{"", {}}},
+                 TextWithEntities{"", {}}},
                 {TextWithEntities{"cell", {}}, TextWithEntities{"18.2", {}}}
             },
         },
@@ -223,8 +223,8 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
         // back to the plain `fallback` string (and lost its emoji images).
         .fields      = {
             AttachmentField{
-                     .title = "Lunch",
-                     .value =
+                .title = "Lunch",
+                .value =
                     TextWithEntities{
                         "pick :no-lunch:", {TextEntity{EntityType::Emoji, 5, 10, "no-lunch"}}
                     },
@@ -276,11 +276,11 @@ TEST_CASE_METHOD(CacheFixture, "message unfurl survives a cache round trip", "[c
         .channelId     = "C0401QDC20K",
         .msgDate       = 1787145280873039LL,
         .files         = {File{
-                    .name       = "file.txt.json",
-                    .mimeType   = "text/plain",
-                    .prettyType = "JSON",
-                    .permalink  = "https://team.slack.com/files/U1/F1/file.txt.json",
-                    .size       = 375,
+            .name       = "file.txt.json",
+            .mimeType   = "text/plain",
+            .prettyType = "JSON",
+            .permalink  = "https://team.slack.com/files/U1/F1/file.txt.json",
+            .size       = 375,
         }},
     }};
 

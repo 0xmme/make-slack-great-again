@@ -163,8 +163,10 @@ QString ThreadExportJob::transcriptText(const Message &m) const {
                 it->length,
                 QStringLiteral("@") + _session->userDisplayName(UserId{it->data})
             );
-        } else if (it->type == EntityType::Link && !it->data.isEmpty() &&
-                   LinkLabels::isShortenedUrlLabel(text.mid(it->offset, it->length), it->data)) {
+        } else if (
+            it->type == EntityType::Link && !it->data.isEmpty() &&
+            LinkLabels::isShortenedUrlLabel(text.mid(it->offset, it->length), it->data)
+        ) {
             text.replace(it->offset, it->length, it->data);
         }
     }

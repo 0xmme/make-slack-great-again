@@ -2135,7 +2135,7 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
                              event->timestamp() - _lastDblClickTs <=
                                  (unsigned long)QApplication::doubleClickInterval() &&
                              (event->pos() - _lastDblClickPos).manhattanLength() <= 4;
-    _lastDblClickTs = 0;
+    _lastDblClickTs        = 0;
     if (maybeTriple && tryHandleTripleClick(event->pos()))
         return;
 
@@ -2318,7 +2318,7 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
     // Delete needs backend support, then: any message if the backend says so
     // (email — it's your mailbox), else your own messages or the admin path.
     const bool         canDelete = caps.deleteMessage && (caps.deleteAnyMessage || isOwnMessage ||
-                                                  (_session && _session->meIsAdmin()));
+                                                          (_session && _session->meIsAdmin()));
     const QString      linkUrl   = firstLinkInMessage(msg);
 
     auto *menu = new ContextMenu(this);
@@ -2867,8 +2867,10 @@ bool MessageListWidget::tryShowLinkContextMenu(const QPoint &pos) {
         url = SlackLinks::messagePermalink(ref);
     else if (MsgRender::isBotButtonAnchor(anchor))
         url = MsgRender::botButtonUrlFromAnchor(anchor);
-    else if (MsgRender::userIdFromAnchor(anchor).isEmpty() &&
-             MsgRender::channelIdFromAnchor(anchor).isEmpty() && !MsgRender::isToggleAnchor(anchor))
+    else if (
+        MsgRender::userIdFromAnchor(anchor).isEmpty() &&
+        MsgRender::channelIdFromAnchor(anchor).isEmpty() && !MsgRender::isToggleAnchor(anchor)
+    )
         url = anchor;
     if (url.isEmpty())
         return false;
@@ -3456,9 +3458,9 @@ void MessageListWidget::startTranscription(const File &file, const Message &msg)
     // Hand the bytes to the AI layer. The dialog is the callbacks' context: a
     // closed dialog drops them, the transcript is still cached for next time.
     const QPointer<MessageListWidget> self(this);
-    const QString                     provider = LlmService::instance().activeProvider()
-                                                     ? LlmService::instance().activeProvider()->displayName()
-                                                     : QString();
+    const QString provider = LlmService::instance().activeProvider()
+                                 ? LlmService::instance().activeProvider()->displayName()
+                                 : QString();
     auto run = [guard, self, provider, file](const QByteArray &data, const QString &sourceUrl) {
         if (!guard)
             return;

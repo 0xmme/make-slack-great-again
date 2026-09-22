@@ -106,7 +106,7 @@ QImage ImageCache::decodeBoundedImage(const QByteArray &bytes, int maxDim) {
     // larger than the bound, so small images (avatars, emoji) decode as before.
     // JPEG scales inside the decoder (DCT downscale); other formats decode then
     // shrink, so the transient peak is native size but nothing native is kept.
-    const QSize natural = reader.size();
+    const QSize  natural = reader.size();
     if (!natural.isEmpty()) {
         const QSize bounded = boundedSize(natural, maxDim);
         if (bounded != natural)

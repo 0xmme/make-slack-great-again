@@ -273,7 +273,7 @@ int main(int argc, char *argv[]) {
     QTranslator   translator;
     const QString locale = uiLocale.name(); // e.g. "ja_JP"
     const bool    loaded = translator.load(":/translations/msga_" + locale) ||
-                        translator.load(":/translations/msga_" + locale.section('_', 0, 0));
+                           translator.load(":/translations/msga_" + locale.section('_', 0, 0));
     if (loaded)
         app.installTranslator(&translator);
 

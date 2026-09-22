@@ -152,21 +152,21 @@ public:
     std::vector<SlashCommand>                nativeCommands() const override;
     rpl::producer<std::vector<SlashCommand>> listCommands() override;
     void                                     runCommand(
-                                            ConversationId,
-                                            const QString                                &command,
-                                            const QString                                &text,
-                                            std::function<void(bool ok, QString message)> done = {}
-                                        ) override;
+        ConversationId,
+        const QString                                &command,
+        const QString                                &text,
+        std::function<void(bool ok, QString message)> done = {}
+    ) override;
 
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
     rpl::producer<QHash<QString, QString>>   loadEmojiList() override;
     void                                     uploadFiles(
-                                            ConversationId,
-                                            const QStringList                          &filePaths,
-                                            const QString                              &initialComment,
-                                            std::optional<Ts>                           threadRoot = std::nullopt,
-                                            std::function<void(bool ok, QString error)> done = {}
-                                        ) override;
+        ConversationId,
+        const QStringList                          &filePaths,
+        const QString                              &initialComment,
+        std::optional<Ts>                           threadRoot = std::nullopt,
+        std::function<void(bool ok, QString error)> done       = {}
+    ) override;
     void deleteFile(const QString &fileId) override;
     void downloadFile(
         const QString                  &url,
@@ -283,8 +283,8 @@ private:
     // the web client itself boots with. Used when conversations.list is refused
     // with `enterprise_is_restricted`.
     void                loadConversationsViaWebClient(
-                       std::function<void(std::vector<Conversation>)> done, std::function<void()> fail
-                   );
+        std::function<void(std::vector<Conversation>)> done, std::function<void()> fail
+    );
     void triggerRefresh(std::function<void(bool)> done);
     void maybeProactiveRefresh();
 

@@ -436,12 +436,12 @@ public:
     // `done` (optional) fires once the whole batch settles: ok=true when a
     // message was posted, ok=false (with a reason) when nothing was posted.
     virtual void                                     uploadFiles(
-                                            ConversationId,
-                                            const QStringList                          &filePaths,
-                                            const QString                              &initialComment,
-                                            std::optional<Ts>                           threadRoot = std::nullopt,
-                                            std::function<void(bool ok, QString error)> done = {}
-                                        ) = 0;
+        ConversationId,
+        const QStringList                          &filePaths,
+        const QString                              &initialComment,
+        std::optional<Ts>                           threadRoot = std::nullopt,
+        std::function<void(bool ok, QString error)> done       = {}
+    ) = 0;
     // Delete a file by its Slack file ID (files.delete). No-op on unsupported backends.
     virtual void deleteFile(const QString & /*fileId*/) {}
     // Download arbitrary Slack file URL with auth credentials.

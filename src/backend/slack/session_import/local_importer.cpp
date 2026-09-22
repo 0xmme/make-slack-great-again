@@ -91,22 +91,22 @@ QByteArray aesCbcDecrypt(const QByteArray &key, const QByteArray &ciphertext) {
     QByteArray out(ciphertext.size() + 16, Qt::Uninitialized);
     int        outLen = 0, finalLen = 0;
     bool       okInit = EVP_DecryptInit_ex(
-                      ctx,
-                      EVP_aes_128_cbc(),
-                      nullptr,
-                      reinterpret_cast<const unsigned char *>(key.constData()),
-                      reinterpret_cast<const unsigned char *>(iv.constData())
-                  ) == 1;
-    bool okUpd = okInit && EVP_DecryptUpdate(
-                               ctx,
-                               reinterpret_cast<unsigned char *>(out.data()),
-                               &outLen,
-                               reinterpret_cast<const unsigned char *>(ciphertext.constData()),
-                               ciphertext.size()
-                           ) == 1;
-    bool okFin = okUpd && EVP_DecryptFinal_ex(
-                              ctx, reinterpret_cast<unsigned char *>(out.data()) + outLen, &finalLen
-                          ) == 1;
+                            ctx,
+                            EVP_aes_128_cbc(),
+                            nullptr,
+                            reinterpret_cast<const unsigned char *>(key.constData()),
+                            reinterpret_cast<const unsigned char *>(iv.constData())
+                        ) == 1;
+    bool       okUpd  = okInit && EVP_DecryptUpdate(
+                                      ctx,
+                                      reinterpret_cast<unsigned char *>(out.data()),
+                                      &outLen,
+                                      reinterpret_cast<const unsigned char *>(ciphertext.constData()),
+                                      ciphertext.size()
+                                  ) == 1;
+    bool       okFin  = okUpd && EVP_DecryptFinal_ex(
+                                     ctx, reinterpret_cast<unsigned char *>(out.data()) + outLen, &finalLen
+                                 ) == 1;
     EVP_CIPHER_CTX_free(ctx);
     if (!okFin)
         return {};

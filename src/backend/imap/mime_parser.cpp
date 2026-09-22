@@ -39,7 +39,7 @@ QMap<QString, QString> parseHeaders(const QByteArray &headerBlock) {
             return;
         const int colon = cur.indexOf(':');
         if (colon > 0) {
-            QString name = QString::fromLatin1(cur.left(colon)).trimmed().toLower();
+            QString name  = QString::fromLatin1(cur.left(colon)).trimmed().toLower();
             QString value = QString::fromLatin1(cur.mid(colon + 1)).trimmed();
             if (!out.contains(name)) // first wins
                 out.insert(name, value);
