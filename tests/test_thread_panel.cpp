@@ -36,6 +36,7 @@
 #include "session/session.h"
 #include "ui/composer/composer_widget.h"
 #include "ui/message_list/message_list.h"
+#include "ui/mention_popup/mention_popup.h"
 #include "ui/thread_panel/thread_panel.h"
 
 int main(int argc, char **argv) {
@@ -189,6 +190,33 @@ static ComposerWidget *composerOf(ThreadPanel &panel) {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+TEST_CASE("thread panel marks broadcast mentions as disabled", "[thread][mention]") {
+    Fixture     f;
+    ThreadPanel panel(nullptr);
+    panel.resize(400, 600);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    panel.show();
+    auto *composer = composerOf(panel);
+    auto *editor   = composer->findChild<QTextEdit *>("composerEdit");
+    REQUIRE(editor);
+    editor->setPlainText("@here");
+    editor->moveCursor(QTextCursor::End);
+    QKeyEvent release(QEvent::KeyRelease, Qt::Key_E, Qt::NoModifier, "e");
+    QApplication::sendEvent(editor, &release);
+    QApplication::processEvents();
+    auto *popup = panel.findChild<MentionPopup *>();
+    REQUIRE(popup);
+    REQUIRE(popup->isOpen());
+    bool notice = false;
+    for (auto *row : popup->findChildren<QWidget *>())
+        if (row->accessibleName() == "@here")
+            notice = row->accessibleDescription() == "Disabled in threads";
+    CHECK(notice);
+    REQUIRE(popup->handleKey(Qt::Key_Return));
+    CHECK(composer->currentText() == "@here ");
+}
 
 TEST_CASE("attaching a file in a thread reaches the backend with the thread root", "[thread]") {
     Fixture     f;

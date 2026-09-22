@@ -79,6 +79,7 @@ public:
     // Tell the composer the current conversation kind so it can decide whether
     // to show @channel/@here aliases in the mention popup.
     void setConvKind(ConvKind kind);
+    void setThreadMode(bool isThread);
 
     // Edit mode: pre-populate the editor with an existing message for editing.
     // exitEditMode() is a no-op if not currently in edit mode.
@@ -218,6 +219,7 @@ private:
     Session                                 *_session        = nullptr;
     ImageCache                              *_imgCache       = nullptr;
     ConvKind                                 _convKind       = ConvKind::PublicChannel;
+    bool                                     _isThread       = false;
     int                                      _atTriggerStart = -1;
     QHash<QWidget *, QString>                _tooltipBtns; // bottom-bar buttons
     QList<QPair<QAbstractButton *, QString>> _iconBtns;    // bottom-bar icon buttons

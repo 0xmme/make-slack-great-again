@@ -800,6 +800,12 @@ void ComposerWidget::setConvKind(ConvKind kind) {
         _mentionPopup->dismiss();
 }
 
+void ComposerWidget::setThreadMode(bool isThread) {
+    _isThread = isThread;
+    if (_mentionPopup)
+        _mentionPopup->dismiss();
+}
+
 void ComposerWidget::checkMentionPopup() {
     const QString text = _edit->toPlainText();
     const int     cur  = _edit->textCursor().position();
@@ -855,9 +861,9 @@ void ComposerWidget::checkMentionPopup() {
                 auto      tc   = _edit->textCursor();
                 tc.setPosition(_atTriggerStart);
                 tc.setPosition(cur2, QTextCursor::KeepAnchor);
-                if (insert.startsWith("<@")) // user: show the name, send the raw token
+                if (insert.startsWith("<")) // mentions: show the name, send the raw token
                     tc.insertText(display, mentionCharFormat(display, insert));
-                else // @here/@channel/@everyone aliases stay literal
+                else // broadcasts in threads stay literal
                     tc.insertText(insert, QTextCharFormat());
                 tc.insertText(" ", QTextCharFormat());
                 _edit->setFocus();
@@ -873,16 +879,17 @@ void ComposerWidget::checkMentionPopup() {
     QTextCursor atCursor = _edit->textCursor();
     atCursor.setPosition(atPos);
     const QPoint anchor = _edit->mapToGlobal(_edit->cursorRect(atCursor).bottomLeft());
-    _mentionPopup->open(anchor, query, isDm);
+    _mentionPopup->open(anchor, query, isDm, _isThread);
 }
 
 void ComposerWidget::setEditorMrkdwn(const QString &text) {
-    // <@U…> user mentions, <#C…|name> channel links and <url|title> GIF links
+    // <@U…> user mentions, <!here> broadcasts, <#C…|name> channel and GIF links
     // render as pills; the raw token travels in each pill's char format so the
     // sent text is unchanged. Any other <url|label> stays literal.
-    static const QRegularExpression kMention(
-        QStringLiteral("<([@#])([A-Z0-9]+)(?:\\|([^>]+))?>|<(https?://[^|>\\s]+)(?:\\|([^>]+))?>")
-    );
+    static const QRegularExpression kMention(QStringLiteral(
+        "<([@#])([A-Z0-9]+)(?:\\|([^>]+))?>|<(https?://"
+        "[^|>\\s]+)(?:\\|([^>]+))?>|<!(here|channel|everyone)(?:\\|[^>]+)?>"
+    ));
     _edit->clear();
     QTextCursor tc(_edit->document());
     int         pos = 0;
@@ -891,6 +898,11 @@ void ComposerWidget::setEditorMrkdwn(const QString &text) {
         const auto m = it.next();
         tc.insertText(text.mid(pos, m.capturedStart() - pos), QTextCharFormat());
         pos = m.capturedEnd();
+        if (!m.captured(6).isEmpty()) {
+            const QString display = "@" + m.captured(6);
+            tc.insertText(display, mentionCharFormat(display, m.captured(0)));
+            continue;
+        }
         if (!m.captured(4).isEmpty()) {
             if (LinkLabels::isGiphyMediaUrl(m.captured(4))) {
                 const QString display = gifPillDisplay(m.captured(5));

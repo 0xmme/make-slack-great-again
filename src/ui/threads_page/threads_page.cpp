@@ -535,6 +535,7 @@ private:
             return;
         }
         _composer = new ComposerWidget(_body);
+        _composer->setThreadMode(true);
         // Align the box with the message avatars — the card padding already
         // provides the gutter the chat footer's margins normally would.
         _composer->setFlushHorizontalMargins();

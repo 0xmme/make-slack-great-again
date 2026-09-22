@@ -6,6 +6,7 @@
 #include "ui/image_cache.h"
 #include "ui/paint_utils.h"
 #include "ui/popup_placement.h"
+#include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "ui/user_avatar.h"
@@ -19,10 +20,13 @@
 #include <QVBoxLayout>
 
 namespace {
-constexpr int kRowH       = 38;
-constexpr int kMaxVisible = 8;
-constexpr int kWidth      = 360;
-constexpr int kMargins    = 4;
+constexpr int kRowH        = 38;
+constexpr int kMaxVisible  = 8;
+constexpr int kWidth       = 360;
+// Wider in threads: the alias rows there carry the "Disabled in threads"
+// notice next to the description and the Enter badge.
+constexpr int kThreadWidth = 560;
+constexpr int kMargins     = 4;
 
 constexpr int kAvatar = 26; // avatar / alias-icon box
 constexpr int kPadX   = 8;
@@ -34,6 +38,7 @@ struct RowData {
     bool     isAlias = false;
     QString  name;     // bold primary label
     QString  subtitle; // dimmed secondary (alias description / user real name)
+    QString  status;   // broadcast availability, reserved ahead of the subtitle
     bool     isBot    = false;
     Presence presence = Presence::None;
     QString  avatarUrl;
@@ -45,11 +50,13 @@ struct AliasInfo {
     const char *desc;
 };
 constexpr AliasInfo kAliases[] = {
-    {"@channel", "@channel", QT_TRANSLATE_NOOP("MentionPopup", "Notify everyone in this channel")},
+    {"@channel",
+     "<!channel>",
+     QT_TRANSLATE_NOOP("MentionPopup", "Notify everyone in this channel")},
     {"@everyone",
-     "@everyone",
+     "<!everyone>",
      QT_TRANSLATE_NOOP("MentionPopup", "Notify everyone in your workspace")},
-    {"@here", "@here", QT_TRANSLATE_NOOP("MentionPopup", "Notify every online member here")},
+    {"@here", "<!here>", QT_TRANSLATE_NOOP("MentionPopup", "Notify every online member here")},
 };
 } // namespace
 
@@ -60,14 +67,18 @@ constexpr AliasInfo kAliases[] = {
 
 class MentionRow : public QWidget {
 public:
-    std::function<void()> onClick;
-    std::function<void()> onHover;
+    std::function<void()>                onClick;
+    std::function<void()>                onHover;
+    std::function<void(const QString &)> onTip; // subtitle didn't fit: show it whole
+    std::function<void()>                onTipHide;
 
     MentionRow(const RowData &data, ImageCache *cache, QWidget *parent)
         : QWidget(parent), _data(data), _cache(cache) {
         setFixedHeight(kRowH);
         setCursor(Qt::PointingHandCursor);
         setMouseTracking(true);
+        setAccessibleName(_data.name);
+        setAccessibleDescription(_data.status.isEmpty() ? _data.subtitle : _data.status);
 
         if (_cache && !_data.isAlias && !_data.avatarUrl.isEmpty()) {
             _cache->get(_data.avatarUrl); // kick off the download
@@ -89,6 +100,16 @@ protected:
     void enterEvent(QEnterEvent *) override {
         if (onHover)
             onHover();
+        // Selection adds the Enter badge, which may be what elides the subtitle —
+        // paint synchronously so the decision sees the hovered layout.
+        repaint();
+        if (_subtitleClipped && onTip)
+            onTip(_data.subtitle);
+    }
+
+    void leaveEvent(QEvent *) override {
+        if (onTipHide)
+            onTipHide();
     }
 
     void mousePressEvent(QMouseEvent *e) override {
@@ -136,6 +157,18 @@ protected:
             p.setFont(ef);
             p.setPen(Th::c().text.secondary);
             p.drawText(enterRect, Qt::AlignCenter, enterText);
+        }
+
+        // Keep the thread restriction visible even when the description is elided.
+        if (!_data.status.isEmpty()) {
+            QFont sf = font();
+            sf.setPixelSize(Th::c().fonts.caption);
+            const int   sw = QFontMetrics(sf).horizontalAdvance(_data.status);
+            const QRect statusRect(textRight - sw, 0, sw, kRowH);
+            p.setFont(sf);
+            p.setPen(Th::c().text.secondary);
+            p.drawText(statusRect, Qt::AlignVCenter | Qt::AlignLeft, _data.status);
+            textRight = statusRect.left() - kGap;
         }
 
         // ── Name (bold) ─────────────────────────────────────────────────────
@@ -195,13 +228,16 @@ protected:
         }
 
         // ── Subtitle (dimmed) ───────────────────────────────────────────────
+        _subtitleClipped = false;
         if (!_data.subtitle.isEmpty()) {
             x += kGap;
+            _subtitleClipped = x >= textRight;
             if (x < textRight) {
                 QFont sf = font();
                 sf.setPixelSize(Th::c().fonts.base);
                 const QFontMetrics sfm(sf);
                 const QString sub = sfm.elidedText(_data.subtitle, Qt::ElideRight, textRight - x);
+                _subtitleClipped  = sub != _data.subtitle;
                 p.setFont(sf);
                 // Alias descriptions read darker in Slack; user real names are dimmer.
                 p.setPen(_data.isAlias ? Th::c().text.secondary : Th::c().text.tertiary);
@@ -251,8 +287,9 @@ private:
     }
 
     RowData     _data;
-    ImageCache *_cache    = nullptr;
-    bool        _selected = false;
+    ImageCache *_cache           = nullptr;
+    bool        _selected        = false;
+    bool        _subtitleClipped = false; // last paint elided or skipped the subtitle
 };
 
 // ── MentionPopup ──────────────────────────────────────────────────────────────
@@ -262,6 +299,7 @@ MentionPopup::MentionPopup(QWidget *parent) : QFrame(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
     setObjectName("mentionPopup");
     setFixedWidth(kWidth);
+    _tooltip = new PopupTooltip(this);
 
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(kMargins, kMargins, kMargins, kMargins);
@@ -322,8 +360,8 @@ void MentionPopup::setSession(Session *s) {
     _session = s;
 }
 
-void MentionPopup::open(const QPoint &anchor, const QString &query, bool isDm) {
-    rebuild(query, isDm);
+void MentionPopup::open(const QPoint &anchor, const QString &query, bool isDm, bool isThread) {
+    rebuild(query, isDm, isThread);
     if (_rows.isEmpty()) {
         hide();
         return;
@@ -336,7 +374,8 @@ void MentionPopup::open(const QPoint &anchor, const QString &query, bool isDm) {
     // Re-anchor on every call: place the popup so its bottom edge sits just
     // above the '@' that triggered it. When filtering shrinks the list the
     // popup must shrink toward the anchor instead of leaving a gap above it.
-    QWidget     *par   = parentWidget();
+    QWidget *par = parentWidget();
+    setFixedWidth(qMin(isThread && !isDm ? kThreadWidth : kWidth, par->width()));
     const QPoint local = par->mapFromGlobal(anchor);
     // Bottom edge just above the '@'; flip below + clamp within the parent if
     // there's no room above (previously y was never clamped → ran off-screen).
@@ -354,6 +393,7 @@ void MentionPopup::open(const QPoint &anchor, const QString &query, bool isDm) {
 
 void MentionPopup::dismiss() {
     hide();
+    _tooltip->hide();
     // Do NOT delete rows here: this may be called from inside a MentionRow's
     // own mousePressEvent (via onClick → confirm → dismiss), and deleting the
     // widget while its event handler is on the call stack is undefined behavior.
@@ -382,7 +422,8 @@ bool MentionPopup::handleKey(int key) {
     }
 }
 
-void MentionPopup::rebuild(const QString &query, bool isDm) {
+void MentionPopup::rebuild(const QString &query, bool isDm, bool isThread) {
+    _tooltip->hide(); // its row is about to go away
     while (_vbox->count())
         delete _vbox->takeAt(0)->widget();
     _rows.clear();
@@ -402,13 +443,17 @@ void MentionPopup::rebuild(const QString &query, bool isDm) {
             confirm();
         };
         row->onHover = [this, idx] { selectRow(idx); };
+        row->onTip   = [this, row](const QString &text) {
+            _tooltip->showAbove(text, QRect(row->mapToGlobal(QPoint(0, 0)), row->size()));
+        };
+        row->onTipHide = [this] { _tooltip->hide(); };
         _vbox->addWidget(row);
         _rows.append(row);
         _displays.append(display);
         _inserts.append(insert);
     };
 
-    // Aliases — channels and group DMs only, not 1:1 DMs
+    // Aliases are only available in channels.
     if (!isDm) {
         for (const auto &a : kAliases) {
             const QString name(a.name);
@@ -417,7 +462,9 @@ void MentionPopup::rebuild(const QString &query, bool isDm) {
                 d.isAlias  = true;
                 d.name     = name;
                 d.subtitle = tr(a.desc);
-                addRow(d, name, QLatin1String(a.insert));
+                if (isThread)
+                    d.status = tr("Disabled in threads");
+                addRow(d, name, isThread ? name : QLatin1String(a.insert));
             }
         }
     }

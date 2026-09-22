@@ -6,6 +6,7 @@
 
 class Session;
 class ImageCache;
+class PopupTooltip;
 class QScrollArea;
 class QVBoxLayout;
 
@@ -24,7 +25,10 @@ public:
     // call so the popup hugs the '@' as filtering changes the list height.
     // query : text typed after '@' (empty = show all).
     // isDm  : true suppresses @channel / @everyone / @here aliases.
-    void open(const QPoint &anchorGlobalBottomLeft, const QString &query, bool isDm);
+    // isThread: broadcast aliases stay literal and show a disabled notice.
+    void open(
+        const QPoint &anchorGlobalBottomLeft, const QString &query, bool isDm, bool isThread = false
+    );
     void dismiss();
     bool isOpen() const { return isVisible(); }
 
@@ -34,11 +38,12 @@ public:
 signals:
     // display    : human-readable label of the chosen row (e.g. "@Maria").
     // insertText : what the outgoing message must contain — the raw token
-    //              "<@U…>" for users, or the alias itself for @here/@channel.
+    //              "<@U…>" for users, "<!here>" etc. for broadcasts in channels,
+    //              or the literal alias in threads (where broadcasts don't notify).
     void selected(const QString &display, const QString &insertText);
 
 private:
-    void rebuild(const QString &query, bool isDm);
+    void rebuild(const QString &query, bool isDm, bool isThread);
     void selectRow(int idx);
     void confirm();
     void applyTheme();
@@ -48,6 +53,7 @@ private:
     QVBoxLayout     *_vbox     = nullptr;
     Session         *_session  = nullptr;
     ImageCache      *_imgCache = nullptr;
+    PopupTooltip    *_tooltip  = nullptr; // full description of a row whose subtitle got elided
     QList<QWidget *> _rows;
     QList<QString>   _displays;
     QList<QString>   _inserts;
