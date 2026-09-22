@@ -498,6 +498,24 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         endif()
     endif()
 endif()
+# IBus input-context plugin import (static builds) — GitHub issue #79.
+#
+# A statically linked binary cannot dlopen anything, so the external input-method
+# plugins a desktop provides (fcitx5-qt's "fcitx", ibus's own "ibus" build) can
+# never load; Qt then falls back to its "compose" context (dead keys only) and
+# CJK/IME input silently does nothing. Qt's own ibus plugin is built alongside
+# compose, but it is marked QT_DEFAULT_PLUGIN=0 in the static Qt, so — unlike
+# compose — linking Qt6::Gui does not import it. Import it explicitly. fcitx5
+# ships an IBus-frontend that mimics the ibus daemon, so main.cpp treats
+# QT_IM_MODULE=fcitx as ibus in this build (MSGA_STATIC_IM_PLUGINS).
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    get_target_property(_msga_qt_core_type Qt6::Core TYPE)
+    if(_msga_qt_core_type STREQUAL "STATIC_LIBRARY" AND TARGET Qt6::QIbusPlatformInputContextPlugin)
+        qt6_import_plugins(msga INCLUDE Qt6::QIbusPlatformInputContextPlugin)
+        target_compile_definitions(msga PRIVATE MSGA_STATIC_IM_PLUGINS)
+        message(STATUS "msga: importing IBus input-context plugin (static Qt)")
+    endif()
+endif()
 if(WIN32)
     target_compile_definitions(msga PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(msga PRIVATE dbghelp)

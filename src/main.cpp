@@ -151,6 +151,32 @@ int main(int argc, char *argv[]) {
     if (qEnvironmentVariableIntValue("MSGA_FRACTIONAL_SCALE") != 1 &&
         !qEnvironmentVariableIsSet("QT_WAYLAND_DISABLED_INTERFACES"))
         qputenv("QT_WAYLAND_DISABLED_INTERFACES", "wp_fractional_scale_manager_v1");
+#if defined(MSGA_STATIC_IM_PLUGINS)
+    // Input method in the static build (GitHub issue #79). This binary cannot
+    // dlopen the desktop's fcitx5-qt plugin, so QT_IM_MODULE=fcitx would resolve
+    // to nothing and Qt would silently fall back to "compose" (dead keys, no
+    // IME). The only IM plugin linked in is Qt's ibus one (see CMakeLists.txt),
+    // and fcitx5's IBus-frontend mimics the ibus daemon — so route fcitx there.
+    // Qt 6.7+ reads QT_IM_MODULES (a ';' list with fallback) before QT_IM_MODULE;
+    // rewrite whichever one is in effect and leave everything else (an unset
+    // variable on Wayland selects the compositor's text-input protocol) alone.
+    {
+        const QByteArray  var     = qEnvironmentVariableIsSet("QT_IM_MODULES")
+                                        ? QByteArrayLiteral("QT_IM_MODULES")
+                                        : QByteArrayLiteral("QT_IM_MODULE");
+        QList<QByteArray> modules = qgetenv(var.constData()).split(';');
+        bool              changed = false;
+        for (QByteArray &m : modules) {
+            const QByteArray t = m.trimmed().toLower();
+            if (t == "fcitx" || t == "fcitx5") {
+                m       = "ibus";
+                changed = true;
+            }
+        }
+        if (changed)
+            qputenv(var.constData(), modules.join(';'));
+    }
+#endif
 #endif
     QApplication app(argc, argv);
     app.setApplicationName("MSGA");
