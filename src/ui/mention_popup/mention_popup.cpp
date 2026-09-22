@@ -6,6 +6,7 @@
 #include "ui/image_cache.h"
 #include "ui/paint_utils.h"
 #include "ui/popup_placement.h"
+#include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "ui/user_avatar.h"
@@ -66,8 +67,10 @@ constexpr AliasInfo kAliases[] = {
 
 class MentionRow : public QWidget {
 public:
-    std::function<void()> onClick;
-    std::function<void()> onHover;
+    std::function<void()>                onClick;
+    std::function<void()>                onHover;
+    std::function<void(const QString &)> onTip; // subtitle didn't fit: show it whole
+    std::function<void()>                onTipHide;
 
     MentionRow(const RowData &data, ImageCache *cache, QWidget *parent)
         : QWidget(parent), _data(data), _cache(cache) {
@@ -97,6 +100,16 @@ protected:
     void enterEvent(QEnterEvent *) override {
         if (onHover)
             onHover();
+        // Selection adds the Enter badge, which may be what elides the subtitle —
+        // paint synchronously so the decision sees the hovered layout.
+        repaint();
+        if (_subtitleClipped && onTip)
+            onTip(_data.subtitle);
+    }
+
+    void leaveEvent(QEvent *) override {
+        if (onTipHide)
+            onTipHide();
     }
 
     void mousePressEvent(QMouseEvent *e) override {
@@ -215,13 +228,16 @@ protected:
         }
 
         // ── Subtitle (dimmed) ───────────────────────────────────────────────
+        _subtitleClipped = false;
         if (!_data.subtitle.isEmpty()) {
             x += kGap;
+            _subtitleClipped = x >= textRight;
             if (x < textRight) {
                 QFont sf = font();
                 sf.setPixelSize(Th::c().fonts.base);
                 const QFontMetrics sfm(sf);
                 const QString sub = sfm.elidedText(_data.subtitle, Qt::ElideRight, textRight - x);
+                _subtitleClipped  = sub != _data.subtitle;
                 p.setFont(sf);
                 // Alias descriptions read darker in Slack; user real names are dimmer.
                 p.setPen(_data.isAlias ? Th::c().text.secondary : Th::c().text.tertiary);
@@ -271,8 +287,9 @@ private:
     }
 
     RowData     _data;
-    ImageCache *_cache    = nullptr;
-    bool        _selected = false;
+    ImageCache *_cache           = nullptr;
+    bool        _selected        = false;
+    bool        _subtitleClipped = false; // last paint elided or skipped the subtitle
 };
 
 // ── MentionPopup ──────────────────────────────────────────────────────────────
@@ -282,6 +299,7 @@ MentionPopup::MentionPopup(QWidget *parent) : QFrame(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
     setObjectName("mentionPopup");
     setFixedWidth(kWidth);
+    _tooltip = new PopupTooltip(this);
 
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(kMargins, kMargins, kMargins, kMargins);
@@ -375,6 +393,7 @@ void MentionPopup::open(const QPoint &anchor, const QString &query, bool isDm, b
 
 void MentionPopup::dismiss() {
     hide();
+    _tooltip->hide();
     // Do NOT delete rows here: this may be called from inside a MentionRow's
     // own mousePressEvent (via onClick → confirm → dismiss), and deleting the
     // widget while its event handler is on the call stack is undefined behavior.
@@ -404,6 +423,7 @@ bool MentionPopup::handleKey(int key) {
 }
 
 void MentionPopup::rebuild(const QString &query, bool isDm, bool isThread) {
+    _tooltip->hide(); // its row is about to go away
     while (_vbox->count())
         delete _vbox->takeAt(0)->widget();
     _rows.clear();
@@ -423,6 +443,10 @@ void MentionPopup::rebuild(const QString &query, bool isDm, bool isThread) {
             confirm();
         };
         row->onHover = [this, idx] { selectRow(idx); };
+        row->onTip   = [this, row](const QString &text) {
+            _tooltip->showAbove(text, QRect(row->mapToGlobal(QPoint(0, 0)), row->size()));
+        };
+        row->onTipHide = [this] { _tooltip->hide(); };
         _vbox->addWidget(row);
         _rows.append(row);
         _displays.append(display);

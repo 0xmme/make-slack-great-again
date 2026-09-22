@@ -6,6 +6,7 @@
 
 class Session;
 class ImageCache;
+class PopupTooltip;
 class QScrollArea;
 class QVBoxLayout;
 
@@ -52,6 +53,7 @@ private:
     QVBoxLayout     *_vbox     = nullptr;
     Session         *_session  = nullptr;
     ImageCache      *_imgCache = nullptr;
+    PopupTooltip    *_tooltip  = nullptr; // full description of a row whose subtitle got elided
     QList<QWidget *> _rows;
     QList<QString>   _displays;
     QList<QString>   _inserts;

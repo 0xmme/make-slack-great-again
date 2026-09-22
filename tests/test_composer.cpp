@@ -666,6 +666,7 @@ TEST_CASE("adjacent mention pills serialize independently", "[composer][mention]
 
 #include "ui/composer/mention_completer.h"
 #include "ui/mention_popup/mention_popup.h"
+#include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/theme.h"
 #include <QEventLoop>
 #include <QKeyEvent>
@@ -738,6 +739,58 @@ TEST_CASE("broadcast autocomplete highlights and sends Slack tokens", "[composer
         CHECK(editOf(&c)->toPlainText() == alias);
         CHECK(c.currentText() == token);
         c.exitEditMode();
+    }
+}
+
+TEST_CASE("mention rows show an elided description as a tooltip", "[composer][mention]") {
+    auto *stub = new StubBackend2;
+    User  user;
+    user.id          = UserId{"U7"};
+    user.name        = "ann";
+    user.displayName = "Ann Example";
+    stub->_users     = std::vector<User>{user};
+    Session session(std::unique_ptr<Backend>(stub), "T_TEST");
+    session.start();
+    QWidget host;
+    host.resize(600, 600);
+    ComposerWidget c(&host);
+    c.setGeometry(0, 450, 600, 150);
+    c.setSession(&session);
+    host.show();
+
+    // The hovered row gains the Enter badge, which elides the long @channel
+    // description but leaves a short user handle whole: only the former gets
+    // a tooltip, and leaving the row hides it again.
+    struct Probe {
+        const char *typed;
+        int         key;
+        const char *keyText;
+        const char *rowName;
+        bool        expectTip;
+    };
+    for (const Probe &pr :
+         {Probe{"@chan", Qt::Key_N, "n", "@channel", true},
+          Probe{"@ann", Qt::Key_N, "n", "@Ann Example", false}}) {
+        editOf(&c)->clear();
+        typeText(&c, pr.typed);
+        releaseKey(&c, pr.key, pr.keyText);
+        auto *popup = host.findChild<MentionPopup *>();
+        REQUIRE(popup);
+        REQUIRE(popup->isOpen());
+        QWidget *row = nullptr;
+        for (auto *w : popup->findChildren<QWidget *>())
+            if (w->accessibleName() == pr.rowName)
+                row = w;
+        REQUIRE(row);
+        const QPointF centre(row->width() / 2.0, row->height() / 2.0);
+        QEnterEvent   enter(centre, centre, row->mapToGlobal(centre.toPoint()));
+        QApplication::sendEvent(row, &enter);
+        auto *tip = host.findChild<PopupTooltip *>();
+        REQUIRE(tip);
+        CHECK(tip->isVisible() == pr.expectTip);
+        QEvent leave(QEvent::Leave);
+        QApplication::sendEvent(row, &leave);
+        CHECK_FALSE(tip->isVisible());
     }
 }
 
