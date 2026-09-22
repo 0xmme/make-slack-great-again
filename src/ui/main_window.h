@@ -5,6 +5,7 @@
 #include "backend/domain.h"
 #include "auth/token_store.h"
 #include "ui/composer/composer_draft.h"
+#include "ui/content_view.h"
 #include "ui/nav_history.h"
 #include "rpl/lifetime.h"
 
@@ -341,6 +342,9 @@ private:
 
     std::vector<ConversationId> _convIds;
     ConversationId              _currentConvId;
+    // Which kind of page the content stack shows. Not derivable from
+    // _currentConvId: it is empty on an overview page too (see content_view.h).
+    ContentView                 _contentView = ContentView::None;
     NavHistory                  _navHistory;
     bool                        _navApplying = false; // a back/forward jump is driving the UI
     ConversationId _pendingNavConv; // jump target awaiting the new workspace's conv list

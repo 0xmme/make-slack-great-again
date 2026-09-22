@@ -1484,6 +1484,7 @@ void MainWindow::activateWorkspace(QString teamId) {
         _session->scheduleSaveUnreads();
     }
     _currentConvId = {};
+    _contentView   = ContentView::None;
     if (_convFooter)
         _convFooter->clear();
     if (_searchWidget)
@@ -1569,6 +1570,7 @@ void MainWindow::showLoggedOut() {
         _convFooter->clear();
     _activeTeamId.clear();
     _currentConvId = {};
+    _contentView   = ContentView::None;
     updateTrayIcon();
     if (_titleBar)
         _titleBar->setTitle({});
@@ -2084,9 +2086,12 @@ void MainWindow::connectToSession() {
                     // Conversation gone (left/archived) — fall through to the
                     // usual last-conv restore below.
                 }
-                // On first populate (no conversation open yet), jump to the last
-                // conversation the user had open in the previous session.
-                if (_currentConvId.value.isEmpty()) {
+                // On first populate (nothing shown yet), jump to the last
+                // conversation the user had open in the previous session. Gated
+                // on the content view, not on _currentConvId: the id is empty on
+                // the Threads / Saved overview pages too, and this fires on
+                // every sweep that reassigns the list (issue #81).
+                if (shouldRestoreLastConv(_contentView)) {
                     restoreLastConv();
                     // If still no conversation after restore attempt, show tips now
                     // that the list is ready (not during initial loading spinner).
@@ -3337,6 +3342,9 @@ void MainWindow::openThreadsView() {
     // openConversation(), which restores it on the way back.
     stashComposerDraft();
     _currentConvId = {};
+    // Deliberate leave, not "nothing open yet": the conversations() subscriber
+    // must not treat the empty id as a first populate and restore the last chat.
+    _contentView   = ContentView::Overview;
 
     if (_typingIndicator)
         _typingIndicator->clearAll();
@@ -3379,6 +3387,7 @@ void MainWindow::openSavedMessagesView() {
     // Same leave-the-conversation bookkeeping as openThreadsView().
     stashComposerDraft();
     _currentConvId = {};
+    _contentView   = ContentView::Overview;
 
     if (_typingIndicator)
         _typingIndicator->clearAll();
@@ -3941,6 +3950,7 @@ void MainWindow::openConversation(int row) {
     _currentConvId = _convList->conversationId(row);
     if (_currentConvId.value.isEmpty())
         return;
+    _contentView = ContentView::Conversation;
 
     // Typing is per-conversation; forget whoever was typing in the old one.
     if (_typingIndicator)

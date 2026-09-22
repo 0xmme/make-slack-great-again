@@ -98,6 +98,10 @@ add_msga_test(test_nav_history
     test_nav_history.cpp
 )
 
+add_msga_test(test_content_view
+    test_content_view.cpp
+)
+
 add_msga_test(test_background_tasks
     test_background_tasks.cpp
     ${CMAKE_SOURCE_DIR}/src/util/background_tasks.cpp
