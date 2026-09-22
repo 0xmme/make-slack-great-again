@@ -1472,6 +1472,25 @@ withFallbackLinks(const TextWithEntities &rich, const TextWithEntities &fallback
         if (link.data.isEmpty() || link.offset < 0 || link.length <= 0 ||
             link.offset > rich.text.size() || link.length > rich.text.size() - link.offset)
             continue;
+        // A bare permalink reaches rich_text as a plain `link` element, so the
+        // block holds a URL anchor where the fallback parsed a message chip —
+        // same span, same target. Take the chip (what the official client
+        // shows); the block's URL carries nothing the chip lacks.
+        if (link.type == EntityType::MessageLink) {
+            const auto same = std::find_if(
+                merged.entities.begin(), merged.entities.end(), [&](const TextEntity &entity) {
+                    return entity.type == EntityType::Link && entity.offset == link.offset &&
+                           entity.length == link.length &&
+                           SlackLinks::refToToken(SlackLinks::parseMessageLink(entity.data)) ==
+                               link.data;
+                }
+            );
+            if (same != merged.entities.end()) {
+                same->type = EntityType::MessageLink;
+                same->data = link.data;
+                continue;
+            }
+        }
         const int  end      = link.offset + link.length;
         const bool conflict = std::any_of(
             merged.entities.begin(), merged.entities.end(), [&](const TextEntity &entity) {

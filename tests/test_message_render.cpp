@@ -1131,6 +1131,35 @@ TEST_CASE("a permalink the author gave link text stays a plain link", "[render][
     delete session;
 }
 
+TEST_CASE("a bare permalink kept as a URL in rich_text renders as a chip", "[render][msglink]") {
+    // rich_text carries a bare permalink as a plain `link` element; the fallback
+    // parses the same span as a message link. The chip wins over the raw anchor.
+    auto   *session = renderSession();
+    Message msg;
+    msg.text = MrkdwnParser::parse("see <" + kPermalink + ">");
+    Block block;
+    block.typeStr   = "rich_text";
+    block.text.text = msg.text.text;
+    SECTION("same target becomes a chip") {
+        block.text.entities.push_back({EntityType::Link, 4, (int)kPermalink.size(), kPermalink});
+        msg.blocks         = {block};
+        const QString html = MsgRender::buildMsgHtml(msg, session);
+        CHECK(html.contains(MsgRender::kMessageLinkIconRes));
+        CHECK(html.count("href=") == 1);
+        CHECK_FALSE(html.contains("archives"));
+    }
+    SECTION("a different target on the same span stays the block's link") {
+        const QString other = "https://example.com/elsewhere";
+        block.text.entities.push_back({EntityType::Link, 4, (int)kPermalink.size(), other});
+        msg.blocks         = {block};
+        const QString html = MsgRender::buildMsgHtml(msg, session);
+        CHECK(html.contains("href='" + other + "'"));
+        CHECK(html.count("href=") == 1);
+        CHECK_FALSE(html.contains(MsgRender::kMessageLinkIconRes));
+    }
+    delete session;
+}
+
 TEST_CASE("an ordinary Slack URL is not a message link", "[render][msglink]") {
     auto         *session = renderSession();
     const QString html =
