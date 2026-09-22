@@ -3,7 +3,9 @@
 #pragma once
 
 #include "backend/domain.h"
+#include "rpl/lifetime.h"
 #include "ui/conv_list/named_conversation.h"
+#include "ui/message_list/message_render.h"
 #include "ui/virtual_list/virtual_list_widget.h"
 
 #include <QHash>
@@ -11,10 +13,12 @@
 #include <QStaticText>
 #include <QTimer>
 #include <QVariantAnimation>
+#include <QVector>
 #include <vector>
 
 class ImageCache;
 class PopupTooltip;
+class QMovie;
 class Session;
 
 // Per-user info cached from setUsers().
@@ -60,7 +64,9 @@ public:
 
     // The active session — used only to ask the backend opaque-id questions
     // (synthetic/system accounts, unresolved raw ids). Re-set on workspace switch.
-    void setSession(Session *s) { _session = s; }
+    // Also the custom-emoji resolver for status emoji: a status set to a
+    // workspace emoji (":finland:") is an image from emoji.list, not a glyph.
+    void setSession(Session *s);
 
     void setConversations(std::vector<Conversation> convs);
     // Call with the full user list so DM names, avatars, and status can be resolved.
@@ -182,6 +188,7 @@ protected:
     void wheelEvent(QWheelEvent *event) override;
 
     void doPaint(QPaintEvent *e) override;
+    void hideEvent(QHideEvent *e) override;
     void doMouseMove(QMouseEvent *e) override;
     void doMousePress(QMouseEvent *e) override;
     void doMouseRelease(QMouseEvent *e) override;
@@ -247,8 +254,12 @@ protected:
     void rebuildIconPixmaps();
 
     // Avatar helpers — trigger is non-const (starts downloads), draw is const.
-    void triggerMissingAvatarDownloads();
-    void drawUserAvatar(
+    void                     triggerMissingAvatarDownloads();
+    // Status emoji of a DM peer resolved against the workspace's custom-emoji
+    // map: `unicode` for built-ins, `imageUrl` for custom ones, resolved=false
+    // when the user has none or the name is unknown.
+    MsgRender::EmojiResolved statusEmojiOf(const UserInfo &info) const;
+    void                     drawUserAvatar(
         QPainter &p, QRect rect, const QString &userId, QColor bgColor, bool isSelected = false
     ) const;
 
@@ -279,6 +290,7 @@ protected:
     ImageCache   *_imgCache = nullptr;
     PopupTooltip *_tooltip  = nullptr; // hover tooltip for the DM header "+"
     Session      *_session  = nullptr; // non-owning; for opaque-id queries only
+    rpl::lifetime _sessionLifetime;    // emojiMapLoaded() subscription on _session
     UserId        _meUserId;
     bool          _selfPhantomAway = false;
 
@@ -301,6 +313,19 @@ protected:
     // convId.value → viewport rect of the clickable huddle indicator, refreshed
     // each paint (so it tracks scroll); consulted on click to join the huddle.
     mutable QHash<QString, QRect> _huddleHitRects;
+
+    // Animated custom status emoji (Slack serves many as GIFs). Players are
+    // acquired from the shared ImageCache (one acquire per url, released in
+    // the destructor) and only run while a row showing them is on screen:
+    // _statusEmojiRects is cleared and repopulated each paint with the row
+    // rects painted for each url; syncStatusEmojiPlayback() then starts the
+    // players with a rect and pauses the rest. frameChanged repaints only
+    // those rects.
+    QMovie                                *statusEmojiMovie(const QString &url) const;
+    void                                   syncStatusEmojiPlayback() const;
+    void                                   releaseStatusEmojiMovies();
+    mutable QHash<QString, QMovie *>       _statusEmojiMovies;
+    mutable QHash<QString, QVector<QRect>> _statusEmojiRects;
 
     // Visual row → viewport rect of its name text, recorded each paint only when
     // the name had to be elided. doMouseMove consults it to show a full-name

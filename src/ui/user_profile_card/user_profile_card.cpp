@@ -88,11 +88,10 @@ void UserProfileCard::relayout() {
     const QFontMetrics detailFm(detailFont());
 
     _headerH = roleLabel().isEmpty() ? 0 : 34;
-    _statusH =
-        (_user.statusText.isEmpty() && _user.statusEmoji.isEmpty()) ? 0 : detailFm.height() + 4;
-    _titleH = _user.title.isEmpty() ? 0 : detailFm.height() + 4;
-    _emailH = _user.email.isEmpty() ? 0 : 24;
-    _clockH = _user.hasTz ? 24 : 0;
+    _statusH = (_user.statusText.isEmpty() && !hasStatusEmoji()) ? 0 : detailFm.height() + 4;
+    _titleH  = _user.title.isEmpty() ? 0 : detailFm.height() + 4;
+    _emailH  = _user.email.isEmpty() ? 0 : 24;
+    _clockH  = _user.hasTz ? 24 : 0;
 
     const QFontMetrics nameFm(nameFont());
     const int          textColH = nameFm.height() + _statusH + _titleH;
@@ -134,10 +133,23 @@ QRect UserProfileCard::emailRowRect() const {
 }
 
 void UserProfileCard::showFor(
-    const User &user, const QPixmap &avatar, const QRect &targetGlobalRect, bool showPresence
+    const User        &user,
+    const QPixmap     &avatar,
+    const QRect       &targetGlobalRect,
+    bool               showPresence,
+    const StatusEmoji &statusEmoji
 ) {
-    _user         = user;
-    _avatar       = avatar;
+    _user        = user;
+    _avatar      = avatar;
+    _statusEmoji = statusEmoji;
+    if (_statusEmoji.glyph.isEmpty() && _statusEmoji.imageUrl.isEmpty() &&
+        !user.statusEmoji.isEmpty()) {
+        // Unresolved by the host: built-in names only. fromName() answers the
+        // ":name:" placeholder for anything else — never draw that as text.
+        const QString glyph = Emoji::fromName(user.statusEmoji);
+        if (glyph != ":" + user.statusEmoji + ":")
+            _statusEmoji.glyph = glyph;
+    }
     _showPresence = showPresence;
     _btnHovered   = false;
     _emailHovered = false;
@@ -167,6 +179,13 @@ void UserProfileCard::showFor(
         _clockTimer.start();
     show();
     raise();
+    update();
+}
+
+void UserProfileCard::updateStatusEmojiImage(const QPixmap &image) {
+    if (_statusEmoji.imageUrl.isEmpty())
+        return;
+    _statusEmoji.image = image;
     update();
 }
 
@@ -331,13 +350,34 @@ void UserProfileCard::paintEvent(QPaintEvent *) {
     // Status line: emoji (colour font) + text
     if (_statusH > 0) {
         int sx = textX;
-        if (!_user.statusEmoji.isEmpty()) {
-            const QString glyph = Emoji::fromName(_user.statusEmoji);
-            if (!glyph.isEmpty()) {
-                const int px = Th::c().fonts.md;
-                const int w  = EmojiPix::width(glyph, px, devicePixelRatioF());
-                EmojiPix::draw(p, QRect(sx, ty, w, _statusH), glyph, px, Th::c().text.primary);
+        if (hasStatusEmoji()) {
+            const int px = Th::c().fonts.md;
+            if (!_statusEmoji.glyph.isEmpty()) {
+                const int w = EmojiPix::width(_statusEmoji.glyph, px, devicePixelRatioF());
+                EmojiPix::draw(
+                    p, QRect(sx, ty, w, _statusH), _statusEmoji.glyph, px, Th::c().text.primary
+                );
                 sx += w + 5;
+            } else {
+                // Custom emoji image fitted into a square px slot; the slot is
+                // reserved even while the host is still downloading the image.
+                const QPixmap &img = _statusEmoji.image;
+                if (!img.isNull()) {
+                    const QSize tgt = img.size().scaled(px, px, Qt::KeepAspectRatio);
+                    p.save();
+                    p.setRenderHint(QPainter::SmoothPixmapTransform);
+                    p.drawPixmap(
+                        QRect(
+                            sx + (px - tgt.width()) / 2,
+                            ty + (_statusH - tgt.height()) / 2,
+                            tgt.width(),
+                            tgt.height()
+                        ),
+                        img
+                    );
+                    p.restore();
+                }
+                sx += px + 5;
             }
         }
         if (!_user.statusText.isEmpty()) {

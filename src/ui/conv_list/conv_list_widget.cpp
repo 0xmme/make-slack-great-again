@@ -12,6 +12,7 @@
 #include "util/emoji.h"
 #include "util/emoji_pixmap.h"
 
+#include <QMovie>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPaintEvent>
@@ -60,7 +61,9 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
                 if (!conv.dmUser)
                     continue;
                 const auto infoIt = _userInfos.constFind(conv.dmUser->value);
-                if (infoIt == _userInfos.constEnd() || infoIt->avatarUrl != url)
+                if (infoIt == _userInfos.constEnd())
+                    continue;
+                if (infoIt->avatarUrl != url && statusEmojiOf(*infoIt).imageUrl != url)
                     continue;
                 viewport()->update(QRect(0, rowTopView(r), viewport()->width(), _rowH));
             }
@@ -85,9 +88,60 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
 }
 
 ConvListWidget::~ConvListWidget() {
+    releaseStatusEmojiMovies();
     // Flush a debounced recency write that hasn't fired yet.
     if (_saveVisitedTimer.isActive())
         saveVisitedAt();
+}
+
+void ConvListWidget::hideEvent(QHideEvent *e) {
+    // Nobody can see the frames: pause every player until the next paint
+    // re-marks what is on screen.
+    _statusEmojiRects.clear();
+    syncStatusEmojiPlayback();
+    VirtualListWidget::hideEvent(e);
+}
+
+QMovie *ConvListWidget::statusEmojiMovie(const QString &url) const {
+    const auto it = _statusEmojiMovies.constFind(url);
+    if (it != _statusEmojiMovies.constEnd())
+        return it.value();
+    // Non-null only once the bytes are in and decode to several frames; the
+    // caller's get() has already started the download.
+    QMovie *m = _imgCache ? _imgCache->movie(url) : nullptr;
+    if (!m)
+        return nullptr;
+    _statusEmojiMovies.insert(url, m);
+    connect(m, &QMovie::frameChanged, this, [this, url](int) {
+        for (const QRect &r : _statusEmojiRects.value(url))
+            viewport()->update(r);
+    });
+    return m;
+}
+
+void ConvListWidget::syncStatusEmojiPlayback() const {
+    for (auto it = _statusEmojiMovies.cbegin(); it != _statusEmojiMovies.cend(); ++it) {
+        QMovie    *m       = it.value();
+        const bool visible = _statusEmojiRects.contains(it.key());
+        if (visible) {
+            if (m->state() == QMovie::NotRunning)
+                m->start();
+            else if (m->state() == QMovie::Paused)
+                m->setPaused(false);
+        } else if (m->state() == QMovie::Running) {
+            m->setPaused(true);
+        }
+    }
+}
+
+void ConvListWidget::releaseStatusEmojiMovies() {
+    for (auto it = _statusEmojiMovies.cbegin(); it != _statusEmojiMovies.cend(); ++it) {
+        disconnect(it.value(), nullptr, this, nullptr);
+        if (_imgCache)
+            _imgCache->releaseMovie(it.key());
+    }
+    _statusEmojiMovies.clear();
+    _statusEmojiRects.clear();
 }
 
 void ConvListWidget::rebuildIconPixmaps() {
@@ -1136,6 +1190,27 @@ void ConvListWidget::triggerMissingAvatarDownloads() {
     }
 }
 
+void ConvListWidget::setSession(Session *s) {
+    if (_session == s)
+        return;
+    _session = s;
+    _sessionLifetime.destroy();
+    if (!_session)
+        return;
+    // emoji.list lands after the first paint: custom status emoji resolved to
+    // nothing until then and must be drawn once the map is in.
+    _session->emojiMapLoaded() | rpl::on_next([this] { viewport()->update(); }, _sessionLifetime);
+}
+
+MsgRender::EmojiResolved ConvListWidget::statusEmojiOf(const UserInfo &info) const {
+    if (info.statusEmoji.isEmpty())
+        return {{}, {}, /*resolved=*/false};
+    // Built-in names resolve to a glyph; workspace custom emoji (e.g. a
+    // :finland: flag) to an image URL. The plain Emoji::fromName() lookup used
+    // here before painted those as the literal ":finland:" text.
+    return MsgRender::resolveEmojiRich(info.statusEmoji, _session);
+}
+
 void ConvListWidget::drawUserAvatar(
     QPainter &p, QRect rect, const QString &userId, QColor bgColor, bool isSelected
 ) const {
@@ -1187,12 +1262,14 @@ void ConvListWidget::doPaint(QPaintEvent *event) {
     const int first = firstVisibleRow();
     const int last  = lastVisibleRow();
 
-    _huddleHitRects.clear(); // repopulated by paintRow for visible huddle rows
-    _truncNameRects.clear(); // repopulated by paintRow for elided names
+    _huddleHitRects.clear();   // repopulated by paintRow for visible huddle rows
+    _truncNameRects.clear();   // repopulated by paintRow for elided names
+    _statusEmojiRects.clear(); // repopulated by paintRow for animated status emoji
     for (int r = first; r <= last; ++r)
         paintRow(p, r, rowTopView(r));
 
     triggerMissingAvatarDownloads();
+    syncStatusEmojiPlayback();
 
     paintScrollThumb(p, contentHeight(), Th::c().nav.scrollThumb);
 }
@@ -1542,11 +1619,14 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             p, QRect(leftX, avY, kAvatarSize, kAvatarSize), conv.dmUser->value, rowBg, isSelected
         );
 
-        const auto    infoIt = _userInfos.constFind(conv.dmUser->value);
-        const QString emoji  = (infoIt != _userInfos.constEnd())
-                                   ? MsgRender::resolveEmoji(infoIt->statusEmoji)
-                                   : QString{};
-        const bool    isMe   = !_meUserId.value.isEmpty() && conv.dmUser == _meUserId;
+        const auto                     infoIt = _userInfos.constFind(conv.dmUser->value);
+        const MsgRender::EmojiResolved statusEmoji =
+            (infoIt != _userInfos.constEnd()) ? statusEmojiOf(*infoIt) : MsgRender::EmojiResolved{};
+        // An unknown name (custom emoji before emoji.list arrived, or one the
+        // workspace no longer has) draws nothing rather than ":name:" text.
+        const bool hasStatusEmoji = statusEmoji.resolved && (!statusEmoji.unicode.isEmpty() ||
+                                                             !statusEmoji.imageUrl.isEmpty());
+        const bool isMe           = !_meUserId.value.isEmpty() && conv.dmUser == _meUserId;
 
         const int nameX = leftX + kAvatarSize + kAvatarGap;
 
@@ -1561,15 +1641,17 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         int suffixW = 0;
         if (isExternal)
             suffixW += extPillW + 6;
-        QString   emojiGlyph;
         const int emojiPx =
             static_cast<int>(font.pixelSize() > 0 ? font.pixelSize() : QFontMetrics(font).height());
         int emojiW = 0;
-        if (!emoji.isEmpty() && !infoIt->statusEmoji.isEmpty()) {
-            emojiGlyph = emoji;
-            // Cached-pixmap ink width — QFontMetrics::horizontalAdvance on a
-            // color emoji decodes its PNG glyph and answers ~2× the ink anyway.
-            emojiW     = EmojiPix::width(emojiGlyph, emojiPx, devicePixelRatioF());
+        if (hasStatusEmoji) {
+            // Custom emoji fit a square emojiPx slot (the image is scaled into it
+            // when painted); glyphs take their cached-pixmap ink width —
+            // QFontMetrics::horizontalAdvance on a color emoji decodes its PNG
+            // glyph and answers ~2× the ink anyway.
+            emojiW = statusEmoji.imageUrl.isEmpty()
+                         ? EmojiPix::width(statusEmoji.unicode, emojiPx, devicePixelRatioF())
+                         : emojiPx;
             suffixW += emojiW + 4;
         }
         int youW = 0;
@@ -1606,9 +1688,40 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             curX = bRect.right();
         }
 
-        if (!emojiGlyph.isEmpty()) {
+        if (hasStatusEmoji) {
             curX += 4;
-            EmojiPix::draw(p, QRect(curX, y, emojiW, _rowH), emojiGlyph, emojiPx, textColor);
+            const QRect box(curX, y, emojiW, _rowH);
+            if (statusEmoji.imageUrl.isEmpty()) {
+                EmojiPix::draw(p, box, statusEmoji.unicode, emojiPx, textColor);
+            } else {
+                // get() starts the download on first call; the loaded() handler
+                // in the constructor repaints this row when the image lands.
+                QPixmap px = _imgCache ? _imgCache->get(statusEmoji.imageUrl) : QPixmap{};
+                // Animated custom emoji play like in the official client: take
+                // the player's current frame and register this row's rect so
+                // frameChanged repaints it (see syncStatusEmojiPlayback).
+                if (QMovie *mv = statusEmojiMovie(statusEmoji.imageUrl)) {
+                    _statusEmojiRects[statusEmoji.imageUrl].push_back(box);
+                    const QPixmap frame = mv->currentPixmap();
+                    if (!frame.isNull())
+                        px = frame;
+                }
+                if (!px.isNull()) {
+                    const QSize tgt = px.size().scaled(emojiPx, emojiPx, Qt::KeepAspectRatio);
+                    p.save();
+                    p.setRenderHint(QPainter::SmoothPixmapTransform);
+                    p.drawPixmap(
+                        QRect(
+                            box.x() + (box.width() - tgt.width()) / 2,
+                            box.y() + (box.height() - tgt.height()) / 2,
+                            tgt.width(),
+                            tgt.height()
+                        ),
+                        px
+                    );
+                    p.restore();
+                }
+            }
             curX += emojiW;
         }
 

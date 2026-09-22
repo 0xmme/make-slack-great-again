@@ -177,10 +177,15 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
                 verticalScrollBar()->setValue(verticalScrollBar()->maximum());
             viewport()->update();
         });
-        // Deliver the avatar to the profile card if it arrives while shown.
+        // Deliver the avatar / custom status emoji image to the profile card
+        // if it arrives while shown.
         connect(_imgCache, &ImageCache::loaded, this, [this](const QString &url) {
-            if (_profileCard->isVisible() && url == _profileCard->avatarUrl())
+            if (!_profileCard->isVisible())
+                return;
+            if (url == _profileCard->avatarUrl())
                 _profileCard->updateAvatar(_imgCache->get(url));
+            if (url == _profileCard->statusEmojiUrl())
+                _profileCard->updateStatusEmojiImage(_imgCache->get(url));
         });
     }
 }
@@ -1918,9 +1923,23 @@ void MessageListWidget::showProfileCardFor(const QString &userIdStr, const QRect
     if (_imgCache && !user->avatarUrl.isEmpty())
         avatar = _imgCache->get(user->avatarUrl);
 
+    // Status emoji: custom workspace emoji (":finland:") resolve to an image
+    // URL through the session's emoji map, which the card can't reach itself.
+    UserProfileCard::StatusEmoji statusEmoji;
+    if (!user->statusEmoji.isEmpty()) {
+        const auto er = MsgRender::resolveEmojiRich(user->statusEmoji, _session);
+        if (er.resolved && !er.imageUrl.isEmpty()) {
+            statusEmoji.imageUrl = er.imageUrl;
+            if (_imgCache)
+                statusEmoji.image = _imgCache->get(er.imageUrl);
+        } else if (er.resolved) {
+            statusEmoji.glyph = er.unicode;
+        }
+    }
+
     const QRect globalRect(viewport()->mapToGlobal(anchorVpRect.topLeft()), anchorVpRect.size());
     const bool  hasPresence = _session->capabilities().presence;
-    _profileCard->showFor(*user, avatar, globalRect, hasPresence);
+    _profileCard->showFor(*user, avatar, globalRect, hasPresence, statusEmoji);
     // Refresh the presence dot; the result arrives as EvPresenceChanged in handleEvent.
     if (hasPresence)
         _session->requestPresence(user->id);

@@ -24,18 +24,33 @@ class UserProfileCard : public QWidget {
 public:
     explicit UserProfileCard(QWidget *parent = nullptr);
 
+    // The user's status emoji as resolved by the host. Built-in names are a
+    // glyph; workspace custom emoji (":finland:") are images the card cannot
+    // look up itself — that takes the session's emoji map and the image cache —
+    // so the host resolves them and hands over the pixmap (null while it is
+    // still downloading; updateStatusEmojiImage() delivers it later). Both
+    // strings empty = not resolved by the host: the card then resolves
+    // User::statusEmoji as a built-in name and shows nothing for unknown ones.
+    struct StatusEmoji {
+        QString glyph;
+        QString imageUrl;
+        QPixmap image;
+    };
+
     // Show the card near targetGlobalRect (the mention chip), above when there
     // is room, otherwise below. avatar may be null — an initial placeholder is
     // painted until updateAvatar() delivers the real pixmap. showPresence
     // mirrors Capabilities::presence — false suppresses the dot entirely.
     void showFor(
-        const User    &user,
-        const QPixmap &avatar,
-        const QRect   &targetGlobalRect,
-        bool           showPresence = true
+        const User        &user,
+        const QPixmap     &avatar,
+        const QRect       &targetGlobalRect,
+        bool               showPresence = true,
+        const StatusEmoji &statusEmoji  = {}
     );
 
     void updateAvatar(const QPixmap &avatar);
+    void updateStatusEmojiImage(const QPixmap &image);
     void setActive(bool active); // live presence update while visible
 
     void scheduleHide(); // hide after a short grace period unless cursor enters the card
@@ -44,6 +59,8 @@ public:
 
     UserId         userId() const { return _user.id; }
     const QString &avatarUrl() const { return _user.avatarUrl; }
+    // Custom status emoji image URL, empty for a glyph or no status emoji.
+    const QString &statusEmojiUrl() const { return _statusEmoji.imageUrl; }
 
 signals:
     // "Message" button clicked — caller opens/navigates to the DM.
@@ -83,8 +100,12 @@ private:
         return rowsBottom + ((_emailH > 0 || _clockH > 0) ? 10 : 0);
     }
 
-    User    _user;
-    QPixmap _avatar;
+    User        _user;
+    QPixmap     _avatar;
+    StatusEmoji _statusEmoji; // see showFor(); exactly one of glyph/imageUrl set
+    bool        hasStatusEmoji() const {
+        return !_statusEmoji.glyph.isEmpty() || !_statusEmoji.imageUrl.isEmpty();
+    }
 
     // Vertical metrics computed by relayout() (card-local coordinates)
     int _headerH = 0; // role strip height, 0 when absent
