@@ -1453,6 +1453,10 @@ static TextWithEntities sliceEntities(const TextWithEntities &src, int from, int
     return out;
 }
 
+static bool isLinkEntity(EntityType type) {
+    return type == EntityType::Link || type == EntityType::MessageLink;
+}
+
 // Slack can omit a titled link from rich_text while retaining its URL in the
 // fallback text. Only reuse spans when the text matches exactly; rich-text
 // links, code and formatting remain authoritative. This also repairs cached
@@ -1463,7 +1467,7 @@ withFallbackLinks(const TextWithEntities &rich, const TextWithEntities &fallback
     if (rich.text != fallback.text)
         return merged;
     for (const auto &link : fallback.entities) {
-        if (link.type != EntityType::Link && link.type != EntityType::MessageLink)
+        if (!isLinkEntity(link.type))
             continue;
         if (link.data.isEmpty() || link.offset < 0 || link.length <= 0 ||
             link.offset > rich.text.size() || link.length > rich.text.size() - link.offset)
@@ -1508,11 +1512,18 @@ QString buildMsgHtml(
     }
 
     if (!msg.blocks.empty()) {
-        QString html;
-        bool    anyImage = false;
+        QString    html;
+        bool       anyImage      = false;
+        // Most rich_text blocks mirror the fallback text; only copy one when the
+        // fallback actually has a link to lend it.
+        const bool fallbackLinks = std::any_of(
+            msg.text.entities.begin(), msg.text.entities.end(), [](const TextEntity &e) {
+                return isLinkEntity(e.type);
+            }
+        );
         for (int bi = 0; bi < (int)msg.blocks.size(); ++bi) {
             const auto &block = msg.blocks[bi];
-            if (block.typeStr == "rich_text" && block.text.text == msg.text.text) {
+            if (fallbackLinks && block.typeStr == "rich_text" && block.text.text == msg.text.text) {
                 auto linked = block;
                 linked.text = withFallbackLinks(block.text, msg.text);
                 anyImage    = blockHtml(html, linked, session, gif, bi) || anyImage;
