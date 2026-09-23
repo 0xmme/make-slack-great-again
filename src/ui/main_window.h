@@ -140,6 +140,7 @@ private:
 
     // Header helpers
     void    updateHeaderForConv(const ConversationId &conv);
+    void    setHeaderGroupAvatars(const Conversation &conv);
     void    updateStarBtn(bool starred);
     // Toggle the huddle banner from the open conversation's huddleActive flag.
     void    updateHuddleBanner();

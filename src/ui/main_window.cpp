@@ -4,6 +4,7 @@
 #include "theme.h"
 #include "theme_manager.h"
 #include "header_avatar_widget.h"
+#include "conv_list/named_conversation.h"
 #include "image_cache.h"
 #include "title_bar/title_bar.h"
 #include "popup_tooltip/popup_tooltip.h"
@@ -4272,7 +4273,9 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
             conversation && conversation->kind == ConvKind::Im &&
             _session->capabilities().presence && !_session->isAppConversation(*conversation)
         );
-        if (isDm && conversation->dmUser) {
+        if (conversation && conversation->kind == ConvKind::Mpim)
+            setHeaderGroupAvatars(*conversation);
+        if (_headerAvatar->group().empty() && isDm && conversation->dmUser) {
             const auto *u = _session->findUser(*conversation->dmUser);
             if (u) {
                 _headerAvatar->setPresence(u->isActive);
@@ -4315,6 +4318,71 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
             }
         }
     }
+}
+
+void MainWindow::setHeaderGroupAvatars(const Conversation &conv) {
+    // Slack-style group DM header: the other members' avatars stacked, then the
+    // group's size. Members come from conv.members; an unnamed legacy mpdm may
+    // only carry them in its "mpdm-alice--bob-1" name.
+    const UserId              me = _session->meUserId();
+    std::vector<const User *> others;
+    int                       total = 0;
+    if (!conv.members.empty()) {
+        total = int(conv.members.size());
+        for (const auto &uid : conv.members)
+            if (uid != me)
+                if (const auto *u = _session->findUser(uid))
+                    others.push_back(u);
+    } else {
+        const QStringList unames = parseMpdmUsernames(conv.name);
+        total                    = int(unames.size());
+        for (const QString &uname : unames)
+            for (const auto &u : _session->currentUsers())
+                if (u.name == uname) {
+                    if (u.id != me)
+                        others.push_back(&u);
+                    break;
+                }
+    }
+    if (others.empty())
+        return;
+
+    std::vector<HeaderAvatarWidget::GroupMember> members;
+    QStringList                                  pending;
+    for (const User *u : others) {
+        if (members.size() == 3)
+            break;
+        HeaderAvatarWidget::GroupMember m;
+        m.url     = u->avatarUrl;
+        m.initial = (u->displayName.isEmpty() ? u->name : u->displayName).left(1);
+        if (!m.url.isEmpty() && _imgCache) {
+            m.pixmap = _imgCache->get(m.url);
+            if (m.pixmap.isNull())
+                pending.append(m.url);
+        }
+        members.push_back(std::move(m));
+    }
+    _headerAvatar->setGroup(std::move(members), std::max(total, int(others.size())));
+    if (pending.isEmpty())
+        return;
+    // Same persistent-until-done subscription as the single-DM avatar: `loaded`
+    // fires for every image, so wait until all of OURS have arrived.
+    const ConversationId convId = conv.id;
+    auto                 conn   = std::make_shared<QMetaObject::Connection>();
+    auto                 left   = std::make_shared<QStringList>(pending);
+    *conn                       = connect(
+        _imgCache, &ImageCache::loaded, this, [this, convId, conn, left](const QString &loadedUrl) {
+            if (!left->removeAll(loadedUrl))
+                return;
+            if (left->isEmpty())
+                QObject::disconnect(*conn);
+            if (convId != _currentConvId || !_headerAvatar)
+                return;
+            const QPixmap px = _imgCache->get(loadedUrl);
+            if (!px.isNull())
+                _headerAvatar->setGroupPixmap(loadedUrl, px);
+        }
+    );
 }
 
 void MainWindow::restoreLastConv() {
