@@ -64,7 +64,7 @@ TEST_CASE("members are listed by name with the count in the title", "[members_po
 
     popup.setMembers(kPeople, UserId{"U1"});
     CHECK(popup.visibleCount() == 3);
-    CHECK(titleOf(popup) == "3 members");
+    CHECK(titleOf(popup) == MembersPopup::tr("%Ln member(s)", "", 3));
     auto *list = listOf(popup);
     CHECK(list->idAt(0) == "U1");
     CHECK(list->idAt(1) == "U2");
@@ -78,7 +78,7 @@ TEST_CASE("deactivated accounts are left out", "[members_popup]") {
     popup.open(QRect(100, 100, 40, 28), 3);
     popup.setMembers(people, UserId{});
     CHECK(popup.visibleCount() == 2);
-    CHECK(titleOf(popup) == "2 members");
+    CHECK(titleOf(popup) == MembersPopup::tr("%Ln member(s)", "", 2));
 }
 
 TEST_CASE("typing filters and Enter opens a DM with the first match", "[members_popup]") {

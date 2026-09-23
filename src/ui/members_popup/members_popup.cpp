@@ -11,7 +11,6 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
-#include <QLocale>
 #include <QScreen>
 #include <QStackedLayout>
 #include <QVBoxLayout>
@@ -146,7 +145,7 @@ void MembersPopup::setMembers(const std::vector<User> &members, const UserId &me
     }
 
     const int n = int(items.size());
-    _title->setText(n == 1 ? tr("1 member") : tr("%1 members").arg(QLocale().toString(n)));
+    _title->setText(tr("%Ln member(s)", "", n));
     _error.clear();
     _loading = false;
     _list->setItems(std::move(items));
