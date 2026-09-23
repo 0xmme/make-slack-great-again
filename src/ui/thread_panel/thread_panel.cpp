@@ -132,7 +132,10 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
 
     _broadcastRow         = new QWidget(this);
     auto *broadcastLayout = new QHBoxLayout(_broadcastRow);
-    broadcastLayout->setContentsMargins(sp.xl, 0, sp.md, sp.sm);
+    // In line with the composer's contents (its side margin plus the box's
+    // inner padding) rather than the panel edge, and clear of the bottom edge.
+    // The composer's own bottom margin is the gap above.
+    broadcastLayout->setContentsMargins(sp.lg + sp.md, 0, sp.lg, sp.lg);
     _broadcastBox = new QCheckBox(tr("Also send to channel"), _broadcastRow);
     _broadcastBox->setObjectName("threadBroadcastBox");
     broadcastLayout->addWidget(_broadcastBox);
