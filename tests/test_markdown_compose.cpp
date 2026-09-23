@@ -279,3 +279,42 @@ TEST_CASE("a bare <word> is given back as text, a bare URL as a link", "[compose
     CHECK(json(richText("<https://x.io>")) == R"([{"type":"link","url":"https://x.io"}])");
     CHECK(json(richText("__u__")) == R"([{"text":"u","type":"text"}])");
 }
+
+// ── takeGifLinks ──────────────────────────────────────────────────────────────
+//
+// The composer's GIF picker leaves <giphy-url|label> in the text; on Slack it
+// goes out as an attachment instead, like the official picker sends it.
+
+TEST_CASE("a picked GIF is taken out of the text with its label", "[compose][gif]") {
+    QString    text = "look <https://media2.giphy.com/media/abc/200w.gif|Happy Dancing> nice";
+    const auto gifs = MarkdownCompose::takeGifLinks(text);
+    REQUIRE(gifs.size() == 1);
+    CHECK(gifs[0].url == "https://media2.giphy.com/media/abc/200w.gif");
+    CHECK(gifs[0].altText == "Happy Dancing");
+    CHECK(text == "look nice"); // one of the spaces around the badge goes with it
+}
+
+TEST_CASE("a message that is only a GIF leaves no text", "[compose][gif]") {
+    QString    text = "<https://media.giphy.com/media/abc/200w.gif> ";
+    const auto gifs = MarkdownCompose::takeGifLinks(text);
+    REQUIRE(gifs.size() == 1);
+    CHECK(gifs[0].altText.isEmpty());
+    CHECK(text.isEmpty());
+}
+
+TEST_CASE("several GIFs come out in order", "[compose][gif]") {
+    QString    text = "hey <https://i.giphy.com/one.gif|One> and <https://i.giphy.com/two.gif|Two>";
+    const auto gifs = MarkdownCompose::takeGifLinks(text);
+    REQUIRE(gifs.size() == 2);
+    CHECK(gifs[0].url == "https://i.giphy.com/one.gif");
+    CHECK(gifs[1].url == "https://i.giphy.com/two.gif");
+    CHECK(text == "hey and");
+}
+
+TEST_CASE("other links, and giphy pages, stay in the text", "[compose][gif]") {
+    // Only a GIPHY media asset is a GIF; the site itself unfurls as a page.
+    QString       text = " <https://example.com/x.gif|pic> <https://giphy.com/gifs/cat-abc|cats> ";
+    const QString before = text;
+    CHECK(MarkdownCompose::takeGifLinks(text).empty());
+    CHECK(text == before); // untouched, not even trimmed
+}

@@ -54,6 +54,7 @@ Capabilities DemoBackend::capabilities() const {
     c.deleteMessage    = true;
     c.threads          = true;
     c.memberList       = true;
+    c.gifAttachments   = true;
     c.fileUpload       = true;
     c.moveToThread     = true;
     c.slashCommands    = true;
@@ -278,8 +279,10 @@ void DemoBackend::removeMessageReminder(
 void DemoBackend::sendMessage(
     ConversationId conv, OutgoingMessage out, std::function<void(bool ok, QString err)> done
 ) {
-    Message  msg = makeMessage(_fx.me, out.rawText, out.threadRoot);
-    const Ts ts  = msg.ts;
+    Message msg = makeMessage(_fx.me, out.rawText, out.threadRoot);
+    for (const auto &gif : out.gifs)
+        msg.attachments.push_back(gifAttachment(gif, int(msg.attachments.size()) + 1));
+    const Ts ts = msg.ts;
     // Confirm asynchronously: Session is still inside postMessage() when this is
     // called, and a real server never answers synchronously either.
     QTimer::singleShot(kSendConfirmMs, &_timerGuard, [this, conv, msg, done, out] {

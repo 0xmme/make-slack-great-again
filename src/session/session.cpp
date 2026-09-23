@@ -2117,13 +2117,18 @@ Ts Session::postMessage(
     std::function<void(bool ok, QString err)> done,
     bool                                      replyBroadcast
 ) {
+    QString                  body = text;
+    std::vector<OutgoingGif> gifs;
+    if (_backend->capabilities().gifAttachments)
+        gifs = MarkdownCompose::takeGifLinks(body);
     return postComposed(
         std::move(conv),
-        MarkdownCompose::convert(text),
+        MarkdownCompose::convert(body),
         std::move(threadRoot),
         subject,
         std::move(done),
-        replyBroadcast
+        replyBroadcast,
+        std::move(gifs)
     );
 }
 
@@ -2133,7 +2138,8 @@ Ts Session::postComposed(
     std::optional<Ts>                         threadRoot,
     const QString                            &subject,
     std::function<void(bool ok, QString err)> done,
-    bool                                      replyBroadcast
+    bool                                      replyBroadcast,
+    std::vector<OutgoingGif>                  gifs
 ) {
     const Ts   fakeTs    = makeFakeTs();
     const bool broadcast = threadRoot.has_value() && replyBroadcast;
@@ -2148,6 +2154,10 @@ Ts Session::postComposed(
     optimistic.rawText    = composed.mrkdwn;
     optimistic.threadRoot = threadRoot;
     optimistic.pending    = true;
+    for (const auto &gif : gifs)
+        optimistic.attachments.push_back(
+            gifAttachment(gif, int(optimistic.attachments.size()) + 1)
+        );
     // Same subtype the server gives the confirmed copy, so the channel view
     // shows the ghost as well as the thread panel.
     if (broadcast)
@@ -2161,6 +2171,7 @@ Ts Session::postComposed(
     out.text           = optimistic.text;
     out.rawText        = composed.mrkdwn;
     out.blocks         = composed.blocks;
+    out.gifs           = std::move(gifs);
     out.threadRoot     = threadRoot;
     out.replyBroadcast = broadcast;
     out.subject        = subject;
@@ -2274,7 +2285,13 @@ void Session::sendTyping(ConversationId conv) {
 }
 
 void Session::scheduleMessage(ConversationId conv, const QString &text, qint64 postAt) {
-    _backend->scheduleMessage(conv, composeOutgoing(text), postAt);
+    QString                  body = text;
+    std::vector<OutgoingGif> gifs;
+    if (_backend->capabilities().gifAttachments)
+        gifs = MarkdownCompose::takeGifLinks(body);
+    OutgoingMessage out = composeOutgoing(body);
+    out.gifs            = std::move(gifs);
+    _backend->scheduleMessage(conv, std::move(out), postAt);
 }
 
 const SlashCommand *Session::findCommand(const QString &name) const {

@@ -558,7 +558,8 @@ private:
         std::optional<Ts>                         threadRoot,
         const QString                            &subject,
         std::function<void(bool ok, QString err)> done,
-        bool                                      replyBroadcast = false
+        bool                                      replyBroadcast = false,
+        std::vector<OutgoingGif>                  gifs           = {}
     );
     // Composer text → OutgoingMessage (parsed text, mrkdwn, blocks) for the
     // paths that don't need an optimistic copy: edit and schedule.

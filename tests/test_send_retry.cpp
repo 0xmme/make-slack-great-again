@@ -498,6 +498,36 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE_METHOD(
+    SendFixture, "a picked GIF posts as Slack's own GIF attachment", "[send_retry][gif]"
+) {
+    // The shape Slack's GIF picker sends: empty text, one attachment holding an
+    // image block titled "GIF" — no link for Slack to unfurl.
+    server.enqueue(R"({"ok":true,"ts":"123.456","message":{"ts":"123.456","text":""}})");
+
+    OutgoingMessage message = out("");
+    message.gifs = {OutgoingGif{"https://media.giphy.com/media/abc/200w.gif", "a cat dancing"}};
+    backend.sendMessage(ConversationId{"C1"}, std::move(message));
+
+    REQUIRE(waitFor([&] { return newMessageEvent() != nullptr; }));
+    REQUIRE(server.requestBodies.size() == 1);
+    const QUrlQuery body(QString::fromUtf8(server.requestBodies[0]));
+    CHECK(body.queryItemValue("text").isEmpty());
+    const QJsonArray atts =
+        QJsonDocument::fromJson(body.queryItemValue("attachments", QUrl::FullyDecoded).toUtf8())
+            .array();
+    REQUIRE(atts.size() == 1);
+    const QJsonObject att = atts[0].toObject();
+    CHECK(att.value("fallback").toString() == "shared a GIF");
+    const QJsonArray blocks = att.value("blocks").toArray();
+    REQUIRE(blocks.size() == 1);
+    const QJsonObject image = blocks[0].toObject();
+    CHECK(image.value("type").toString() == "image");
+    CHECK(image.value("image_url").toString() == "https://media.giphy.com/media/abc/200w.gif");
+    CHECK(image.value("alt_text").toString() == "a cat dancing");
+    CHECK(image.value("title").toObject().value("text").toString() == "GIF");
+}
+
+TEST_CASE_METHOD(
     SendFixture, "lost send that WAS delivered is found in history, not resent", "[send_retry]"
 ) {
     server.dropConnections = 1; // chat.postMessage response is lost
@@ -512,6 +542,28 @@ TEST_CASE_METHOD(
     REQUIRE(server.requestPaths.size() == 2);
     CHECK(server.requestPaths[0] == "/chat.postMessage");
     CHECK(server.requestPaths[1] == "/conversations.history"); // no second post
+}
+
+TEST_CASE_METHOD(
+    SendFixture, "a lost GIF send is recognised by its GIF, not its empty text", "[send_retry][gif]"
+) {
+    server.dropConnections = 1;
+    // Another own message with no text (a file share, say) is not the GIF post;
+    // the one carrying the GIF is.
+    server.enqueue(R"({"ok":true,"messages":[
+        {"ts":"124.000","user":"U1","text":""},
+        {"ts":"124.500","user":"U1","text":"","attachments":[{"fallback":"shared a GIF",
+          "blocks":[{"type":"image","image_url":"https://media.giphy.com/media/abc/200w.gif"}]}]}
+    ]})");
+
+    OutgoingMessage message = out("");
+    message.gifs            = {OutgoingGif{"https://media.giphy.com/media/abc/200w.gif", "a cat"}};
+    backend.sendMessage(ConversationId{"C1"}, std::move(message));
+
+    REQUIRE(waitFor([&] { return newMessageEvent() != nullptr; }));
+    CHECK(newMessageEvent()->msg.ts == "124.500");
+    REQUIRE(server.requestPaths.size() == 2); // found, so not posted twice
+    CHECK(server.requestPaths[1] == "/conversations.history");
 }
 
 TEST_CASE_METHOD(SendFixture, "lost send that was NOT delivered is posted again", "[send_retry]") {

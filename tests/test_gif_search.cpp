@@ -92,10 +92,26 @@ TEST_CASE("parseResponse reads renditions and string dimensions", "[gif]") {
     // "200"/"150" are strings in the payload; read as ints they come out 0 and
     // the masonry would fall back to square cells for every result.
     CHECK(out[0].previewSize == QSize(200, 150));
-    // Send size prefers "downsized" (<2 MB) over "downsized_medium" (<5 MB).
-    CHECK(out[0].postUrl == "https://media.giphy.com/abc/downsized.gif");
+    // Send size is the 200px-wide rendition Slack's own GIF picker posts.
+    CHECK(out[0].postUrl == "https://media.giphy.com/abc/200w.gif");
     // alt_text wins over title when both are present.
     CHECK(out[0].description == "a cat dancing");
+}
+
+TEST_CASE("parseResponse sends a downsized rendition when fixed_width is missing", "[gif]") {
+    // "downsized" (<2 MB) before "downsized_medium" (<5 MB).
+    const QByteArray body = R"({"data":[{
+      "id": "d",
+      "images": {
+        "fixed_width_small": {"url": "https://media.giphy.com/d/100w.gif",
+                              "width": "100", "height": "75"},
+        "downsized": {"url": "https://media.giphy.com/d/downsized.gif"},
+        "downsized_medium": {"url": "https://media.giphy.com/d/downsized-medium.gif"}
+      }}]})";
+
+    const QList<GifResult> out = GifSearch::parseResponse(body);
+    REQUIRE(out.size() == 1);
+    CHECK(out[0].postUrl == "https://media.giphy.com/d/downsized.gif");
 }
 
 TEST_CASE("parseResponse never posts the url-less original rendition", "[gif]") {

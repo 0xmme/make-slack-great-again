@@ -85,10 +85,11 @@ static QTextCharFormat mentionCharFormat(const QString &display, const QString &
     return fmt;
 }
 
-// A picked GIF travels as Slack's labelled link, `<url|title>`: other clients
-// show the title where the URL would be (Slack still unfurls the image below
-// it), and the message list here draws it as a badge. '|' and '>' would end the
-// label or the token early, so the title loses them.
+// A picked GIF is held in the text as Slack's labelled link, `<url|title>`. On
+// Slack, Session posts it as the GIF attachment Slack's own picker sends, the
+// title as its alt text (MarkdownCompose::takeGifLinks); a backend without that
+// sends the link itself, and the message list draws it as a badge. '|' and '>'
+// would end the label or the token early, so the title loses them.
 static QString gifLinkToken(const QString &url, const QString &title) {
     QString label = title.simplified();
     label.remove('|');
@@ -626,9 +627,8 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
                 &GifPickerPopup::gifSelected,
                 this,
                 [this](const QString &url, const QString &title) {
-                    // Sent as a labelled link (see gifLinkToken); shown here as a
-                    // pill carrying that token, the way mentions are. Slack unfurls
-                    // the link into the animated preview underneath either way.
+                    // Held as a labelled link (see gifLinkToken); shown here as a
+                    // pill carrying that token, the way mentions are.
                     const QString raw     = gifLinkToken(url, title);
                     const QString display = gifPillDisplay(
                         raw.contains('|') ? raw.section('|', 1).chopped(1) : QString()

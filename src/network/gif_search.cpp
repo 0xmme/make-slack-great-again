@@ -205,12 +205,14 @@ QList<GifResult> GifSearch::parseResponse(const QByteArray &body) {
             !readRendition(images, "fixed_width", &r.previewUrl, &r.previewSize) &&
             !readRendition(images, "preview_gif", &r.previewUrl, &r.previewSize))
             continue;
-        // Send size: "downsized" is capped at 2 MB and "downsized_medium" at
-        // 5 MB. `original` is deliberately not in this chain — it carries no
-        // `url` field at all, only mp4/webp links.
-        if (!readRendition(images, "downsized", &r.postUrl) &&
-            !readRendition(images, "downsized_medium", &r.postUrl) &&
-            !readRendition(images, "fixed_width", &r.postUrl))
+        // Send size: the 200px-wide `fixed_width`, the rendition Slack's own GIF
+        // picker posts (its "…/200w.gif"), so a GIF from here looks the same
+        // in every client. Then "downsized" (capped at 2 MB) and
+        // "downsized_medium" (5 MB). `original` is deliberately not in this
+        // chain — it carries no `url` field at all, only mp4/webp links.
+        if (!readRendition(images, "fixed_width", &r.postUrl) &&
+            !readRendition(images, "downsized", &r.postUrl) &&
+            !readRendition(images, "downsized_medium", &r.postUrl))
             r.postUrl = r.previewUrl;
 
         r.description = obj.value(QLatin1String("alt_text")).toString();

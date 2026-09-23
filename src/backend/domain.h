@@ -182,6 +182,9 @@ struct Capabilities {
     bool replyBroadcast   = false; // thread reply can also appear in its channel
     bool memberList       = false; // loadMembers(): who is in a channel or group DM (Slack:
                                    // conversations.members) — the header's member list
+    bool gifAttachments   = false; // a GIF from the composer's picker posts as an image of its
+                                   // own (OutgoingMessage::gifs), the way Slack's GIF picker
+                                   // sends one. Off: it stays a link in the text.
     bool threadsView      = false; // workspace-wide "Threads" overview (loadThreadsView).
                                    // Separate from `threads`: a backend can support replies
                                    // without any server-side subscribed-threads feed (Slack's
@@ -1104,6 +1107,31 @@ struct ThreadsViewPage {
     bool                        operator==(const ThreadsViewPage &) const = default;
 };
 
+// A GIF from the composer's picker (MarkdownCompose::takeGifLinks), posted as
+// Slack's own picker posts one: no link in the text, but an attachment holding
+// an image block titled "GIF".
+struct OutgoingGif {
+    QString url;
+    QString altText; // GIPHY's description of the GIF
+    bool    operator==(const OutgoingGif &) const = default;
+};
+
+// That attachment as it comes back from the server — for the optimistic copy,
+// so a sent GIF looks right before the confirmation arrives. `id` is its
+// 1-based position among the message's attachments.
+inline Attachment gifAttachment(const OutgoingGif &gif, int id) {
+    Block image;
+    image.typeStr  = QStringLiteral("image");
+    image.imageUrl = gif.url;
+    image.altText  = gif.altText;
+    image.text     = TextWithEntities{QStringLiteral("GIF"), {}};
+    Attachment att;
+    att.id       = id;
+    att.fallback = QStringLiteral("shared a GIF");
+    att.blocks   = {std::move(image)};
+    return att;
+}
+
 struct OutgoingMessage {
     TextWithEntities  text;
     QString           rawText; // original mrkdwn source; sent verbatim to chat.postMessage
@@ -1120,6 +1148,10 @@ struct OutgoingMessage {
     // Per-message subject (email backends, gated by Capabilities::messageSubjects;
     // empty for chat services). On a reply the backend inherits the thread subject.
     QString           subject;
+
+    // GIFs taken out of the text, each posted as an attachment of its own
+    // (Capabilities::gifAttachments).
+    std::vector<OutgoingGif> gifs;
 };
 
 // --- Realtime events (normalized from both Socket Mode and internal ws) ---

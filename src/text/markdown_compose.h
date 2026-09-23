@@ -53,6 +53,13 @@ struct Composed {
 
 Composed convert(const QString &composerText);
 
+// Take the GIF picker's links (<giphy-media-url|label>, see the composer) out of
+// composer text, with a space the composer put around each, and return them in
+// order — for a backend that posts a GIF as an image of its own rather than a
+// link (Capabilities::gifAttachments). The label becomes the alt text. Any
+// other link stays. `composerText` is left trimmed when a GIF was taken.
+std::vector<OutgoingGif> takeGifLinks(QString &composerText);
+
 // Only the inline rewrites (**x**, ~~x~~, [label](url)) on one line of text,
 // code spans and Slack tokens left alone. Exposed for tests.
 QString convertInline(const QString &line);

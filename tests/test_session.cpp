@@ -6111,3 +6111,42 @@ TEST_CASE_METHOD(
     REQUIRE(session->findConversation(kMpdm.id) != nullptr);
     CHECK(session->findConversation(kMpdm.id)->members.size() == 2);
 }
+
+// ── GIFs from the composer's picker ───────────────────────────────────────────
+//
+// On a backend with gifAttachments the picker's <giphy-url|label> leaves the
+// text and posts as the attachment Slack's own GIF picker sends; the optimistic
+// copy carries that attachment too, so it looks like the confirmed message.
+
+TEST_CASE_METHOD(
+    SessionFixture, "a picked GIF posts as an attachment, not a link", "[session][send][gif]"
+) {
+    stub->caps.gifAttachments = true;
+    const QString url         = "https://media3.giphy.com/media/abc/200w.gif";
+    auto          col         = collectEvents();
+    session->sendMessage(ConversationId{"C1"}, "check <" + url + "|Phil Robertson says check>");
+
+    REQUIRE(stub->sentMessages.size() == 1);
+    const auto &sent = stub->sentMessages[0].msg;
+    CHECK(sent.rawText == "check");
+    REQUIRE(sent.gifs.size() == 1);
+    CHECK(sent.gifs[0] == OutgoingGif{url, "Phil Robertson says check"});
+
+    const auto &ghost = std::get<EvMessageNew>(col.events[0]).msg;
+    CHECK(ghost.rawText == "check");
+    REQUIRE(ghost.attachments.size() == 1);
+    CHECK(ghost.attachments[0] == gifAttachment(sent.gifs[0], 1));
+    REQUIRE(ghost.attachments[0].blocks.size() == 1);
+    CHECK(ghost.attachments[0].blocks[0].imageUrl == url);
+    CHECK(ghost.attachments[0].blocks[0].text.text == "GIF");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "without gifAttachments a picked GIF stays a link", "[session][send][gif]"
+) {
+    const QString token = "<https://media3.giphy.com/media/abc/200w.gif|Wave>";
+    session->sendMessage(ConversationId{"C1"}, "hi " + token);
+    REQUIRE(stub->sentMessages.size() == 1);
+    CHECK(stub->sentMessages[0].msg.rawText == "hi " + token);
+    CHECK(stub->sentMessages[0].msg.gifs.empty());
+}
