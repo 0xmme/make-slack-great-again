@@ -4262,14 +4262,15 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
         _headerAvatar->clearAvatar();
         // Apps/bots have no presence — they can't go offline, so the dot is
         // meaningless and confusing for them. Likewise services with no presence
-        // concept at all (email/IMAP). Decide this BEFORE (and outside) the
-        // single-peer DM branch below: clearAvatar() reset the state to the
-        // showPresence=true default, and a multi-person IM (mpim, no dmUser) or
-        // an as-yet-unresolved peer would otherwise skip the branch and paint a
+        // concept at all (email/IMAP), and group DMs (mpim), which have no single
+        // peer whose presence the dot could mean. Decide this BEFORE (and
+        // outside) the single-peer DM branch below: clearAvatar() reset the
+        // state to the showPresence=true default, and an mpim or an
+        // as-yet-unresolved peer would otherwise skip the branch and paint a
         // stray offline ring.
         _headerAvatar->setShowPresence(
-            conversation && _session->capabilities().presence &&
-            !_session->isAppConversation(*conversation)
+            conversation && conversation->kind == ConvKind::Im &&
+            _session->capabilities().presence && !_session->isAppConversation(*conversation)
         );
         if (isDm && conversation->dmUser) {
             const auto *u = _session->findUser(*conversation->dmUser);

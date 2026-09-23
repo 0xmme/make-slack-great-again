@@ -173,8 +173,16 @@ int main(int argc, char *argv[]) {
                 changed = true;
             }
         }
-        if (changed)
+        // Qt's ibus context only counts as valid when an `ibus-daemon`
+        // executable is on PATH, unless it talks to the portal — and a pure
+        // fcitx5 install has no ibus package, so the context silently dropped
+        // back to "compose" (the re-report on #79). fcitx5's IBus frontend
+        // serves org.freedesktop.portal.IBus on the session bus, so use that.
+        if (changed) {
             qputenv(var.constData(), modules.join(';'));
+            if (!qEnvironmentVariableIsSet("IBUS_USE_PORTAL"))
+                qputenv("IBUS_USE_PORTAL", "1");
+        }
     }
 #endif
 #endif
