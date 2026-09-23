@@ -79,6 +79,9 @@ public:
 
     // Height of one row, for a host that sizes itself to a number of rows.
     static constexpr int rowHeight() { return kRowH; }
+    // Side padding inside each row (left of the avatar/icon, right of the
+    // badge); a compact host that already has margins of its own trims it.
+    void                 setRowPadding(int px);
 
 protected:
     void resizeEvent(QResizeEvent *) override;
@@ -104,6 +107,7 @@ private:
     Match             _matchMode = Match::Substring;
     int               _hovered   = -1;
     int               _selected  = -1; // keyboard selection; -1 = none
+    int               _rowPadH   = kRowPadH;
     QPixmap           _hashPx, _lockPx, _checkPx;
 
     static constexpr int kRowH       = 60;

@@ -466,7 +466,7 @@ Open Settings → System, find “Microsoft Teams”, and paste your Entra app's
 <context>
     <name>BrowseListView</name>
     <message>
-        <location filename="../src/ui/browse_channels_dialog/browse_list_view.cpp" line="272"/>
+        <location filename="../src/ui/browse_channels_dialog/browse_list_view.cpp" line="279"/>
         <source>Joined</source>
         <translation>Joined</translation>
     </message>
@@ -1676,17 +1676,17 @@ Create a free one — it takes a minute — then paste it below. You can change 
         <translation>Find members</translation>
     </message>
     <message>
-        <location filename="../src/ui/members_popup/members_popup.cpp" line="93"/>
+        <location filename="../src/ui/members_popup/members_popup.cpp" line="96"/>
         <source>Members</source>
         <translation>Members</translation>
     </message>
     <message>
-        <location filename="../src/ui/members_popup/members_popup.cpp" line="133"/>
+        <location filename="../src/ui/members_popup/members_popup.cpp" line="138"/>
         <source>%1 (you)</source>
         <translation>%1 (you)</translation>
     </message>
     <message numerus="yes">
-        <location filename="../src/ui/members_popup/members_popup.cpp" line="148"/>
+        <location filename="../src/ui/members_popup/members_popup.cpp" line="153"/>
         <source>%Ln member(s)</source>
         <translation>
             <numerusform>%Ln member</numerusform>
@@ -1694,17 +1694,17 @@ Create a free one — it takes a minute — then paste it below. You can change 
         </translation>
     </message>
     <message>
-        <location filename="../src/ui/members_popup/members_popup.cpp" line="176"/>
+        <location filename="../src/ui/members_popup/members_popup.cpp" line="181"/>
         <source>Loading members…</source>
         <translation>Loading members…</translation>
     </message>
     <message>
-        <location filename="../src/ui/members_popup/members_popup.cpp" line="185"/>
+        <location filename="../src/ui/members_popup/members_popup.cpp" line="190"/>
         <source>No members to show.</source>
         <translation>No members to show.</translation>
     </message>
     <message>
-        <location filename="../src/ui/members_popup/members_popup.cpp" line="185"/>
+        <location filename="../src/ui/members_popup/members_popup.cpp" line="190"/>
         <source>No one here matches “%1”.</source>
         <translation>No one here matches “%1”.</translation>
     </message>

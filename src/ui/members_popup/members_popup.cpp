@@ -43,6 +43,9 @@ MembersPopup::MembersPopup(ImageCache *imgCache, QWidget *parent)
     _body->setStackingMode(QStackedLayout::StackOne);
     _list = new BrowseListView(imgCache, this);
     _list->setObjectName("membersList");
+    // The popup's own margin already insets the rows; the list's default
+    // padding (sized for full dialogs) would push the avatars far in.
+    _list->setRowPadding(sp.md);
     _body->addWidget(_list);
     _message = new QLabel(this);
     _message->setObjectName("membersMessage");
@@ -93,12 +96,14 @@ void MembersPopup::open(const QRect &anchorGlobal, int expectedCount) {
     _title->setText(tr("Members"));
     applyFilter();
 
-    const auto *lay    = layout();
-    const int   rows   = std::clamp(expectedCount, 1, kMaxRows);
-    const int   chrome = lay->contentsMargins().top() + lay->contentsMargins().bottom() +
-                         _title->sizeHint().height() + _search->sizeHint().height() +
-                         2 * lay->spacing();
-    setFixedSize(kWidth, chrome + rows * BrowseListView::rowHeight());
+    // The list gets exactly `rows` whole rows and the layout sizes the rest:
+    // summing the title's and search's size hints by hand came out short (the
+    // stylesheets aren't polished yet), cutting the last row off.
+    const int rows = std::clamp(expectedCount, 1, kMaxRows);
+    _list->setFixedHeight(rows * BrowseListView::rowHeight());
+    ensurePolished();
+    layout()->activate();
+    setFixedSize(kWidth, layout()->sizeHint().height());
 
     // Within the app window as well as the screen: a header button sits at the
     // window's edge, and a panel hanging past it reads as detached.

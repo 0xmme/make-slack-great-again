@@ -41,6 +41,13 @@ void BrowseListView::setMatchMode(Match mode) {
     applyFilter(_filterText);
 }
 
+void BrowseListView::setRowPadding(int px) {
+    if (px == _rowPadH)
+        return;
+    _rowPadH = px;
+    viewport()->update();
+}
+
 void BrowseListView::applyFilter(const QString &query) {
     _filterText     = query;
     const QString q = query.trimmed().toLower();
@@ -247,11 +254,11 @@ void BrowseListView::paintRow(QPainter &p, const Item &it, int y, bool hovered, 
     const QFontMetrics fmName(nameFont);
     const QFontMetrics fmSub(subFont);
 
-    int textX      = kRowPadH;
-    int rightLimit = vw - kRowPadH;
+    int textX      = _rowPadH;
+    int rightLimit = vw - _rowPadH;
 
     if (it.isPerson) {
-        const int     avX = kRowPadH;
+        const int     avX = _rowPadH;
         const int     avY = y + (kRowH - kAvatarSize) / 2;
         const QPixmap px =
             (_imgCache && !it.avatarUrl.isEmpty()) ? _imgCache->get(it.avatarUrl) : QPixmap{};
@@ -271,7 +278,7 @@ void BrowseListView::paintRow(QPainter &p, const Item &it, int y, bool hovered, 
         // Reserve room on the right for the "Joined" badge.
         const QString joined = QObject::tr("Joined");
         const int     badgeW = 13 + 4 + fmSub.horizontalAdvance(joined);
-        const int     bx     = vw - kRowPadH - badgeW;
+        const int     bx     = vw - _rowPadH - badgeW;
         const int     cy     = y + kRowH / 2;
         p.drawPixmap(bx, cy - 13 / 2, _checkPx);
         p.setPen(Th::c().text.secondary);

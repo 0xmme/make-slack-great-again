@@ -139,3 +139,19 @@ TEST_CASE("Escape closes the popup", "[members_popup]") {
     press(searchOf(popup), Qt::Key_Escape);
     CHECK_FALSE(popup.isVisible());
 }
+
+TEST_CASE("the panel fits the expected rows whole", "[members_popup]") {
+    // Up to six rows show without a cut-off last one; more scroll.
+    for (int count : {3, 6, 9}) {
+        std::vector<User> people;
+        for (int i = 0; i < count; ++i)
+            people.push_back(person(QString("U%1").arg(i), QString("user%1").arg(i), {}));
+        MembersPopup popup(nullptr);
+        popup.open(QRect(100, 100, 40, 28), count);
+        popup.setMembers(people, UserId{});
+        QApplication::processEvents();
+        auto *list = listOf(popup);
+        INFO("count " << count << ", list height " << list->height());
+        CHECK(list->height() == std::min(count, 6) * BrowseListView::rowHeight());
+    }
+}
