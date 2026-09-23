@@ -3,6 +3,8 @@
 #include "message_list.h"
 #include "message_render.h"
 #include "session/session.h"
+#include "ui/canvas_page/canvas_diff.h"
+#include "ui/canvas_page/canvas_display.h"
 #include "text/mrkdwn_parser.h"
 #include "ui/theme.h"
 #include "ui/icon_utils.h"
@@ -21,6 +23,9 @@
 #include <QMovie>
 #include <QPainter>
 #include <QPainterPath>
+#include <QFontInfo>
+#include <QLinearGradient>
+#include <QRegularExpression>
 #include <QPaintEvent>
 #include <QScrollBar>
 #include <QTextDocument>
@@ -421,7 +426,7 @@ void MessageListWidget::paintRow(
             if (!firstChip || hasAboveChips)
                 contentY += kFileChipGap;
             firstChip = false;
-            contentY += MsgRender::fileChipHeight(f);
+            contentY += MsgRender::messageFileHeight(f);
         }
     }
 
@@ -495,11 +500,14 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
 
         const Message &msg  = _items[i].msg;
         auto          *user = _session->findUser(msg.author);
-        // Authorless huddle rows draw Slackbot's avatar (see paintAvatar) —
-        // prefetch that instead; the empty author id has nothing to resolve.
-        if (!user && isHuddleMessage(msg))
-            user = _session->findUser(UserId{QStringLiteral("USLACKBOT")});
-        if (user && !user->avatarUrl.isEmpty())
+        if (isHuddleMessage(msg)) {
+            // Authorless, painted from a glyph (see paintAvatar) — but the
+            // body names the attendees, so resolve the ones users.list omits.
+            if (msg.huddle)
+                for (const auto &uid : msg.huddle->attendees)
+                    if (!_session->findUser(uid))
+                        _session->fetchUserIfNeeded(uid);
+        } else if (user && !user->avatarUrl.isEmpty())
             _imgCache->get(user->avatarUrl);
         else if (!msg.botAvatarUrl.isEmpty())
             _imgCache->get(msg.botAvatarUrl);
@@ -507,9 +515,7 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
             // Author absent from users.list (Slack Connect / system / deactivated)
             // — resolve it via users.info so the next paint shows a name + avatar
             // instead of the raw id. No-ops for ids already known or in flight.
-            _session->fetchUserIfNeeded(
-                isHuddleMessage(msg) ? UserId{QStringLiteral("USLACKBOT")} : msg.author
-            );
+            _session->fetchUserIfNeeded(msg.author);
 
         for (const auto &uid : msg.replyUsers) {
             auto *ru = _session->findUser(uid);
@@ -612,15 +618,39 @@ static void paintAvatarPhotoOrInitial(
     p.restore();
 }
 
-void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const {
-    auto *user = _session->findUser(item.msg.author);
+// A huddle row's "avatar": headphones on a neutral rounded tile, as in the
+// official client. The glyph is cached per DPR + colour (theme switches retint).
+static void paintHuddleTile(QPainter &p, const QRect &rect) {
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Qt::NoPen);
+    p.setBrush(Th::c().surface.highlightStrong);
+    p.drawRoundedRect(rect, 4, 4);
+    p.restore();
 
-    // Huddle rows are presented as authorless "Slack" bot messages
-    // (presentHuddleThread). Borrow Slackbot's avatar — every workspace roster
-    // has USLACKBOT — so the row wears Slack's face instead of a letter tile;
-    // the name below still resolves from botName ("Slack"), not this user.
-    if (!user && isHuddleMessage(item.msg))
-        user = _session->findUser(UserId{QStringLiteral("USLACKBOT")});
+    static qreal   kDpr = 0;
+    static QColor  kColor;
+    static QPixmap kPx;
+    const int      side  = rect.width() * 5 / 9;
+    const QColor   color = Th::c().icon.def;
+    if (const qreal d = p.device()->devicePixelRatioF();
+        !qFuzzyCompare(d, kDpr) || color != kColor || kPx.width() != qRound(side * d)) {
+        kDpr   = d;
+        kColor = color;
+        kPx    = svgPixmapPhys(":/ui/headphones.svg", QSize(side, side), color, d);
+    }
+    if (!kPx.isNull())
+        p.drawPixmap(
+            rect.x() + (rect.width() - side) / 2, rect.y() + (rect.height() - side) / 2, kPx
+        );
+}
+
+void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const {
+    if (isHuddleMessage(item.msg)) {
+        paintHuddleTile(p, rect);
+        return;
+    }
+    auto *user = _session->findUser(item.msg.author);
 
     // Resolve avatar URL: user profile first, then bot_profile / icon_url.
     const QString avatarUrl =
@@ -667,8 +697,10 @@ void MessageListWidget::paintMessageHeader(
         _stEdited.setText(tr("(edited)"));
     }
 
-    // Slack-style "APP" tag after bot names
-    const bool isBot = !item.msg.botName.isEmpty() || (user && user->isBot);
+    // Slack-style "APP" tag after bot names (a huddle row's "name" is the
+    // event itself, not an app)
+    const bool isBot =
+        !isHuddleMessage(item.msg) && (!item.msg.botName.isEmpty() || (user && user->isBot));
     if (isBot)
         tsX = paintTagBadge(
             p,
@@ -708,7 +740,8 @@ void MessageListWidget::paintMessageHeader(
     const int tsTop = headerBaseline - tsFm.ascent();
     p.drawStaticText(QPointF(tsX, tsTop), item.stTs);
 
-    if (item.msg.edited) {
+    // Slack edits every huddle_thread message as the call ends — not news.
+    if (item.msg.edited && !isHuddleMessage(item.msg)) {
         const int tsW = qCeil(item.stTs.size().width());
         p.drawStaticText(QPointF(tsX + tsW + 6, tsTop), _stEdited);
     }
@@ -1608,11 +1641,197 @@ void MessageListWidget::paintFileChips(
             continue;
         if (!first || hasAbove)
             y += kFileChipGap;
-        first            = false;
-        const auto audio = audioChipState(f);
-        const int  h     = MsgRender::fileChipHeight(f);
-        MsgRender::paintFileChip(p, f, QRect(left, y, width, h), audio ? &*audio : nullptr);
+        first       = false;
+        const int h = MsgRender::messageFileHeight(f);
+        if (f.isCanvas()) {
+            paintCanvasCard(p, f, QRect(left, y, std::min(width, MsgRender::kCanvasCardMaxW), h));
+        } else {
+            const auto audio = audioChipState(f);
+            MsgRender::paintFileChip(p, f, QRect(left, y, width, h), audio ? &*audio : nullptr);
+        }
         y += h;
+    }
+}
+
+// Canvas preview HTML: the display-normalized canvas (CanvasDisplay) minus
+// its title <h1> (the card header shows the title), with pictures dropped
+// (they need authed fetches, and a preview is about the text) and mentions
+// drawn as chips like in messages. Heading sizes are applied to the laid-out
+// document by CanvasDisplay::styleHeadings, same as in the editor.
+static QString canvasPreviewHtml(const QString &raw, const File &f, const Session *session) {
+    const QString html = CanvasDisplay::prepareHtml(raw, session);
+    QString out = CanvasDiff::splitTitleH1(html, {CanvasDisplay::title(f.title, session)}).second;
+    static const QRegularExpression kImg(
+        QStringLiteral("<img\\b[^>]*>"), QRegularExpression::CaseInsensitiveOption
+    );
+    out.remove(kImg);
+
+    const QString                   me = session ? session->meUserId().value : QString();
+    static const QRegularExpression kMention(
+        QStringLiteral("<a href=\"%1([UW][A-Z0-9]+)\">").arg(MsgRender::kUserAnchorPrefix)
+    );
+    QString   chips;
+    qsizetype pos = 0;
+    for (auto it = kMention.globalMatch(out); it.hasNext();) {
+        const auto m = it.next();
+        chips += QStringView(out).mid(pos, m.capturedStart() - pos);
+        chips += QStringLiteral(
+                     "<a href=\"%1%2\" style=\"color:%3; background:%4; text-decoration:none\">"
+        )
+                     .arg(
+                         MsgRender::kUserAnchorPrefix,
+                         m.captured(1),
+                         Th::qss(Th::c().message.mentionText),
+                         Th::qss(
+                             m.captured(1) == me ? Th::c().message.mentionSelfBg
+                                                 : Th::c().message.mentionBg
+                         )
+                     );
+        pos = m.capturedEnd();
+    }
+    chips += QStringView(out).mid(pos);
+    return chips;
+}
+
+void MessageListWidget::paintCanvasCard(QPainter &p, const File &f, const QRect &card) const {
+    const auto   &th   = Th::c();
+    constexpr int kPad = 14, kTile = 36, kRadius = 8;
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(th.message.attachmentBorder, 1));
+    p.setBrush(th.message.attachmentBg);
+    Paint::borderedRect(p, QRectF(card), kRadius);
+
+    // Header: canvas tile, title, "Canvas".
+    const int   hdrH = MsgRender::kCanvasCardHdrH;
+    const QRect tile(card.x() + kPad, card.y() + (hdrH - kTile) / 2, kTile, kTile);
+    p.setPen(Qt::NoPen);
+    p.setBrush(th.message.canvasTile);
+    p.drawRoundedRect(tile, 8, 8);
+    {
+        static qreal   kDpr = 0;
+        static QColor  kColor;
+        static QPixmap kPx;
+        const QColor   glyph = th.icon.onDark;
+        if (const qreal d = p.device()->devicePixelRatioF();
+            !qFuzzyCompare(d, kDpr) || glyph != kColor) {
+            kDpr   = d;
+            kColor = glyph;
+            kPx    = svgPixmapPhys(":/ui/canvas.svg", QSize(20, 20), glyph, d);
+        }
+        if (!kPx.isNull())
+            p.drawPixmap(tile.x() + (kTile - 20) / 2, tile.y() + (kTile - 20) / 2, kPx);
+    }
+    const int          textX    = tile.right() + 1 + 12;
+    const int          textW    = card.right() - kPad - textX;
+    const QFont        nameFont = msgNameFont();
+    const QFont        subFont  = msgTsFont();
+    const QFontMetrics nameFm(nameFont), subFm(subFont);
+    const int          blockH = nameFm.height() + 2 + subFm.height();
+    const int          textY  = card.y() + (hdrH - blockH) / 2;
+    const QString      title = f.title.isEmpty() ? f.name : CanvasDisplay::title(f.title, _session);
+    p.setFont(nameFont);
+    p.setPen(th.text.primary);
+    p.drawText(
+        QRect(textX, textY, textW, nameFm.height()),
+        Qt::AlignLeft | Qt::AlignVCenter,
+        nameFm.elidedText(title, Qt::ElideRight, textW)
+    );
+    p.setFont(subFont);
+    p.setPen(th.text.secondary);
+    p.drawText(
+        QRect(textX, textY + nameFm.height() + 2, textW, subFm.height()),
+        Qt::AlignLeft | Qt::AlignVCenter,
+        f.prettyType.isEmpty() ? tr("Canvas") : f.prettyType
+    );
+    p.setPen(QPen(th.message.attachmentBorder, 1));
+    p.drawLine(card.x() + 1, card.y() + hdrH, card.right() - 1, card.y() + hdrH);
+    p.restore();
+
+    // Body: the start of the document, clipped to the card, fading out.
+    const QRect body(
+        card.x() + kPad,
+        card.y() + hdrH + 10,
+        card.width() - 2 * kPad,
+        card.height() - hdrH - 10 - 1
+    );
+    auto &prev = _canvasPreviews[f.id];
+    if (prev.html.isEmpty() && !prev.loading && !prev.failed && _session && !f.id.isEmpty()) {
+        prev.loading = true;
+        QPointer<const MessageListWidget> guard(this);
+        const QString                     id = f.id;
+        _session->loadCanvasContent(
+            id,
+            [guard, id](QString html) {
+                if (!guard)
+                    return;
+                auto &cp   = guard->_canvasPreviews[id];
+                cp.loading = false;
+                cp.html    = std::move(html);
+                cp.failed  = cp.html.isEmpty();
+                cp.doc.reset();
+                guard->viewport()->update();
+            },
+            [guard, id](const QString &) {
+                if (!guard)
+                    return;
+                auto &cp   = guard->_canvasPreviews[id];
+                cp.loading = false;
+                cp.failed  = true;
+                guard->viewport()->update();
+            }
+        );
+    }
+    if (prev.html.isEmpty()) {
+        p.save();
+        p.setFont(subFont);
+        p.setPen(th.text.secondary);
+        p.drawText(
+            body,
+            Qt::AlignLeft | Qt::AlignTop,
+            prev.failed ? tr("Preview unavailable") : tr("Loading preview…")
+        );
+        p.restore();
+        return;
+    }
+    if (!prev.doc || prev.docW != body.width()) {
+        prev.doc = std::make_unique<QTextDocument>();
+        prev.doc->setDocumentMargin(0);
+        prev.doc->setDefaultFont(QApplication::font());
+        prev.doc->setDefaultStyleSheet(
+            MsgRender::docStyleSheet() +
+            QStringLiteral("a { color: %1; text-decoration: none; }").arg(Th::qss(th.text.link))
+        );
+        prev.doc->setHtml(canvasPreviewHtml(prev.html, f, _session));
+        CanvasDisplay::styleHeadings(prev.doc.get(), QFontInfo(QApplication::font()).pixelSize());
+        prev.doc->setTextWidth(body.width());
+        prev.docW = body.width();
+    }
+    p.save();
+    p.setClipRect(body.adjusted(0, 0, 0, 0));
+    p.translate(body.topLeft());
+    QAbstractTextDocumentLayout::PaintContext pCtx;
+    pCtx.palette.setColor(QPalette::Text, th.text.primary);
+    pCtx.clip = QRectF(0, 0, body.width(), body.height());
+    prev.doc->documentLayout()->draw(&p, pCtx);
+    p.restore();
+
+    // Fade the cut into the card background when the document runs past it.
+    if (prev.doc->size().height() > body.height()) {
+        constexpr int kFade = 36;
+        const QRect   fade(card.x() + 1, card.bottom() - kFade, card.width() - 2, kFade);
+        QColor        clear = th.message.attachmentBg;
+        clear.setAlpha(0);
+        QLinearGradient g(fade.topLeft(), fade.bottomLeft());
+        g.setColorAt(0, clear);
+        g.setColorAt(1, th.message.attachmentBg);
+        p.save();
+        QPainterPath clip;
+        clip.addRoundedRect(QRectF(card).adjusted(1, 1, -1, -1), kRadius - 1, kRadius - 1);
+        p.setClipPath(clip);
+        p.fillRect(fade, g);
+        p.restore();
     }
 }
 
@@ -1694,8 +1913,8 @@ MessageListWidget::fileChipAt(const QPoint &viewportPos, QRect *chipRect, int *m
             if (!firstChip || hasAboveChips)
                 chipY += kFileChipGap;
             firstChip         = false;
-            const int   chipW = std::min(textWidth, kFileChipMaxW);
-            const int   h     = MsgRender::fileChipHeight(f);
+            const int   chipW = std::min(textWidth, MsgRender::messageFileMaxW(f));
+            const int   h     = MsgRender::messageFileHeight(f);
             const QRect r(textLeft, chipY, chipW, h);
             if (r.contains(viewportPos)) {
                 if (chipRect)
@@ -1924,7 +2143,7 @@ int MessageListWidget::replyBarVpTop(int i, const PaintContext &ctx) const {
         if (!firstChip || hasAboveChips)
             y += kFileChipGap;
         firstChip = false;
-        y += MsgRender::fileChipHeight(f);
+        y += MsgRender::messageFileHeight(f);
     }
 
     if (!item.msg.reactions.empty())
@@ -1997,7 +2216,7 @@ int MessageListWidget::replyItemHeight(const MessageItem &item, int width, bool 
         if (!firstChip || hasAboveChips)
             extraH += kFileChipGap;
         firstChip = false;
-        extraH += MsgRender::fileChipHeight(f);
+        extraH += MsgRender::messageFileHeight(f);
     }
     const int reactionH = item.msg.reactions.empty() ? 0 : (kReactH + 2);
     const int headerH   = collapsed ? 0 : (kHdrH + kHdrGap);
@@ -2087,7 +2306,7 @@ void MessageListWidget::paintReplyItem(
             if (!firstChip || hasAboveChips)
                 contentY += kFileChipGap;
             firstChip = false;
-            contentY += MsgRender::fileChipHeight(f);
+            contentY += MsgRender::messageFileHeight(f);
         }
     }
 
@@ -2240,7 +2459,7 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
             if (!firstChip || hasAboveChips)
                 y += kFileChipGap;
             firstChip = false;
-            y += MsgRender::fileChipHeight(f);
+            y += MsgRender::messageFileHeight(f);
         }
 
         const int reactTop = y + 2;
@@ -2450,10 +2669,10 @@ QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
             y += kFileChipGap;
         firstChip = false;
         if (fi == fileIdx) {
-            const int chipW = std::min(width, kFileChipMaxW);
-            return QRect(left, y, chipW, MsgRender::fileChipHeight(f));
+            const int chipW = std::min(width, MsgRender::messageFileMaxW(f));
+            return QRect(left, y, chipW, MsgRender::messageFileHeight(f));
         }
-        y += MsgRender::fileChipHeight(f);
+        y += MsgRender::messageFileHeight(f);
     }
     return {};
 }

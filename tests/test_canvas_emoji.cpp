@@ -7,10 +7,13 @@
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "ui/canvas_page/canvas_display.h"
 #include "ui/canvas_page/canvas_emoji.h"
 
 #include <QApplication>
 #include <QHash>
+#include <QTextBlock>
+#include <QTextDocument>
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
@@ -87,4 +90,54 @@ TEST_CASE("text emoji expand while the surrounding markup is preserved", "[canva
 TEST_CASE("html with no colon is returned unchanged", "[canvas-emoji]") {
     const QString in = "<p>plain text, no codes</p>";
     CHECK(expandInHtml(in, kNoCustom) == in);
+}
+
+// ── CanvasDisplay (shared by the editor and the message-list preview) ────────
+
+TEST_CASE("standard emoji pictures are not drawn twice", "[canvas-display]") {
+    // Huddle-notes canvases carry <img data-is-slack>:code:</img>; the img is
+    // void to Qt, so keeping it would show the picture AND the expanded code.
+    const QString out = CanvasDisplay::prepareHtml(
+        "<h1><control><img src=\"https://x/1f3a7.png\" alt=\"headphones\" data-is-slack "
+        "style=\"width: 30px\">:headphones:</img></control> Huddle notes</h1>",
+        nullptr
+    );
+    CHECK(!out.contains("<img"));
+    CHECK(!out.contains("</img>"));
+    CHECK(out.count(QString::fromUtf8("\xF0\x9F\x8E\xA7")) == 1); // 🎧, once
+}
+
+TEST_CASE("bare mention anchors become user anchors", "[canvas-display]") {
+    const QString out = CanvasDisplay::prepareHtml("<p><a>@U6HQGJ6GZ</a> said</p>", nullptr);
+    CHECK(out.contains("<a href=\"msga://user/U6HQGJ6GZ\">@U6HQGJ6GZ</a> said"));
+}
+
+TEST_CASE("lnk hyperlinks become anchors", "[canvas-display]") {
+    const QString out =
+        CanvasDisplay::prepareHtml("<p><lnk href=\"https://e.x/\">View</lnk></p>", nullptr);
+    CHECK(out.contains("<a href=\"https://e.x/\">View</a>"));
+}
+
+TEST_CASE("canvas titles are decoded with codes and mentions resolved", "[canvas-display]") {
+    CHECK(
+        CanvasDisplay::title(":headphones: Notes with &lt;@U1&gt; and &lt;@U2|bob&gt;", nullptr) ==
+        QString::fromUtf8("\xF0\x9F\x8E\xA7") + " Notes with @U1 and @bob"
+    );
+}
+
+TEST_CASE("canvas headings get one shared size scale", "[canvas-display]") {
+    CHECK(CanvasDisplay::headingPx(1, 15) == 23);
+    CHECK(CanvasDisplay::headingPx(2, 15) == 20);
+    CHECK(CanvasDisplay::headingPx(3, 15) == 17);
+    CHECK(CanvasDisplay::headingPx(4, 15) == 15);
+
+    QTextDocument doc;
+    doc.setHtml("<h2>Summary</h2><p>body</p>");
+    CanvasDisplay::styleHeadings(&doc, 15);
+    const QTextBlock h = doc.begin();
+    REQUIRE(h.blockFormat().headingLevel() == 2); // level kept for toMarkdown
+    const QTextCharFormat cf = h.begin().fragment().charFormat();
+    CHECK(cf.font().pixelSize() == 20);
+    CHECK(cf.font().bold());
+    CHECK(!cf.hasProperty(QTextFormat::FontSizeAdjustment));
 }

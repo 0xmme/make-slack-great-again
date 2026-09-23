@@ -307,8 +307,34 @@ TEST_CASE_METHOD(
     auto loaded = cache.loadMessages(conv);
     REQUIRE(loaded.size() == 1);
     CHECK(loaded[0].author.value.isEmpty());
-    CHECK(loaded[0].botName == "Slack");
-    CHECK(loaded[0].text.text == "Huddle happened");
+    CHECK(loaded[0].botName == "A huddle happened");
+    CHECK(loaded[0].text.text == "A huddle happened");
+}
+
+TEST_CASE_METHOD(CacheFixture, "huddle summary and canvas title survive caching", "[cache][msg]") {
+    Message m;
+    m.ts      = "100.000";
+    m.subtype = QString{"huddle_thread"};
+    m.huddle  = HuddleInfo{
+        .attendees = {UserId{"U1"}, UserId{"U2"}},
+        .startSec  = 1790161232,
+        .endSec    = 1790161718,
+        .ended     = true
+    };
+    File canvas;
+    canvas.id       = "F1";
+    canvas.mimeType = "application/vnd.slack-docs";
+    canvas.title    = ":headphones: Huddle notes with <@U1>";
+    m.files         = {canvas};
+    presentHuddleThread(m);
+
+    ConversationId conv{"C1"};
+    cache.saveMessages(conv, {m});
+    auto loaded = cache.loadMessages(conv);
+    REQUIRE(loaded.size() == 1);
+    CHECK(loaded[0].huddle == m.huddle);
+    REQUIRE(loaded[0].files.size() == 1);
+    CHECK(loaded[0].files[0].title == canvas.title);
 }
 
 TEST_CASE_METHOD(CacheFixture, "link preview classification survives caching", "[cache][msg]") {

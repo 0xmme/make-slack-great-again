@@ -66,7 +66,10 @@ struct HuddleRoom {
     QString             link;           // room.huddle_link (preferred join URL)
     std::vector<UserId> participants;   // current participants, or [created_by]
 };
-HuddleRoom readHuddleRoom(const QJsonObject &room);
+HuddleRoom                readHuddleRoom(const QJsonObject &room);
+// Who was in a huddle_thread message's `room` and for how long (see
+// Message::huddle). nullopt when the message carries no room.
+std::optional<HuddleInfo> readHuddleSummary(const QJsonObject &room);
 
 // Channel canvas lookup on a conversations.info/list "channel" object, across
 // both server shapes: paid teams expose properties.canvas {file_id, is_empty};

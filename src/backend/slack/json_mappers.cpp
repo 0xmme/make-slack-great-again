@@ -173,6 +173,27 @@ HuddleRoom readHuddleRoom(const QJsonObject &room) {
     return h;
 }
 
+static qint64 roomSeconds(const QJsonValue &v) {
+    // Same number-or-string ambiguity as date_end in roomHasEnded.
+    return static_cast<qint64>(v.isString() ? v.toString().toDouble() : v.toDouble());
+}
+
+std::optional<HuddleInfo> readHuddleSummary(const QJsonObject &room) {
+    if (room.isEmpty())
+        return std::nullopt;
+    HuddleInfo h;
+    h.ended         = roomHasEnded(room);
+    h.startSec      = roomSeconds(room.value("date_start"));
+    h.endSec        = h.ended ? roomSeconds(room.value("date_end")) : 0;
+    // Ended: the history is everyone who was in it (the live list is empty by
+    // then). Live: who is in it right now.
+    const auto list = room.value(h.ended ? "participant_history" : "participants").toArray();
+    for (const auto &v : list)
+        if (const QString id = v.toString(); !id.isEmpty())
+            h.attendees.push_back(UserId{id});
+    return h;
+}
+
 std::pair<QString, bool> channelCanvas(const QJsonObject &channel) {
     const auto props  = channel.value("properties").toObject();
     const auto canvas = props.value("canvas").toObject();
@@ -434,7 +455,9 @@ File toFile(const QJsonObject &o) {
         f.transcriptStatus  = tr.value("status").toString();
         f.transcriptPreview = tr.value("preview").toObject().value("content").toString();
     }
-    f.transcriptVttUrl                 = o.value("vtt").toString();
+    f.transcriptVttUrl = o.value("vtt").toString();
+    if (f.isCanvas())
+        f.title = MrkdwnParser::decodeEntities(o.value("title").toString());
     // Full thumbnail ladder — the UI picks the variant matching the physical
     // (DPR-scaled) preview size, so previews stay crisp on any screen density.
     static constexpr int kThumbSides[] = {64, 80, 160, 360, 480, 720, 800, 960, 1024};
@@ -752,6 +775,8 @@ Message toMessage(const QJsonObject &o) {
         .blocks  = std::move(blocks),
         .attachments = std::move(attachments),
     };
+    if (isHuddleMessage(m))
+        m.huddle = readHuddleSummary(msg.value("room").toObject());
     presentHuddleThread(m);
     return m;
 }

@@ -513,20 +513,52 @@ TEST_CASE("toMessage thread root ts==thread_ts gives no threadRoot", "[mappers][
     CHECK(m.replyCount == 5);
 }
 
-TEST_CASE("toMessage presents huddle_thread as a 'Slack' bot message", "[mappers][message]") {
+TEST_CASE("toMessage presents huddle_thread as a huddle row", "[mappers][message]") {
     auto m = JsonMappers::toMessage(obj(R"({
         "ts": "100.000", "user": "USLACKBOT", "subtype": "huddle_thread", "text": "",
-        "room": {"call_family": "huddle", "has_ended": true}
+        "blocks": [{"type": "rich_text", "elements": [{"type": "rich_text_section",
+                    "elements": [{"type": "text", "text": "A huddle started"}]}]}],
+        "room": {"call_family": "huddle", "has_ended": true, "date_start": 1000,
+                 "date_end": "1480", "participants": [],
+                 "participant_history": ["U1", "U2"]}
     })"));
     // Author is cleared so name/avatar resolution takes the botName path —
     // USLACKBOT would win the user lookup and render "Slackbot".
     CHECK(m.author.value.isEmpty());
-    CHECK(m.botName == "Slack");
-    CHECK(m.text.text == "Huddle happened");
+    CHECK(m.botName == "A huddle happened");
+    CHECK(m.text.text == "A huddle happened");
+    CHECK(m.blocks.empty());
+    REQUIRE(m.huddle.has_value());
+    CHECK(m.huddle->ended);
+    CHECK(m.huddle->startSec == 1000);
+    CHECK(m.huddle->endSec == 1480);
+    CHECK(m.huddle->attendees == std::vector<UserId>{UserId{"U1"}, UserId{"U2"}});
     // An ordinary row, not a centered system line; its thread (the huddle
     // chat) stays reachable.
     CHECK_FALSE(isSystemEvent(m));
     CHECK(canHostThread(m));
+}
+
+TEST_CASE("toMessage live huddle lists the current participants", "[mappers][message]") {
+    auto m = JsonMappers::toMessage(obj(R"({
+        "ts": "100.000", "user": "USLACKBOT", "subtype": "huddle_thread", "text": "",
+        "room": {"call_family": "huddle", "has_ended": false, "date_start": 1000,
+                 "date_end": 0, "participants": ["U3"], "participant_history": ["U3", "U4"]}
+    })"));
+    CHECK(m.botName == "A huddle started");
+    REQUIRE(m.huddle.has_value());
+    CHECK_FALSE(m.huddle->ended);
+    CHECK(m.huddle->attendees == std::vector<UserId>{UserId{"U3"}});
+}
+
+TEST_CASE("toFile keeps a canvas's decoded title", "[mappers][file]") {
+    const File f = JsonMappers::toFile(obj(R"({
+        "id": "F1", "mimetype": "application/vnd.slack-docs", "filetype": "quip",
+        "name": "_headphones__Huddle_notes",
+        "title": ":headphones: Huddle notes with &lt;@U1&gt;"
+    })"));
+    CHECK(f.isCanvas());
+    CHECK(f.title == ":headphones: Huddle notes with <@U1>");
 }
 
 TEST_CASE("toMessage message_changed unpacks nested message", "[mappers][message]") {

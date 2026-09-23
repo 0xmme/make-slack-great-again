@@ -771,6 +771,10 @@ struct File {
     // provider transcribed the file locally (Session::applyAiTranscripts) and
     // its text replaced Slack's line. Holds the provider's display name.
     QString                transcriptBy;
+    // Canvas files (Slack "quip" docs): the display title. Unlike `name` (a
+    // slugged filename) it keeps the emoji codes and <@U…> mentions Slack puts
+    // in huddle-notes titles, entity-decoded.
+    QString                title;
 
     // Preview source covering physW physical pixels: the smallest thumbnail wide
     // enough, else the largest available (never the original — it can be huge),
@@ -795,6 +799,9 @@ struct File {
 
     bool isImage() const { return mimeType.startsWith("image/") && imageWidth > 0; }
     bool isPdf() const { return mimeType == "application/pdf"; }
+    // Slack canvases (filetype "quip"): drawn as a preview card in the message
+    // list, opened in the in-app canvas viewer.
+    bool isCanvas() const { return mimeType == QLatin1String("application/vnd.slack-docs"); }
     // Audio uploads and Slack voice clips get the inline player chip.
     bool isAudio() const {
         return mimeType.startsWith("audio/") || subtype == QLatin1String("slack_audio");
@@ -905,6 +912,20 @@ struct Attachment {
 
 // --- Messages ---
 
+// The call a huddle_thread message announces, from its `room` object — what the
+// official client's "A huddle happened · You and X were in the huddle for 8m"
+// row is made of. Names are roster state, so the sentence itself is built at
+// render time (MsgRender::huddleSummaryText).
+struct HuddleInfo {
+    // Everyone who was in it (room.participant_history) once it ended; the
+    // current participants while it is live.
+    std::vector<UserId> attendees;
+    qint64              startSec                             = 0; // room.date_start, unix seconds
+    qint64              endSec                               = 0; // room.date_end, 0 while live
+    bool                ended                                = false;
+    bool                operator==(const HuddleInfo &) const = default;
+};
+
 struct Message {
     Ts                    ts;
     // Wall-clock time AND sort key, in epoch microseconds. The single orderable
@@ -928,16 +949,18 @@ struct Message {
     QString               rawText; // original mrkdwn from Slack; used for edit pre-fill
     std::vector<Reaction> reactions;
     bool                  edited = false;
-    std::optional<QString>  subtype;        // "bot_message", "channel_join", etc.
-    std::vector<File>       files;          // Phase 3
-    std::vector<Block>      blocks;         // Phase 3
-    std::vector<Attachment> attachments;    // Phase 3
-    bool                    pinned = false; // true if pinned to channel
-    UserId                  pinnedBy;       // user who pinned it
+    std::optional<QString>    subtype;        // "bot_message", "channel_join", etc.
+    std::vector<File>         files;          // Phase 3
+    std::vector<Block>        blocks;         // Phase 3
+    std::vector<Attachment>   attachments;    // Phase 3
+    bool                      pinned = false; // true if pinned to channel
+    UserId                    pinnedBy;       // user who pinned it
     // Local optimistic copy shown while the send/upload is in flight; rendered
     // translucent and replaced by the real message once the server confirms.
-    bool                    pending                           = false;
-    bool                    operator==(const Message &) const = default;
+    bool                      pending = false;
+    // Set on huddle_thread messages (see presentHuddleThread).
+    std::optional<HuddleInfo> huddle;
+    bool                      operator==(const Message &) const = default;
 };
 
 // True when `msg` is a reply to a thread the authed user is "following", so it
@@ -988,17 +1011,20 @@ inline bool isSystemEvent(const Message &m) {
 }
 
 // Slack announces a huddle by posting a `huddle_thread` message into the
-// channel: authored by USLACKBOT, empty text — the payload is the `room`
-// object, which the backend consumes separately (EvHuddleChanged). Present it
-// as an ordinary bot-style row from "Slack": the author is cleared so
-// name/avatar resolution takes the botName path (the USLACKBOT id would win
-// the lookup and render "Slackbot"), and the label is ALWAYS overwritten —
-// Slack sends no text, and re-deriving on every load keeps a cached copy in
-// the current locale instead of replaying a persisted translation. Applied at
-// both points where messages enter the app: JSON mapping
-// (JsonMappers::toMessage) and cache load (WorkspaceCache::messageFromJson).
-// The avatar is NOT baked here — it's roster state, so the paint layer borrows
-// Slackbot's at draw time (see MessageListWidget::paintAvatar).
+// channel: authored by USLACKBOT, empty text, one rich_text block saying "A
+// huddle started" that Slack never updates — the payload is the `room` object
+// (consumed separately as EvHuddleChanged, and summarized into Message::huddle).
+// Present it the way the official client does: an authorless row whose "name"
+// is the event itself ("A huddle happened" once it ended), a headphones tile
+// for an avatar (MessageListWidget::paintAvatar), and a body sentence built at
+// render time from Message::huddle (MsgRender::huddleSummaryText). The author
+// is cleared so name resolution takes the botName path (the USLACKBOT id would
+// win the lookup and render "Slackbot"); the stale block is dropped; and the
+// labels are ALWAYS overwritten — re-deriving on every load keeps a cached copy
+// in the current locale instead of replaying a persisted translation. The text
+// is only the plain-text stand-in (previews, copy, search). Applied at both
+// points where messages enter the app: JSON mapping (JsonMappers::toMessage)
+// and cache load (WorkspaceCache::messageFromJson).
 inline bool isHuddleMessage(const Message &m) {
     return m.subtype && *m.subtype == QLatin1String("huddle_thread");
 }
@@ -1006,9 +1032,13 @@ inline bool isHuddleMessage(const Message &m) {
 inline void presentHuddleThread(Message &m) {
     if (!isHuddleMessage(m))
         return;
-    m.author  = {};
-    m.botName = QStringLiteral("Slack");
-    m.text    = {QCoreApplication::translate("domain", "Huddle happened")};
+    const bool ended = !m.huddle || m.huddle->ended;
+    m.author         = {};
+    m.botName        = ended ? QCoreApplication::translate("domain", "A huddle happened")
+                             : QCoreApplication::translate("domain", "A huddle started");
+    m.botAvatarUrl   = {};
+    m.blocks.clear();
+    m.text = {m.botName};
 }
 
 // True for messages the official client draws as ordinary rows (avatar, name,

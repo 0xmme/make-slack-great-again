@@ -107,11 +107,12 @@ struct MessageColors {
     QColor imagePlaceholderBorder;
     QColor replyBarHover; // reply bar hover background
     QColor replyBarHoverBorder;
-    QColor replyLink;           // "N replies" link color
-    QColor appBadgeBg;          // "APP" tag background next to bot names
-    QColor appBadgeText;        // "APP" tag text
-    QColor extBadgeBg;          // "EXT" tag background next to external (Slack Connect) users
-    QColor extBadgeText;        // "EXT" tag text
+    QColor replyLink;    // "N replies" link color
+    QColor appBadgeBg;   // "APP" tag background next to bot names
+    QColor appBadgeText; // "APP" tag text
+    QColor extBadgeBg;   // "EXT" tag background next to external (Slack Connect) users
+    QColor extBadgeText; // "EXT" tag text
+    QColor canvasTile;   // canvas preview card's icon tile — Slack's canvas blue, every theme
     int    avatarHslSaturation; // generated avatar HSL saturation
     int    avatarHslLightness;
 };

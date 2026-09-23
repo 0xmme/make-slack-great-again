@@ -1537,3 +1537,86 @@ TEST_CASE(
             CHECK(qAlpha(img.pixel(action.center())) > 0); // the glyph is there
         }
 }
+
+// ── Huddle rows ───────────────────────────────────────────────────────────────
+
+static Message huddleMessage(std::vector<UserId> who, qint64 start, qint64 end, bool ended) {
+    Message m;
+    m.ts      = "1.000";
+    m.subtype = QString{"huddle_thread"};
+    m.huddle =
+        HuddleInfo{.attendees = std::move(who), .startSec = start, .endSec = end, .ended = ended};
+    presentHuddleThread(m);
+    return m;
+}
+
+TEST_CASE("huddle summary puts me first as \"You\" with the length", "[render][huddle]") {
+    auto *session = renderSession();
+    session->setMe(UserId{"U8"});
+    // Slack's participant_history order is arbitrary; "You" always leads.
+    const auto m = huddleMessage({UserId{"U7"}, UserId{"U8"}}, 1000, 1000 + 15 * 60, true);
+    CHECK(MsgRender::huddleSummaryText(m, session) == "You and Alice were in the huddle for 15m.");
+    CHECK(
+        MsgRender::buildMsgHtml(m, session).contains("You and Alice were in the huddle for 15m.")
+    );
+    delete session;
+}
+
+TEST_CASE("huddle summary grammar for one, several and a live call", "[render][huddle]") {
+    auto *session = renderSession();
+    session->setMe(UserId{"U8"});
+    CHECK(
+        MsgRender::huddleSummaryText(huddleMessage({UserId{"U7"}}, 1000, 1090, true), session) ==
+        "Alice was in the huddle for 2m."
+    );
+    CHECK(
+        MsgRender::huddleSummaryText(huddleMessage({UserId{"U8"}}, 1000, 1020, true), session) ==
+        "You were in the huddle for 1m."
+    );
+    CHECK(
+        MsgRender::huddleSummaryText(
+            huddleMessage(
+                {UserId{"U8"}, UserId{"U7"}, UserId{"U1"}, UserId{"U2"}}, 1000, 4900, true
+            ),
+            session
+        ) == "You, Alice and 2 others were in the huddle for 1h 5m."
+    );
+    CHECK(
+        MsgRender::huddleSummaryText(huddleMessage({UserId{"U7"}}, 0, 0, false), session) ==
+        "Alice is in the huddle."
+    );
+    CHECK(
+        MsgRender::huddleSummaryText(huddleMessage({}, 0, 60, true), session) ==
+        "Nobody joined the huddle."
+    );
+    delete session;
+}
+
+TEST_CASE("huddle rows are named after the event, not an app", "[render][huddle]") {
+    CHECK(huddleMessage({}, 0, 60, true).botName == "A huddle happened");
+    CHECK(huddleMessage({}, 0, 0, false).botName == "A huddle started");
+    // Slack's frozen "A huddle started" block never shows.
+    Message m;
+    m.subtype = QString{"huddle_thread"};
+    m.blocks  = {Block{.typeStr = "rich_text", .text = {"A huddle started"}}};
+    presentHuddleThread(m);
+    CHECK(m.blocks.empty());
+}
+
+TEST_CASE("huddle duration label", "[render][huddle]") {
+    CHECK(MsgRender::huddleDurationLabel(5) == "1m");
+    CHECK(MsgRender::huddleDurationLabel(8 * 60 + 20) == "8m");
+    CHECK(MsgRender::huddleDurationLabel(3600) == "1h");
+    CHECK(MsgRender::huddleDurationLabel(3600 + 5 * 60) == "1h 5m");
+}
+
+TEST_CASE("canvas files get the preview card geometry", "[render][canvas]") {
+    File canvas;
+    canvas.mimeType = "application/vnd.slack-docs";
+    File pdf;
+    pdf.mimeType = "application/pdf";
+    CHECK(canvas.isCanvas());
+    CHECK(MsgRender::messageFileHeight(canvas) == MsgRender::kCanvasCardH);
+    CHECK(MsgRender::messageFileMaxW(canvas) == MsgRender::kCanvasCardMaxW);
+    CHECK(MsgRender::messageFileHeight(pdf) == MsgRender::fileChipHeight(pdf));
+}

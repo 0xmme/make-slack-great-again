@@ -23,6 +23,13 @@ QString normalizeMd(QString md) {
     );
     md.replace(kEmojiImg, QStringLiteral(":\\1:"));
 
+    // Member mentions display as "@name" anchors to msga://user/<id>
+    // (CanvasDisplay::prepareHtml); canvas markdown spells a mention ![](@id).
+    static const QRegularExpression kMention(
+        QStringLiteral("\\[[^\\]]*\\]\\(msga://user/([UW][A-Z0-9]+)\\)")
+    );
+    md.replace(kMention, QStringLiteral("![](@\\1)"));
+
     // Drop inline images whose URL is relative/host-less — Slack canvas HTML
     // references embedded pictures as "/collab-slack-blob/<blob>/<fileId>", which
     // cannot round-trip to canvas markdown (Slack needs a real uploaded-file ref).

@@ -15,6 +15,7 @@
 #include "ui/user_profile_card/user_profile_card.h"
 #include "ui/image_viewer/image_viewer.h"
 #include "ui/table_viewer/table_viewer.h"
+#include "ui/canvas_page/canvas_viewer.h"
 #include "ui/delete_message_dialog/delete_message_dialog.h"
 #include "ui/reminder_dialog/reminder_dialog.h"
 #include "ui/summary_dialog/summarize_job.h"
@@ -155,6 +156,8 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
             item.attachDocs.clear();
             item.docWidth = -1;
         }
+        for (auto &[id, preview] : _canvasPreviews)
+            preview.doc.reset();
         rebuildLayout();
         viewport()->update();
     });
@@ -255,6 +258,7 @@ void MessageListWidget::clear() {
     _olderCursor       = std::nullopt;
     _loadingOlder      = false;
     _items.clear();
+    _canvasPreviews.clear();
     _latestHeadRevision = 0;
     _latestHeadOldest   = std::numeric_limits<qint64>::min();
     _historyMessageRevisions.clear();
@@ -1125,6 +1129,8 @@ void MessageListWidget::invalidateAllDocs() {
     for (auto &[root, thread] : _inlineThreads)
         for (auto &reply : thread.replies)
             invalidate(reply);
+    for (auto &[id, preview] : _canvasPreviews)
+        preview.doc.reset();
     rebuildLayout();
     viewport()->update();
 }
@@ -1349,7 +1355,7 @@ int MessageListWidget::rowHeight(int index) const {
         if (!firstChip || hasAboveChips)
             extraH += kFileChipGap;
         firstChip = false;
-        extraH += MsgRender::fileChipHeight(f);
+        extraH += MsgRender::messageFileHeight(f);
     }
 
     const int  reactionH   = item.msg.reactions.empty() ? 0 : (kReactH + 2);
@@ -3384,10 +3390,22 @@ bool MessageListWidget::tryHandleFileChipPress(const QPoint &pos) {
         toggleAudio(*f);
         return true;
     }
+    if (f->isCanvas() && !f->id.isEmpty()) {
+        openCanvasViewer(*f);
+        return true;
+    }
     const QString url = f->permalink.isEmpty() ? f->urlPrivate : f->permalink;
     if (!url.isEmpty())
         QDesktopServices::openUrl(QUrl(url));
     return true;
+}
+
+void MessageListWidget::openCanvasViewer(const File &file) {
+    if (!_session)
+        return;
+    if (!_canvasViewer)
+        _canvasViewer = new CanvasViewerOverlay(window());
+    _canvasViewer->open(_session, _currentConv, file);
 }
 
 bool MessageListWidget::tryHandleAudioChipPress(const QPoint &pos) {

@@ -138,6 +138,7 @@ void applyDarkContent(Theme &t) {
     t.message.appBadgeText           = QColor("#A8A8A8");
     t.message.extBadgeBg             = QColor(230, 201, 138, 30);
     t.message.extBadgeText           = QColor("#D9B45C");
+    t.message.canvasTile             = QColor("#1D9BD1");
 
     t.composer.bg                    = QColor("#222222");
     t.composer.border                = QColor("#3A3A3A");
@@ -364,6 +365,7 @@ const Theme kAubergineBase = {
             .appBadgeText           = QColor("#616061"),
             .extBadgeBg             = QColor(198, 146, 10, 38),
             .extBadgeText           = QColor("#8A6508"),
+            .canvasTile             = QColor("#1D9BD1"),
             .avatarHslSaturation    = 130,
             .avatarHslLightness     = 100,
         },

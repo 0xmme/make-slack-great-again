@@ -309,6 +309,13 @@ TEST_CASE("trailing inserts after an anchor are emitted reversed", "[canvas-diff
 // display back into ":name:" shortcodes — both for the markdown sent to Slack
 // and so an untouched emoji section diffs equal on both sides. The fixtures use
 // the exact image-markdown form Qt's toMarkdown emits (alt text "image").
+TEST_CASE("normalizeMd turns mention anchors back into canvas mentions", "[canvas-diff]") {
+    CHECK(
+        CanvasDiff::normalizeMd("hi [@Alice](msga://user/U7) and [@Bob](msga://user/W9)") ==
+        "hi ![](@U7) and ![](@W9)"
+    );
+}
+
 TEST_CASE("normalizeMd turns emoji images back into shortcodes", "[canvas-diff]") {
     CHECK(CanvasDiff::normalizeMd("![image](emoji:tada)") == ":tada:");
     CHECK(CanvasDiff::normalizeMd("cheer ![image](emoji:tada) now") == "cheer :tada: now");

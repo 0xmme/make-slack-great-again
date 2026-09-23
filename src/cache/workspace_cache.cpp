@@ -99,6 +99,8 @@ static QJsonObject toJson(const File &f) {
         o["tpv"] = f.transcriptPreview;
     if (!f.transcriptVttUrl.isEmpty())
         o["tvt"] = f.transcriptVttUrl;
+    if (!f.title.isEmpty())
+        o["ti"] = f.title;
     if (!f.thumbs.empty()) {
         QJsonArray arr;
         for (const auto &t : f.thumbs)
@@ -132,6 +134,7 @@ static File fileFromJson(const QJsonObject &o) {
     f.transcriptStatus   = o["tst"].toString();
     f.transcriptPreview  = o["tpv"].toString();
     f.transcriptVttUrl   = o["tvt"].toString();
+    f.title              = o["ti"].toString();
     for (const auto &v : o["tb"].toArray()) {
         const auto t = v.toObject();
         f.thumbs.push_back(FileThumb{t["w"].toInt(), t["h"].toInt(), t["u"].toString()});
@@ -341,6 +344,17 @@ static QJsonObject toJson(const Message &m) {
             arr.append(toJson(a));
         o["at"] = arr;
     }
+    if (m.huddle) {
+        QJsonArray who;
+        for (const auto &u : m.huddle->attendees)
+            who.append(u.value);
+        o["hu"] = QJsonObject{
+            {"a", who},
+            {"s", QString::number(m.huddle->startSec)},
+            {"e", QString::number(m.huddle->endSec)},
+            {"x", m.huddle->ended},
+        };
+    }
     return o;
 }
 // Host (minus "www.") plus path (minus trailing '/'), lower-cased host; the
@@ -401,6 +415,15 @@ static Message messageFromJson(const QJsonObject &o) {
             att.isLinkPreview = linksTo(att.titleLink) || linksTo(att.imageUrl);
         }
         m.attachments.push_back(std::move(att));
+    }
+    if (const auto h = o["hu"].toObject(); !h.isEmpty()) {
+        HuddleInfo info;
+        for (const auto &v : h["a"].toArray())
+            info.attendees.push_back(UserId{v.toString()});
+        info.startSec = h["s"].toString().toLongLong();
+        info.endSec   = h["e"].toString().toLongLong();
+        info.ended    = h["x"].toBool();
+        m.huddle      = std::move(info);
     }
     // Re-derive the synthesized huddle label on every load — it must follow
     // the current locale, and rows cached before the transform existed have

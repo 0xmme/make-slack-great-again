@@ -35,6 +35,7 @@ class PopupTooltip;
 class EmojiPickerPopup;
 class ImageViewerOverlay;
 class TableViewerOverlay;
+class CanvasViewerOverlay;
 class UserProfileCard;
 
 // Per-attachment rendered doc (lazy, like the main textDoc).
@@ -280,6 +281,8 @@ private:
     // "Preview" on a CSV file chip: download the file, parse it into a table
     // block and open it in the full-window table viewer.
     void         openCsvPreview(const File &file);
+    // Click on a canvas preview card: open the canvas in the in-window viewer.
+    void         openCanvasViewer(const File &file);
     // Open the full-window in-app viewer for a file preview (image / PDF page),
     // then fetch the full-resolution image for real images.
     void         openPreviewViewer(const File &file, const Message &msg);
@@ -473,6 +476,9 @@ private:
     paintFileImages(QPainter &p, const MessageItem &item, const PaintContext &ctx, int top) const;
     void
     paintFileChips(QPainter &p, const MessageItem &item, const PaintContext &ctx, int top) const;
+    // A canvas file's preview card (MsgRender::kCanvasCardH tall); kicks off the
+    // content download the first time the card is painted.
+    void  paintCanvasCard(QPainter &p, const File &f, const QRect &card) const;
     void  paintHoverToolbar(QPainter &p, int index, int rowTop, int rowH) const;
     void  paintFileActionBar(QPainter &p, const QRect &fileRect) const;
     QRect fileViewportRect(int msgIdx, int fileIdx) const;
@@ -913,11 +919,23 @@ private:
     // this region instead of the whole viewport.
     mutable QHash<QString, QRect>    _gifRects;
 
-    PopupTooltip       *_tooltip = nullptr;
-    QDeadlineTimer      _tooltipPin; // while running, hover logic leaves the tooltip alone
-    EmojiPickerPopup   *_emojiPicker = nullptr;
-    ImageViewerOverlay *_imageViewer = nullptr; // lazily created, parented to window()
-    TableViewerOverlay *_tableViewer = nullptr; // lazily created, parented to window()
+    PopupTooltip        *_tooltip = nullptr;
+    QDeadlineTimer       _tooltipPin; // while running, hover logic leaves the tooltip alone
+    EmojiPickerPopup    *_emojiPicker  = nullptr;
+    ImageViewerOverlay  *_imageViewer  = nullptr; // lazily created, parented to window()
+    TableViewerOverlay  *_tableViewer  = nullptr; // lazily created, parented to window()
+    CanvasViewerOverlay *_canvasViewer = nullptr; // lazily created, parented to window()
+    // Canvas preview cards, by file id: the downloaded HTML (fetched once per
+    // conversation open — clear() drops them so a reopen shows fresh edits) and
+    // the document laid out from it, rebuilt on width/theme/roster changes.
+    struct CanvasPreview {
+        QString                        html;
+        bool                           loading = false;
+        bool                           failed  = false;
+        std::unique_ptr<QTextDocument> doc;
+        int                            docW = 0;
+    };
+    mutable std::map<QString, CanvasPreview> _canvasPreviews;
 
     // Mention hover profile card
     UserProfileCard *_profileCard = nullptr;

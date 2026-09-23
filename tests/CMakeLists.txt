@@ -463,6 +463,7 @@ add_msga_widget_test(test_canvas_page
     ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_page.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_diff.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_display.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/fake_backend/fake_backend.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
     ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
@@ -493,6 +494,7 @@ add_msga_widget_test(test_canvas_page
 add_msga_widget_test(test_canvas_emoji
     test_canvas_emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_display.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
     ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
@@ -926,6 +928,11 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/ui/user_profile_card/user_profile_card.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/table_viewer/table_viewer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_page.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_diff.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_display.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/reminder_dialog/reminder_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
@@ -991,6 +998,11 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/ui/user_profile_card/user_profile_card.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/table_viewer/table_viewer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_page.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_diff.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_display.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/reminder_dialog/reminder_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp

@@ -267,6 +267,8 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/canvas_page/canvas_page.cpp
     src/ui/canvas_page/canvas_diff.cpp
     src/ui/canvas_page/canvas_emoji.cpp
+    src/ui/canvas_page/canvas_display.cpp
+    src/ui/canvas_page/canvas_viewer.cpp
     src/ui/conv_tabs/conv_tabs_widget.cpp
     src/ui/welcome_tips/welcome_widget.cpp
     src/ui/app_dialog/app_dialog.cpp

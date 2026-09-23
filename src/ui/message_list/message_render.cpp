@@ -1533,12 +1533,87 @@ withFallbackLinks(const TextWithEntities &rich, const TextWithEntities &fallback
     return merged;
 }
 
+QString huddleDurationLabel(qint64 seconds) {
+    // Slack rounds to whole minutes and never says "0m".
+    const qint64 mins = std::max<qint64>(1, (seconds + 30) / 60);
+    if (mins < 60)
+        return QCoreApplication::translate("MsgRender", "%1m").arg(mins);
+    const qint64 h = mins / 60, m = mins % 60;
+    return m == 0 ? QCoreApplication::translate("MsgRender", "%1h").arg(h)
+                  : QCoreApplication::translate("MsgRender", "%1h %2m").arg(h).arg(m);
+}
+
+QString huddleSummaryText(const Message &msg, const Session *session) {
+    if (!msg.huddle)
+        return {};
+    const HuddleInfo &h  = *msg.huddle;
+    const UserId      me = session ? session->meUserId() : UserId{};
+
+    // "You" first, then the others in Slack's order; past three names the
+    // rest collapse into "N others".
+    bool        withMe = false;
+    QStringList names;
+    for (const auto &u : h.attendees) {
+        if (!me.value.isEmpty() && u == me) {
+            withMe = true;
+            continue;
+        }
+        const User *usr = session ? session->findUser(u) : nullptr;
+        names << (usr ? usr->displayLabel() : u.value);
+    }
+    if (withMe)
+        names.prepend(QCoreApplication::translate("MsgRender", "You"));
+    constexpr int kMaxNames = 3;
+    if (names.size() > kMaxNames) {
+        const int rest = int(names.size()) - (kMaxNames - 1);
+        names          = names.mid(0, kMaxNames - 1);
+        names << QCoreApplication::translate("MsgRender", "%n others", nullptr, rest);
+    }
+    QString who;
+    if (names.size() == 1)
+        who = names[0];
+    else if (names.size() > 1)
+        who = QCoreApplication::translate("MsgRender", "%1 and %2")
+                  .arg(names.mid(0, names.size() - 1).join(QStringLiteral(", ")), names.back());
+
+    // One person is grammatically singular — unless that person is "you".
+    const bool plural = names.size() > 1 || withMe;
+    if (!h.ended) {
+        if (who.isEmpty())
+            return QCoreApplication::translate(
+                "MsgRender", "The huddle is waiting for people to join."
+            );
+        return plural ? QCoreApplication::translate("MsgRender", "%1 are in the huddle.").arg(who)
+                      : QCoreApplication::translate("MsgRender", "%1 is in the huddle.").arg(who);
+    }
+    if (who.isEmpty())
+        return QCoreApplication::translate("MsgRender", "Nobody joined the huddle.");
+    if (h.startSec <= 0 || h.endSec < h.startSec)
+        return plural ? QCoreApplication::translate("MsgRender", "%1 were in the huddle.").arg(who)
+                      : QCoreApplication::translate("MsgRender", "%1 was in the huddle.").arg(who);
+    const QString dur = huddleDurationLabel(h.endSec - h.startSec);
+    return plural ? QCoreApplication::translate("MsgRender", "%1 were in the huddle for %2.")
+                        .arg(who, dur)
+                  : QCoreApplication::translate("MsgRender", "%1 was in the huddle for %2.")
+                        .arg(who, dur);
+}
+
 QString buildMsgHtml(
     const Message          &msg,
     const Session          *session,
     const GifRenderContext *gif,
     bool                    collapseQuotedReplies
 ) {
+    // A huddle row's body is a sentence about the call, not the stand-in text.
+    if (isHuddleMessage(msg) && msg.huddle) {
+        const QString line = huddleSummaryText(msg, session);
+        return wrapParagraph(
+            QStringLiteral("<span style='color:%1'>%2</span>")
+                .arg(Th::qss(Th::c().text.secondary), line.toHtmlEscaped()),
+            "margin:0"
+        );
+    }
+
     // Jumbomoji: a message that is nothing but a single emoji renders 50% larger,
     // matching the official client. The lone emoji arrives either as a one-block
     // rich_text payload or in the plain text field — check whichever applies.

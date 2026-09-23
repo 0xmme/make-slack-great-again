@@ -197,6 +197,13 @@ QString buildAttachHtml(
     const Attachment &att, const Session *session, const GifRenderContext *gif = nullptr
 );
 
+// Body sentence of a huddle row (Message::huddle): "You and Ann were in the
+// huddle for 8m." once it ended, "Ann is in the huddle." while it is live.
+// Empty when the message carries no huddle summary.
+QString huddleSummaryText(const Message &msg, const Session *session);
+// "8m", "1h", "1h 5m" — Slack's huddle length label (minutes, at least 1).
+QString huddleDurationLabel(qint64 seconds);
+
 // Apply the shared "message preview" chrome to a read-only QTextBrowser (used by
 // the delete / forward dialogs): no frame, transparent background, the app's thin
 // rounded scrollbar (matching the chats list thumb), no focus stealing, and
@@ -303,6 +310,22 @@ inline int           fileChipHeight(const File &f) {
     if (!f.isAudio())
         return kFileChipH;
     return kAudioChipH + (f.hasTranscript() ? kTranscriptH : 0);
+}
+
+// A canvas shared as a message file (File::isCanvas) renders as a preview card
+// in the message list — header (icon, title, "Canvas") over the start of the
+// document, clipped — instead of a file chip. Fixed height, so the row never
+// jumps when the content download lands. Only the message's own files get the
+// card (a file quoted inside an unfurl stays a chip), which is why the message
+// list sizes its own files through these and not fileChipHeight().
+inline constexpr int kCanvasCardH    = 300;
+inline constexpr int kCanvasCardMaxW = 600;
+inline constexpr int kCanvasCardHdrH = 60; // header strip, above the divider
+inline int           messageFileHeight(const File &f) {
+    return f.isCanvas() ? kCanvasCardH : fileChipHeight(f);
+}
+inline int messageFileMaxW(const File &f) {
+    return f.isCanvas() ? kCanvasCardMaxW : kFileChipMaxW;
 }
 
 // User mentions are rendered as anchors with this internal scheme so they are

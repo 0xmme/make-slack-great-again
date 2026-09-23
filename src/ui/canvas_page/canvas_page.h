@@ -57,7 +57,6 @@ private:
     void showMenu();
     void confirmDelete();
     void setBodyHtml(const QString &html);
-    void styleHeadings();
     // Why the editor is read-only. NotAddressable is permanent (the canvas
     // can never be edited through the API); NoAccess clears if a later
     // files.info shows the canvas became visible.

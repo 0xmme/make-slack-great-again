@@ -2,7 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "canvas_page.h"
 #include "canvas_diff.h"
-#include "canvas_emoji.h"
+#include "canvas_display.h"
 #include "session/session.h"
 #include "ui/app_dialog/app_dialog.h"
 #include "ui/context_menu/context_menu.h"
@@ -36,51 +36,6 @@
 namespace {
 constexpr int kColumnMaxW  = 1040; // editor column width, matches Slack's measure
 constexpr int kSaveDelayMs = 2500; // autosave this long after typing stops
-
-// Normalize Slack's canvas HTML for display, in ways that don't change the
-// markdown a section round-trips to (so the section diff stays consistent
-// between the base HTML and the edited document):
-//  - Inline content images are pinned to a tiny placeholder size (e.g.
-//    width='64' height='23'); the official client ignores that and scales them
-//    to the column. Drop those size attrs so they render at the (downscaled)
-//    resource size. (toMarkdown emits ![alt](src) regardless of size.)
-//  - Hyperlinks come as a non-standard <lnk href>…</lnk> tag the rich-text
-//    engine doesn't recognize, so they render as dead plain text. Rewrite them
-//    to real <a> anchors — now clickable, hoverable, and preserved on save as
-//    [text](url) (Qt drops the href entirely for the unknown <lnk> tag, so this
-//    is also more faithful, and identical on the base and document sides).
-QString prepareCanvasHtml(QString html) {
-    static const QRegularExpression lnkOpen(
-        QStringLiteral("<lnk\\b"), QRegularExpression::CaseInsensitiveOption
-    );
-    static const QRegularExpression lnkClose(
-        QStringLiteral("</lnk\\s*>"), QRegularExpression::CaseInsensitiveOption
-    );
-    html.replace(lnkOpen, QStringLiteral("<a"));
-    html.replace(lnkClose, QStringLiteral("</a>"));
-
-    static const QRegularExpression imgRe(
-        QStringLiteral("<img\\b[^>]*>"), QRegularExpression::CaseInsensitiveOption
-    );
-    static const QRegularExpression sizeAttr(
-        QStringLiteral("\\s(?:width|height)=['\"][^'\"]*['\"]"),
-        QRegularExpression::CaseInsensitiveOption
-    );
-    QString out;
-    int     last = 0;
-    auto    it   = imgRe.globalMatch(html);
-    while (it.hasNext()) {
-        const auto m   = it.next();
-        QString    tag = m.captured(0);
-        if (tag.contains(QLatin1String("collab-slack-blob")))
-            tag.replace(sizeAttr, QString());
-        out += QStringView(html).mid(last, m.capturedStart() - last);
-        out += tag;
-        last = m.capturedEnd();
-    }
-    out += QStringView(html).mid(last);
-    return out;
-}
 } // namespace
 
 // Editable canvas body. QTextBrowser rather than QTextEdit purely for the
@@ -101,7 +56,9 @@ public:
         // editable mode; without it the link URL wouldn't surface until a drag.
         viewport()->setMouseTracking(true);
         connect(this, &QTextBrowser::anchorClicked, this, [](const QUrl &url) {
-            if (url.isEmpty())
+            // Member mentions (msga://user/<id>) are labels, not destinations —
+            // handing our own scheme to the OS would re-launch the app.
+            if (url.isEmpty() || url.scheme() == QLatin1String("msga"))
                 return;
             if (url.scheme() == QLatin1String("mailto")) {
                 MailtoLink::openOrCopy(url.toString());
@@ -310,7 +267,7 @@ CanvasPage::CanvasPage(QWidget *parent) : QWidget(parent) {
     // enter and an empty URL on leave); hide it when a link is clicked.
     _linkTip = new PopupTooltip(_body);
     connect(_body, &QTextBrowser::highlighted, this, [this](const QUrl &url) {
-        if (url.isEmpty()) {
+        if (url.isEmpty() || url.scheme() == QLatin1String("msga")) {
             _linkTip->hide();
             return;
         }
@@ -348,7 +305,7 @@ void CanvasPage::open(ConversationId conv, const QString &fileId, const QString 
     _serverTitle    = knownTitle;
     _baseRefetching = false;
     setReadOnlyUi(ReadOnlyCause::None);
-    _title->setText(Emoji::expandCodes(knownTitle));
+    _title->setText(CanvasDisplay::title(knownTitle, _session));
     _titleDirty = false;
     setBodyHtml({});
     _menuBtn->setVisible(!fileId.isEmpty());
@@ -426,14 +383,11 @@ void CanvasPage::loadContent() {
 }
 
 void CanvasPage::applyRemoteHtml(const QString &rawHtml) {
-    _baseRefetching = false;
-    // Expand emoji codes before anything else: the result is both the displayed
-    // body and the diff base (`_lastHtml`), so they must agree or every save
-    // would diff Unicode (document) against shortcodes (base) as a spurious edit.
-    static const QHash<QString, QString> kNoCustom;
-    const QString                        html = prepareCanvasHtml(
-        CanvasEmoji::expandInHtml(rawHtml, _session ? _session->emojiMap() : kNoCustom)
-    );
+    _baseRefetching    = false;
+    // Normalize before anything else: the result is both the displayed body
+    // and the diff base (`_lastHtml`), so they must agree or every save would
+    // diff e.g. Unicode (document) against shortcodes (base) as a spurious edit.
+    const QString html = CanvasDisplay::prepareHtml(rawHtml, _session);
     if (html == _lastHtml)
         return; // unchanged remote; don't reset the view
     _lastHtml = html;
@@ -446,7 +400,7 @@ void CanvasPage::applyRemoteHtml(const QString &rawHtml) {
         return;
 
     const auto [title, bodyHtml] = CanvasDiff::splitTitleH1(
-        html, {Emoji::expandCodes(_serverTitle), _title->text().trimmed()}
+        html, {CanvasDisplay::title(_serverTitle, _session), _title->text().trimmed()}
     );
     _title->setText(title);
     emit titleChanged(title);
@@ -459,45 +413,10 @@ void CanvasPage::setBodyHtml(const QString &html) {
         _body->clear();
     } else {
         _body->setHtml(html);
-        styleHeadings();
+        CanvasDisplay::styleHeadings(_body->document(), Th::c().fonts.lg);
     }
     _loading   = false;
     _bodyDirty = false;
-}
-
-// Size heading blocks to a decreasing scale below the canvas title. Done
-// per-block because Qt's HTML engine ignores font-size on h1..h6 in the
-// default stylesheet and falls back to its oversized built-in multipliers.
-// Display-only: the heading *level* (what toMarkdown emits as #) is untouched,
-// so the section diff is unaffected.
-void CanvasPage::styleHeadings() {
-    QTextDocument *doc = _body->document();
-    QTextCursor    c(doc);
-    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
-        const int lvl = b.blockFormat().headingLevel();
-        if (lvl <= 0)
-            continue;
-        // Title (QLineEdit) is 28px; keep every heading strictly below it.
-        const int px = lvl == 1 ? 23 : lvl == 2 ? 20 : lvl == 3 ? 17 : 15;
-        // Per fragment so inline runs keep their own colour/italic/bold. A plain
-        // mergeCharFormat can't drop the FontSizeAdjustment that Qt's <h*> import
-        // stamps on (it inflates the size); replacing each fragment's format with
-        // a copy that has the adjustment cleared and the pixel size set does.
-        for (auto it = b.begin(); !it.atEnd(); ++it) {
-            const QTextFragment frag = it.fragment();
-            if (!frag.isValid())
-                continue;
-            QTextCharFormat cf = frag.charFormat();
-            QFont           f  = cf.font();
-            f.setPixelSize(px);
-            f.setBold(true);
-            cf.setFont(f);
-            cf.clearProperty(QTextFormat::FontSizeAdjustment);
-            c.setPosition(frag.position());
-            c.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
-            c.setCharFormat(cf);
-        }
-    }
 }
 
 void CanvasPage::flushPendingSave() {
@@ -598,8 +517,10 @@ void CanvasPage::flushPendingSave() {
     if (!_bodyDirty) {
         sectionOps = std::vector<CanvasChange>{}; // title-only save
     } else if (!_lastHtml.isEmpty()) {
-        const auto [t, baseBody] =
-            CanvasDiff::splitTitleH1(_lastHtml, {_serverTitle, title, _title->text().trimmed()});
+        const auto [t, baseBody] = CanvasDiff::splitTitleH1(
+            _lastHtml,
+            {CanvasDisplay::title(_serverTitle, _session), title, _title->text().trimmed()}
+        );
         if (const auto base = CanvasDiff::parseBaseChunks(baseBody))
             sectionOps = CanvasDiff::diff(*base, CanvasDiff::documentChunks(_body->document()));
     }
@@ -753,7 +674,7 @@ void CanvasPage::applyTheme() {
             .arg(Th::qss(th.text.documentBody)) +
         Th::scrollBarQss()
     );
-    // Heading sizes are applied per-block in styleHeadings() (Qt's rich-text
+    // Heading sizes are applied per-block by CanvasDisplay::styleHeadings (Qt's rich-text
     // engine ignores font-size on h1..h6 in the default stylesheet), so this
     // sheet only covers links / code / quotes.
     _body->document()->setDefaultStyleSheet(
