@@ -1040,7 +1040,11 @@ void ComposerWidget::hideEvent(QHideEvent *event) {
 }
 
 void ComposerWidget::updateSendState() {
-    emit       compositionChanged();
+    const int composition = (_pendingFiles.isEmpty() ? 0 : 1) | (_editingTs.isEmpty() ? 0 : 2);
+    if (composition != _compositionState) {
+        _compositionState = composition;
+        emit compositionChanged();
+    }
     // isEmpty() short-circuits the toPlainText() copy for the common empty doc;
     // the trimmed() check keeps whitespace-only text counting as empty.
     const bool active =
@@ -1735,7 +1739,7 @@ void ComposerWidget::enterEditMode(
 
     _editModeFiles = existingFiles;
     _attachStrip->rebuild(_pendingFiles, _editModeFiles);
-    emit compositionChanged();
+    updateSendState();
 
     _edit->setFocus();
 }
@@ -1750,7 +1754,7 @@ void ComposerWidget::exitEditMode() {
 
     _editModeFiles.clear();
     _attachStrip->rebuild(_pendingFiles, _editModeFiles);
-    emit compositionChanged();
+    updateSendState();
 }
 
 // ── Draft support ─────────────────────────────────────────────────────────────
@@ -1814,14 +1818,20 @@ void ComposerWidget::offerUndoSend(std::function<void()> undo) {
     _undoTimer.start();
 }
 
-void ComposerWidget::offerUndoSend(const ConversationId &conv, const Ts &ghostTs) {
+void ComposerWidget::offerUndoSend(
+    const ConversationId &conv, const Ts &ghostTs, std::function<void()> restore
+) {
     if (!_session || ghostTs.isEmpty() || !_session->capabilities().deleteMessage)
         return;
     // Plain pointer on purpose: Session is not a QObject, and every path that
     // retires a session (logout, workspace switch) goes through takeDraft() or
     // setSession(), both of which withdraw the offer first.
     Session *session = _session;
-    offerUndoSend([session, conv, ghostTs] { session->undoSend(conv, ghostTs); });
+    offerUndoSend([session, conv, ghostTs, restore = std::move(restore)] {
+        session->undoSend(conv, ghostTs);
+        if (restore)
+            restore();
+    });
 }
 
 void ComposerWidget::undoSend() {

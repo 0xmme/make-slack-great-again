@@ -78,19 +78,8 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
 
     _tooltip     = new PopupTooltip(this);
     _emojiPicker = new EmojiPickerPopup(this);
-    // The tooltip floats on the top-level window. Some platforms do not deliver
-    // a viewport Leave when focus changes or an overlay appears under the cursor.
-    _tooltipWatch.setInterval(200);
-    connect(&_tooltipWatch, &QTimer::timeout, this, [this] {
-        if (!_tooltip->isVisible() || !_tooltipPin.hasExpired())
-            return;
-        const QPoint global = QCursor::pos();
-        QWidget     *hit    = QApplication::widgetAt(global);
-        if (!isVisible() || !window()->isActiveWindow() ||
-            !viewport()->rect().contains(viewport()->mapFromGlobal(global)) || hit != viewport())
-            _tooltip->hide();
-    });
-    _tooltipWatch.start();
+    // The tooltip floats on the top-level window, so it stays put while the
+    // rows under it move; a scroll takes it down with the hover it belonged to.
     connect(verticalScrollBar(), &QScrollBar::valueChanged, _tooltip, &QWidget::hide);
 
     // Inline audio player: repaint just the chip whose state/position changed.
@@ -1773,6 +1762,15 @@ void MessageListWidget::hideEvent(QHideEvent *event) {
     _tooltip->hide();
     pauseGifPlayback();
     VirtualListWidget::hideEvent(event);
+}
+
+bool MessageListWidget::event(QEvent *event) {
+    // Switching away (another app, a dialog) comes with no viewport Leave on
+    // some platforms, and the pointer isn't moving over us anymore to clear
+    // the tooltip later; take it down with the activation.
+    if (event->type() == QEvent::WindowDeactivate)
+        _tooltip->hide();
+    return VirtualListWidget::event(event);
 }
 
 void MessageListWidget::pauseGifPlayback() {
@@ -3765,10 +3763,16 @@ std::optional<MsgRender::AudioChipState> MessageListWidget::audioChipState(const
 }
 
 void MessageListWidget::doMouseLeave() {
-    // Some window systems send a spurious Leave while the pointer is still on
-    // the viewport. Only ignore it when the viewport is still the hit target.
-    if (viewport()->rect().contains(viewport()->mapFromGlobal(QCursor::pos())) &&
-        QApplication::widgetAt(QCursor::pos()) == viewport())
+    // X11 sends a spurious Leave while the pointer is still on the viewport;
+    // ignore a Leave only when the viewport is still what's under the cursor.
+    // An in-window overlay shown over it (the image, table and canvas viewers)
+    // makes the Leave real; the tooltip doesn't count, as childAt skips
+    // mouse-transparent widgets. Hit-test inside our own window, as Qt's
+    // synthetic enter/leave does: QApplication::widgetAt needs global window
+    // positions, which Wayland doesn't report.
+    QWidget *const top = window();
+    QWidget *const hit = top->childAt(top->mapFromGlobal(QCursor::pos()));
+    if (hit && (hit == viewport() || viewport()->isAncestorOf(hit)))
         return;
 
     _tooltip->hide();
@@ -4313,7 +4317,9 @@ void MessageListWidget::handleEvent(const Event &e) {
             // since the two carry different ts they can't be deduped against
             // each other — counting both double-bumps the badge until a
             // reload heals it. Counting only the confirmed copy keeps it exact.
-            if (!ev->msg.pending) {
+            // A broadcast already on screen came with a history page whose
+            // root count includes it.
+            if (!ev->msg.pending && findByTs(ev->msg.ts) < 0) {
                 const int rootIdx = findByTs(*ev->msg.threadRoot);
                 if (rootIdx >= 0) {
                     _items[rootIdx].msg.replyCount++;
@@ -4321,7 +4327,10 @@ void MessageListWidget::handleEvent(const Event &e) {
                     viewport()->update();
                 }
             }
-            return;
+            // A reply also sent to the channel gets a row here as well, ghost
+            // included; the rest stop at the count.
+            if (!isThreadBroadcast(ev->msg))
+                return;
         }
         // Backstop dedup: the ts can already be on screen when a history
         // load raced the realtime echo. Refresh that row in place instead of

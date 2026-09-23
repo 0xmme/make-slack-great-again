@@ -2129,7 +2129,8 @@ Ts Session::postComposed(
     std::function<void(bool ok, QString err)> done,
     bool                                      replyBroadcast
 ) {
-    const Ts fakeTs = makeFakeTs();
+    const Ts   fakeTs    = makeFakeTs();
+    const bool broadcast = threadRoot.has_value() && replyBroadcast;
     if (threadRoot)
         markThreadFollowed(conv, *threadRoot);
 
@@ -2141,6 +2142,10 @@ Ts Session::postComposed(
     optimistic.rawText    = composed.mrkdwn;
     optimistic.threadRoot = threadRoot;
     optimistic.pending    = true;
+    // Same subtype the server gives the confirmed copy, so the channel view
+    // shows the ghost as well as the thread panel.
+    if (broadcast)
+        optimistic.subtype = QStringLiteral("thread_broadcast");
 
     _eventHub.fire(EvMessageNew{conv, optimistic});
 
@@ -2151,7 +2156,7 @@ Ts Session::postComposed(
     out.rawText        = composed.mrkdwn;
     out.blocks         = composed.blocks;
     out.threadRoot     = threadRoot;
-    out.replyBroadcast = threadRoot.has_value() && replyBroadcast;
+    out.replyBroadcast = broadcast;
     out.subject        = subject;
     // Anchor for the backend's lost-send reconciliation: only messages newer
     // than this server ts can be the one we are about to post.

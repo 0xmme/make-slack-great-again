@@ -1006,10 +1006,16 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _msgSplitter->addWidget(_threadPanel);
     _msgSplitter->setStretchFactor(0, 1);
     _msgSplitter->setStretchFactor(1, 0);
-    connect(_msgSplitter, &QSplitter::splitterMoved, this, [this] {
+    // Remember the width the thread panel is dragged to. splitterMoved fires for
+    // every pixel of a drag, so write once it settles.
+    auto *saveThreadWidth = new QTimer(this);
+    saveThreadWidth->setSingleShot(true);
+    saveThreadWidth->setInterval(300);
+    connect(saveThreadWidth, &QTimer::timeout, this, [this] {
         if (_threadPanel->isVisible() && _threadPanel->width() >= 100)
             QSettings("msga", "msga").setValue("window/threadWidth", _threadPanel->width());
     });
+    connect(_msgSplitter, &QSplitter::splitterMoved, saveThreadWidth, qOverload<>(&QTimer::start));
 
     // ── Signal wiring ─────────────────────────────────────────────────
     auto openSearch = [this] {

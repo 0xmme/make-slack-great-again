@@ -72,13 +72,10 @@ struct StubBackend : Backend {
     std::vector<SendCall> sendCalls;
 
     rpl::producer<AuthState> authState() const override { return _authState.value(); }
-    Capabilities             capabilities() const override {
-        Capabilities c;
-        c.replyBroadcast = true;
-        return c;
-    }
-    void connectRealtime() override {}
-    void disconnectRealtime() override {}
+    Capabilities             caps{.replyBroadcast = true};
+    Capabilities             capabilities() const override { return caps; }
+    void                     connectRealtime() override {}
+    void                     disconnectRealtime() override {}
 
     rpl::producer<UserId>                    loadMe() override { return _meId.value(); }
     rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
@@ -294,6 +291,83 @@ TEST_CASE("thread checkbox broadcasts one text reply and resets", "[thread]") {
 
     composerOf(panel)->addPendingFile(f.filePath);
     CHECK_FALSE(box->isEnabled());
+}
+
+TEST_CASE("opening another thread drops the broadcast tick", "[thread]") {
+    // The tick was for the thread being left; carried over, the next reply
+    // would land in a channel the user never chose it for.
+    Fixture     f;
+    ThreadPanel panel(nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    auto *box = panel.findChild<QCheckBox *>("threadBroadcastBox");
+    REQUIRE(box);
+    box->setChecked(true);
+
+    panel.openThread(kConv.id, QStringLiteral("100.900"));
+    CHECK(box->isEnabled());
+    CHECK_FALSE(box->isChecked());
+    emit composerOf(panel)->sendRequested(QStringLiteral("thread only"));
+    REQUIRE(f.stub->sendCalls.size() == 1);
+    CHECK_FALSE(f.stub->sendCalls[0].msg.replyBroadcast);
+
+    // Re-opening the thread already open is not a switch: the tick stays.
+    box->setChecked(true);
+    panel.openThread(kConv.id, QStringLiteral("100.900"));
+    CHECK(box->isChecked());
+}
+
+TEST_CASE("an attachment sets the broadcast tick aside until it is removed", "[thread]") {
+    Fixture     f;
+    ThreadPanel panel(nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    auto *box = panel.findChild<QCheckBox *>("threadBroadcastBox");
+    REQUIRE(box);
+    box->setChecked(true);
+
+    composerOf(panel)->addPendingFile(f.filePath);
+    CHECK_FALSE(box->isEnabled());
+    CHECK_FALSE(box->isChecked()); // a file reply can't be broadcast; don't claim it will be
+
+    composerOf(panel)->clearPendingFiles();
+    CHECK(box->isEnabled());
+    CHECK(box->isChecked());
+    emit composerOf(panel)->sendRequested(QStringLiteral("heads up"));
+    REQUIRE(f.stub->sendCalls.size() == 1);
+    CHECK(f.stub->sendCalls[0].msg.replyBroadcast);
+}
+
+TEST_CASE("undo send puts the broadcast tick back with the text", "[thread][undosend]") {
+    Fixture f;
+    f.stub->caps.deleteMessage = true; // no undo offer without it
+    ThreadPanel panel(nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    auto *box = panel.findChild<QCheckBox *>("threadBroadcastBox");
+    REQUIRE(box);
+    box->setChecked(true);
+
+    auto *ed = composerOf(panel)->findChild<QTextEdit *>("composerEdit");
+    REQUIRE(ed);
+    ed->setPlainText(QStringLiteral("typo in here"));
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(ed, &enter);
+    REQUIRE(f.stub->sendCalls.size() == 1);
+    CHECK(f.stub->sendCalls[0].msg.replyBroadcast);
+    CHECK_FALSE(box->isChecked());
+    REQUIRE(composerOf(panel)->undoSendOffered());
+
+    QKeyEvent undo(QEvent::KeyPress, Qt::Key_Z, Qt::ControlModifier);
+    QApplication::sendEvent(ed, &undo);
+    CHECK(composerOf(panel)->currentText() == QStringLiteral("typo in here"));
+    CHECK(box->isChecked());
+
+    // The corrected reply goes out the way the first one did.
+    QKeyEvent resend(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(ed, &resend);
+    REQUIRE(f.stub->sendCalls.size() == 2);
+    CHECK(f.stub->sendCalls[1].msg.replyBroadcast);
 }
 
 // ── Live refresh of an open thread ────────────────────────────────────────────

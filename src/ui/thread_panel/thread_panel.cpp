@@ -25,6 +25,7 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QCheckBox>
+#include <QSignalBlocker>
 
 namespace {
 
@@ -138,17 +139,22 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     broadcastLayout->addStretch();
     _broadcastRow->hide();
     layout->addWidget(_broadcastRow);
+    connect(_broadcastBox, &QCheckBox::toggled, this, [this](bool on) { _broadcastWanted = on; });
     connect(_composer, &ComposerWidget::compositionChanged, this, [this] {
         refreshBroadcastCheckbox();
     });
 
+    // The tick covers one reply, so a send clears it; Undo Send puts it back
+    // along with the text.
     connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
         if (!_session || _conv.value.isEmpty() || _rootTs.isEmpty())
             return;
-        const Ts ghost =
-            _session->sendMessage(_conv, text, _rootTs, {}, _broadcastBox->isChecked());
-        _broadcastBox->setChecked(false);
-        _composer->offerUndoSend(_conv, ghost);
+        const bool broadcast = _broadcastBox->isChecked();
+        const Ts   ghost     = _session->sendMessage(_conv, text, _rootTs, {}, broadcast);
+        setBroadcastWanted(false);
+        _composer->offerUndoSend(_conv, ghost, [this, broadcast] {
+            setBroadcastWanted(broadcast);
+        });
     });
     connect(
         _composer,
@@ -157,9 +163,13 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
         [this](const QStringList &filePaths, const QString &text) {
             if (!_session || _conv.value.isEmpty() || _rootTs.isEmpty())
                 return;
-            const Ts ghost = _session->uploadFiles(_conv, filePaths, text, _rootTs);
-            _broadcastBox->setChecked(false);
-            _composer->offerUndoSend(_conv, ghost);
+            // Files aren't broadcast, but the send still uses up a tick the
+            // attachment set aside; otherwise it would come back once the
+            // composer empties.
+            const bool wanted = _broadcastWanted;
+            const Ts   ghost  = _session->uploadFiles(_conv, filePaths, text, _rootTs);
+            setBroadcastWanted(false);
+            _composer->offerUndoSend(_conv, ghost, [this, wanted] { setBroadcastWanted(wanted); });
         }
     );
     connect(
@@ -231,8 +241,10 @@ void ThreadPanel::setSession(Session *session) {
         // forget the open thread — it belongs to the outgoing workspace, and a
         // later close()/openThread must not file anything under its ids.
         stashDraft();
-        _conv   = {};
-        _rootTs = {};
+        _conv            = {};
+        _rootTs          = {};
+        _broadcastThread = false;
+        _broadcastWanted = false;
     }
     _session = session;
     _msgList->setSession(session);
@@ -246,13 +258,22 @@ void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
     // stashes the old thread's unsent reply (a pending edit is dropped: its ts
     // would be applied to the new thread's conversation on the next Enter) and
     // restores whatever was staged for the new thread.
+    // The broadcast tick is dropped the same way: it was set for a reply in the
+    // thread being left, whose channel may not be the new one's.
     const bool changed = (_conv != conv || _rootTs != rootTs);
-    if (changed)
+    if (changed) {
         stashDraft();
+        _broadcastWanted = false;
+    }
     _conv                 = conv;
     _rootTs               = rootTs;
     const Conversation *c = _session ? _session->findConversation(conv) : nullptr;
     _composer->setConvKind(c ? c->kind : ConvKind::PublicChannel);
+    // Only a channel thread has a channel to also send the reply to. Neither
+    // the kind nor the backend changes while the thread is open, so this is
+    // settled here rather than on every composer change.
+    _broadcastThread = c && _session->capabilities().replyBroadcast &&
+                       (c->kind == ConvKind::PublicChannel || c->kind == ConvKind::PrivateChannel);
     if (changed)
         _composer->restoreDraft(_drafts.value(threadDraftKey(_session, _conv, _rootTs)));
     _msgList->openThread(conv, rootTs);
@@ -272,7 +293,8 @@ void ThreadPanel::close() {
     _rootTs = {};
     _msgList->clear();
     _composer->setEnabled(false);
-    _broadcastBox->setChecked(false);
+    _broadcastThread = false;
+    _broadcastWanted = false;
     refreshBroadcastCheckbox();
     refreshMuteButton();
 }
@@ -301,15 +323,20 @@ void ThreadPanel::refreshMuteButton() {
 void ThreadPanel::refreshBroadcastCheckbox() {
     if (!_broadcastBox || !_composer)
         return;
-    const Conversation *c = _session ? _session->findConversation(_conv) : nullptr;
-    const bool          channel =
-        c && (c->kind == ConvKind::PublicChannel || c->kind == ConvKind::PrivateChannel);
-    _broadcastRow->setVisible(channel && _session->capabilities().replyBroadcast);
-    const bool canBroadcast = channel && !_composer->isEditing() &&
-                              _composer->pendingFiles().isEmpty() && !_rootTs.isEmpty();
+    _broadcastRow->setVisible(_broadcastThread);
+    // A broadcast is a new text reply: an edit, or attachments (Slack can't
+    // broadcast a file reply), untick the box until they're gone; then the
+    // user's own tick comes back.
+    const bool canBroadcast =
+        _broadcastThread && !_composer->isEditing() && _composer->pendingFiles().isEmpty();
+    const QSignalBlocker keepWanted(_broadcastBox); // toggled would overwrite _broadcastWanted
     _broadcastBox->setEnabled(canBroadcast);
-    if (!canBroadcast)
-        _broadcastBox->setChecked(false);
+    _broadcastBox->setChecked(canBroadcast && _broadcastWanted);
+}
+
+void ThreadPanel::setBroadcastWanted(bool wanted) {
+    _broadcastWanted = wanted;
+    refreshBroadcastCheckbox();
 }
 
 void ThreadPanel::refreshTimestamps() {

@@ -121,10 +121,14 @@ public:
     // withdrawn by the next send, a conversation switch (takeDraft), a session
     // change, or hiding the composer — the sent input belongs to the
     // conversation it was sent from and must never resurface anywhere else.
-    void                 offerUndoSend(std::function<void()> undo);
+    void offerUndoSend(std::function<void()> undo);
     // The usual wiring: no-op unless the session can delete messages; undoes
-    // through Session::undoSend(conv, ghostTs).
-    void                 offerUndoSend(const ConversationId &conv, const Ts &ghostTs);
+    // through Session::undoSend(conv, ghostTs), then runs `restore` so the host
+    // can put back send options of its own (the thread panel's broadcast tick)
+    // before the editor refills.
+    void offerUndoSend(
+        const ConversationId &conv, const Ts &ghostTs, std::function<void()> restore = {}
+    );
     bool                 undoSendOffered() const { return static_cast<bool>(_undoSend); }
     static constexpr int kUndoSendMs = 5000;
 
@@ -135,6 +139,8 @@ public:
     void               clearPendingFiles();
 
 signals:
+    // What the next send would be changed: edit mode was entered or left, or
+    // the pending attachments went from none to some or back. Not per keystroke.
     void compositionChanged();
     void sendRequested(const QString &text);
     // Emitted instead of sendRequested when the message is a known slash
@@ -211,7 +217,10 @@ private:
     // every keystroke but the pill only changes at the empty↔non-empty boundary;
     // skipping the redundant setStyleSheet/svgIcon work keeps typing cheap.
     // applyTheme() resets it so a theme switch restyles with the new colors.
-    int               _sendActiveState = -1;
+    int               _sendActiveState  = -1;
+    // Last state compositionChanged reported (bit 0: files pending, bit 1:
+    // editing; -1 = never), so typing doesn't re-emit it.
+    int               _compositionState = -1;
 
     PopupTooltip                            *_tooltip        = nullptr;
     EmojiPickerPopup                        *_emojiPicker    = nullptr;

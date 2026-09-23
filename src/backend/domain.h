@@ -1068,6 +1068,13 @@ inline std::optional<Ts> threadRootOf(const Message &m) {
     return std::nullopt;
 }
 
+// True for a thread reply that was also sent to the channel ("Also send to
+// channel"). It counts toward its root's replies AND has a row of its own in the
+// channel view, unlike an ordinary reply, which only bumps the count.
+inline bool isThreadBroadcast(const Message &m) {
+    return m.threadRoot && m.subtype && *m.subtype == QLatin1String("thread_broadcast");
+}
+
 struct MessagePage {
     std::vector<Message>   messages;
     std::optional<QString> olderCursor; // pass to next loadHistory call

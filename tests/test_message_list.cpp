@@ -1016,6 +1016,51 @@ TEST_CASE("first history response retains richer live thread metadata", "[messag
     CHECK(view[0].latestReply == root.latestReply);
 }
 
+TEST_CASE(
+    "a live thread broadcast gets a channel row as well as a count", "[message_list][thread]"
+) {
+    Fixture f;
+    auto    root         = makeMessage("1000.000001", "root");
+    f.stub->_historyPage = {root};
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+
+    auto reply           = makeMessage("1000.000002", "thread only");
+    reply.threadRoot     = root.ts;
+    auto broadcast       = makeMessage("1000.000003", "also sent to channel");
+    broadcast.threadRoot = root.ts;
+    broadcast.subtype    = "thread_broadcast";
+    f.stub->_events.fire(EvMessageNew{kConv.id, reply});
+    f.stub->_events.fire(EvMessageNew{kConv.id, broadcast});
+
+    auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 2);
+    CHECK(view[0].ts == root.ts);
+    CHECK(view[0].replyCount == 2);
+    CHECK(view[1].ts == broadcast.ts);
+}
+
+TEST_CASE("a thread broadcast already loaded is not counted again", "[message_list][thread]") {
+    // The history page's root count already includes the broadcast it carries;
+    // a live copy racing that load refreshes the row and leaves the count be.
+    Fixture f;
+    auto    root         = makeMessage("1000.000001", "root");
+    root.replyCount      = 1;
+    auto broadcast       = makeMessage("1000.000002", "also sent to channel");
+    broadcast.threadRoot = root.ts;
+    broadcast.subtype    = "thread_broadcast";
+    f.stub->_historyPage = {root, broadcast};
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+
+    f.stub->_events.fire(EvMessageNew{kConv.id, broadcast});
+
+    auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 2);
+    CHECK(view[0].replyCount == 1);
+    CHECK(view[1].ts == broadcast.ts);
+}
+
 TEST_CASE("delayed periodic history preserves live arrivals", "[message_list][race]") {
     Fixture    f;
     const auto old       = makeMessage("1000.000001", "old");

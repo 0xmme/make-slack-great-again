@@ -218,6 +218,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void hideEvent(QHideEvent *event) override;
+    bool event(QEvent *event) override;
 
 private:
     // Viewport event handlers (called from eventFilter)
@@ -920,7 +921,6 @@ private:
     mutable QHash<QString, QRect>    _gifRects;
 
     PopupTooltip        *_tooltip = nullptr;
-    QTimer               _tooltipWatch;
     QDeadlineTimer       _tooltipPin; // while running, hover logic leaves the tooltip alone
     EmojiPickerPopup    *_emojiPicker  = nullptr;
     ImageViewerOverlay  *_imageViewer  = nullptr; // lazily created, parented to window()
