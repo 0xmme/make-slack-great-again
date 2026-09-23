@@ -63,8 +63,9 @@ public:
     Ts sendMessage(
         ConversationId    conv,
         const QString    &text,
-        std::optional<Ts> threadRoot = {},
-        const QString    &subject    = {}
+        std::optional<Ts> threadRoot     = {},
+        const QString    &subject        = {},
+        bool              replyBroadcast = false
     );
 
     // Take back a message just sent through sendMessage()/uploadFiles(), given
@@ -155,6 +156,21 @@ public:
     void loadMyProfile(std::function<void(MyProfile)> done);
     // The user's stored sidebar theme (Capabilities::sidebarTheme).
     void loadSidebarTheme(std::function<void(SidebarThemePrefs, QString err)> done);
+
+    // --- Conversation members (Capabilities::memberList) ---
+    // Ask the backend who is in `conv`; calls made while a request is in flight
+    // share its answer. When it fails, `err` is set and the members are the
+    // last list that did arrive (empty if none). A group DM's list also lands
+    // in its Conversation::members: conversations.list leaves them out, and a
+    // group DM renamed in Slack has no "mpdm-alice--bob-1" name to read them from.
+    void loadMembers(
+        ConversationId conv, std::function<void(std::vector<UserId>, QString err)> done = {}
+    );
+    // The last list loadMembers got for `conv`; nullptr before its first
+    // answer. A failed first load leaves an empty list, so a caller that only
+    // wants to try once can tell it already did.
+    const std::vector<UserId> *cachedMembers(const ConversationId &conv) const;
+
     // Update profile fields (users.profile.set); `fields` maps Slack profile
     // keys to new values. On success patches our own user entry so the UI
     // (footer, conv list) updates without a poll; failures fire errors() and
@@ -302,7 +318,8 @@ public:
         const QString                            &text,
         std::optional<Ts>                         threadRoot,
         const QString                            &subject,
-        std::function<void(bool ok, QString err)> done
+        std::function<void(bool ok, QString err)> done,
+        bool                                      replyBroadcast = false
     );
 
     // The user read this thread up to `upTo`: move the server-side thread read
@@ -540,7 +557,9 @@ private:
         const MarkdownCompose::Composed          &composed,
         std::optional<Ts>                         threadRoot,
         const QString                            &subject,
-        std::function<void(bool ok, QString err)> done
+        std::function<void(bool ok, QString err)> done,
+        bool                                      replyBroadcast = false,
+        std::vector<OutgoingGif>                  gifs           = {}
     );
     // Composer text → OutgoingMessage (parsed text, mrkdwn, blocks) for the
     // paths that don't need an optimistic copy: edit and schedule.
@@ -874,6 +893,13 @@ private:
     // unread unless the user has already read past it.
     void noteUnreadThreadReply(const ConversationId &conv, const Ts &root, const Ts &ts);
     void publishUnreadThreadCount();
+
+    // --- Conversation members (see loadMembers) ---
+    // The last answer per conversation (conv.value → members), and the callers
+    // waiting on a request in flight (a present key = one is).
+    using MembersDone = std::function<void(std::vector<UserId>, QString)>;
+    QHash<QString, std::vector<UserId>>      _members;
+    QHash<QString, std::vector<MembersDone>> _memberWaiters;
 
     // --- Message reminders (see the public reminder API above) ---
     // Arm _reminderTimer for the nearest unfired due time (stopped when none).

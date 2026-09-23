@@ -251,6 +251,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/composer/mention_completer.cpp
     src/ui/typing_indicator/typing_indicator.cpp
     src/ui/mention_popup/mention_popup.cpp
+    src/ui/members_popup/members_popup.cpp
     src/ui/context_menu/context_menu.cpp
     src/ui/popup_tooltip/popup_tooltip.cpp
     src/ui/user_profile_card/user_profile_card.cpp

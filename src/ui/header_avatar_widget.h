@@ -49,6 +49,7 @@ public:
     void clearAvatar() {
         _pixmap = {};
         _state  = {};
+        _displayName.clear(); // else the placeholder shows the last DM's initial
         _group.clear();
         _groupCount = 0;
         setFixedSize(kSingleBox, kSingleBox);

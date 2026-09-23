@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "markdown_compose.h"
+#include "text/link_labels.h"
 #include "text/mrkdwn_parser.h"
 
 #include <QJsonObject>
@@ -668,6 +669,35 @@ Composed convert(const QString &composerText) {
     }
     c.blocks.append(QJsonObject{{"type", "rich_text"}, {"elements", elements}});
     return c;
+}
+
+std::vector<OutgoingGif> takeGifLinks(QString &composerText) {
+    static const QRegularExpression kLink(QStringLiteral(R"(<(https?://[^|>\s]+)(?:\|([^>]*))?>)"));
+
+    std::vector<OutgoingGif> gifs;
+    QString                  rest;
+    qsizetype                pos = 0;
+    for (auto it = kLink.globalMatch(composerText); it.hasNext();) {
+        const auto m = it.next();
+        if (!LinkLabels::isGiphyMediaUrl(m.captured(1)))
+            continue;
+        // The composer puts a space on either side of the badge; drop one so
+        // the text around it closes up.
+        qsizetype start = m.capturedStart();
+        qsizetype end   = m.capturedEnd();
+        if (end < composerText.size() && composerText.at(end) == QLatin1Char(' '))
+            ++end;
+        else if (start > pos && composerText.at(start - 1) == QLatin1Char(' '))
+            --start;
+        rest += QStringView(composerText).mid(pos, start - pos);
+        pos = end;
+        gifs.push_back({m.captured(1), m.captured(2).trimmed()});
+    }
+    if (gifs.empty())
+        return gifs;
+    rest += QStringView(composerText).mid(pos);
+    composerText = rest.trimmed();
+    return gifs;
 }
 
 } // namespace MarkdownCompose

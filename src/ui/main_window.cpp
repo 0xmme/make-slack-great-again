@@ -48,6 +48,7 @@
 #include "quick_switcher/quick_switcher_dialog.h"
 #include "update_checker/update_checker.h"
 #include "huddle_banner/huddle_banner.h"
+#include "members_popup/members_popup.h"
 #include "parallel_usage_banner/parallel_usage_banner.h"
 #include "update_bar/update_bar.h"
 #include "styled_button/styled_button.h"
@@ -71,6 +72,7 @@
 #include <QMouseEvent>
 #include <QResizeEvent>
 #include <QLabel>
+#include <QLocale>
 #include <QMenu>
 #include <QPushButton>
 #include <QApplication>
@@ -833,13 +835,16 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _convNameLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     // Let empty header space and the title drag the native window.
     _convNameLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
-    auto *actions = new QWidget(msgHeader);
-    actions->setFixedWidth(132);
+    // The left column mirrors the actions' width so the title stays centred;
+    // the actions have room for the members button next to the three icons.
+    constexpr int kActionsW = 200;
+    auto         *actions   = new QWidget(msgHeader);
+    actions->setFixedWidth(kActionsW);
     auto *actionsLayout = new QHBoxLayout(actions);
     actionsLayout->setContentsMargins(0, 0, sp.md, 0);
     actionsLayout->setSpacing(sp.xs);
     actionsLayout->addStretch();
-    headerGrid->setColumnMinimumWidth(0, 132);
+    headerGrid->setColumnMinimumWidth(0, kActionsW);
     headerGrid->addWidget(actions, 0, 2);
     msgHeaderLayout->addWidget(_convNameLabel);
     msgHeaderLayout->addStretch(1);
@@ -847,6 +852,26 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     auto *actionsLayout = msgHeaderLayout;
     msgHeaderLayout->addWidget(_convNameLabel, 1);
 #endif
+
+    // Members button (channels): people icon + member count, opening the member
+    // list. A group DM shows its stacked avatars instead, which open the same
+    // list (see the _headerAvatar branch of eventFilter).
+    _membersBtn = new QPushButton(msgHeader);
+    _membersBtn->setObjectName("headerMembersBtn");
+    _membersBtn->setFixedHeight(28);
+    _membersBtn->setFlat(true);
+    _membersBtn->setCursor(Qt::PointingHandCursor);
+    _membersBtn->setIconSize(QSize(16, 16));
+    _membersBtn->setIcon(svgIcon(":/ui/users.svg", QSize(16, 16), Th::c().icon.def));
+    _membersBtn->setVisible(false);
+    _membersBtnTooltip = new PopupTooltip(_membersBtn);
+    _membersBtn->installEventFilter(this);
+    connect(_membersBtn, &QPushButton::clicked, this, [this] {
+        openMembersPopup(QRect(_membersBtn->mapToGlobal(QPoint(0, 0)), _membersBtn->size()));
+    });
+    actionsLayout->addWidget(_membersBtn);
+    actionsLayout->addSpacing(sp.xs);
+    _headerAvatar->installEventFilter(this);
 
     // Huddle button — hands off to the Slack web client like the huddle banner's
     // Join (huddles aren't startable through the public API).
@@ -1006,6 +1031,16 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _msgSplitter->addWidget(_threadPanel);
     _msgSplitter->setStretchFactor(0, 1);
     _msgSplitter->setStretchFactor(1, 0);
+    // Remember the width the thread panel is dragged to. splitterMoved fires for
+    // every pixel of a drag, so write once it settles.
+    auto *saveThreadWidth = new QTimer(this);
+    saveThreadWidth->setSingleShot(true);
+    saveThreadWidth->setInterval(300);
+    connect(saveThreadWidth, &QTimer::timeout, this, [this] {
+        if (_threadPanel->isVisible() && _threadPanel->width() >= 100)
+            QSettings("msga", "msga").setValue("window/threadWidth", _threadPanel->width());
+    });
+    connect(_msgSplitter, &QSplitter::splitterMoved, saveThreadWidth, qOverload<>(&QTimer::start));
 
     // ── Signal wiring ─────────────────────────────────────────────────
     auto openSearch = [this] {
@@ -1096,17 +1131,8 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
 
     // "Message" on the mention-hover profile card → open/create the DM and
     // navigate to it (same path as the People browser).
-    const auto openDmFor = [this](UserId user) {
-        if (!_session)
-            return;
-        _session->openDm(
-            user,
-            [this](ConversationId conv) { _convList->selectConversation(conv); },
-            [this](const QString &err) { showNetworkError(err); }
-        );
-    };
-    connect(_messageList, &MessageListWidget::openDmRequested, this, openDmFor);
-    connect(_threadPanel, &ThreadPanel::openDmRequested, this, openDmFor);
+    connect(_messageList, &MessageListWidget::openDmRequested, this, &MainWindow::openDmWith);
+    connect(_threadPanel, &ThreadPanel::openDmRequested, this, &MainWindow::openDmWith);
 
     // Clicking a #channel mention navigates to that channel — joining it first
     // when not yet a member (same flow as the channel browser).
@@ -1312,6 +1338,16 @@ void MainWindow::applyTheme() {
         _convNameLabel->setStyleSheet(QString("font-weight: 600; font-size: %1px; color: %2;")
                                           .arg(titleFontSize)
                                           .arg(Th::qss(th.text.primary)));
+    }
+    if (_membersBtn) {
+        _membersBtn->setStyleSheet(QString(
+                                       "QPushButton { border: none; background: transparent;"
+                                       "  padding: 0 %1px; color: %2; font-size: %3px; }"
+        )
+                                       .arg(th.spacing.sm)
+                                       .arg(Th::qss(th.text.secondary))
+                                       .arg(th.fonts.sm));
+        _membersBtn->setIcon(svgIcon(":/ui/users.svg", QSize(16, 16), th.icon.def));
     }
     if (_huddleBtn) {
         _huddleBtn->setStyleSheet("QPushButton { border: none; background: transparent; }");
@@ -3385,12 +3421,15 @@ void MainWindow::moveMessageToThread(const Message &msg) {
 void MainWindow::openThreadPanel(const ConversationId &conv, const Ts &rootTs) {
     if (rootTs.isEmpty())
         return;
+    const bool wasOpen = _threadPanel->isVisible();
     _threadPanel->setVisible(true);
     _threadPanel->openThread(conv, rootTs);
     _messageList->setOpenThreadRoot(rootTs);
-    if (_msgSplitter->sizes().at(1) < 100) {
-        const int total = _msgSplitter->width();
-        _msgSplitter->setSizes({total - 360, 360});
+    if (!wasOpen) {
+        const int total   = _msgSplitter->width();
+        const int desired = QSettings("msga", "msga").value("window/threadWidth", 360).toInt();
+        const int width   = std::clamp(desired, 100, std::max(100, total - 200));
+        _msgSplitter->setSizes({total - width, width});
     }
 }
 
@@ -3726,6 +3765,28 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
     if (obj == _contentStack && e->type() == QEvent::Resize) {
         if (_searchWidget && _searchWidget->isVisible())
             repositionSearch();
+    }
+    if (obj == _membersBtn && _membersBtnTooltip) {
+        if (e->type() == QEvent::Enter)
+            _membersBtnTooltip->showAbove(
+                tr("View members"),
+                QRect(_membersBtn->mapToGlobal(QPoint(0, 0)), _membersBtn->size())
+            );
+        else if (e->type() == QEvent::Leave || e->type() == QEvent::MouseButtonPress)
+            _membersBtnTooltip->hide();
+    }
+    // A group DM's stacked avatars are its members button. The press is taken
+    // too: left to bubble up, it reaches the macOS title bar the header sits in
+    // and starts a window drag instead of a click.
+    if (obj == _headerAvatar &&
+        (e->type() == QEvent::MouseButtonPress || e->type() == QEvent::MouseButtonRelease) &&
+        static_cast<QMouseEvent *>(e)->button() == Qt::LeftButton &&
+        !_headerAvatar->group().empty() && _session && _session->capabilities().memberList) {
+        if (e->type() == QEvent::MouseButtonRelease)
+            openMembersPopup(
+                QRect(_headerAvatar->mapToGlobal(QPoint(0, 0)), _headerAvatar->size())
+            );
+        return true;
     }
     if (obj == _huddleBtn && _huddleBtnTooltip) {
         if (e->type() == QEvent::Enter)
@@ -4257,6 +4318,20 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
         _huddleBtn->setVisible(_session->capabilities().huddles);
     const bool isDm = conversation &&
                       (conversation->kind == ConvKind::Im || conversation->kind == ConvKind::Mpim);
+    const bool memberList = conversation && _session->capabilities().memberList;
+    if (_membersBtn) {
+        const bool channel = memberList && (conversation->kind == ConvKind::PublicChannel ||
+                                            conversation->kind == ConvKind::PrivateChannel);
+        _membersBtn->setVisible(channel);
+        // conversations.list's num_members; a large count is shortened so the
+        // button fits the header's action column.
+        const int n = channel ? conversation->memberCount : 0;
+        _membersBtn->setText(
+            n <= 0      ? QString()
+            : n < 10000 ? QLocale().toString(n)
+                        : tr("%1k").arg(n / 1000)
+        );
+    }
 
     if (_headerAvatar) {
         _headerAvatar->setVisible(isDm);
@@ -4273,8 +4348,22 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
             conversation && conversation->kind == ConvKind::Im &&
             _session->capabilities().presence && !_session->isAppConversation(*conversation)
         );
-        if (conversation && conversation->kind == ConvKind::Mpim)
+        if (conversation && conversation->kind == ConvKind::Mpim) {
             setHeaderGroupAvatars(*conversation);
+            // conversations.list leaves the members out, and a group DM renamed
+            // in Slack has no "mpdm-…" name to read them from: ask once, and
+            // redraw with them (Session files them into the conversation).
+            if (memberList && conversation->members.empty() && !_session->cachedMembers(conv)) {
+                Session *s = _session;
+                s->loadMembers(conv, [this, s, conv](std::vector<UserId>, QString) {
+                    if (_session == s && _currentConvId == conv)
+                        updateHeaderForConv(conv);
+                });
+            }
+        }
+        _headerAvatar->setCursor(
+            memberList && !_headerAvatar->group().empty() ? Qt::PointingHandCursor : Qt::ArrowCursor
+        );
         if (_headerAvatar->group().empty() && isDm && conversation->dmUser) {
             const auto *u = _session->findUser(*conversation->dmUser);
             if (u) {
@@ -4318,6 +4407,64 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
             }
         }
     }
+}
+
+void MainWindow::openMembersPopup(const QRect &anchorGlobal) {
+    if (!_session || _currentConvId.value.isEmpty())
+        return;
+    const Conversation *conv = _session->findConversation(_currentConvId);
+    if (!conv)
+        return;
+    if (!_membersPopup) {
+        _membersPopup = new MembersPopup(_imgCache, this);
+        connect(_membersPopup, &MembersPopup::memberActivated, this, &MainWindow::openDmWith);
+    }
+
+    // Names for the ids; someone users.list didn't return (a Slack Connect
+    // guest) gets a fetched name later, a placeholder until then.
+    Session   *s        = _session;
+    const auto resolved = [s](const std::vector<UserId> &ids) {
+        std::vector<User> users;
+        users.reserve(ids.size());
+        for (const auto &id : ids) {
+            if (const User *u = s->findUser(id))
+                users.push_back(*u);
+            else
+                users.push_back(User{.id = id, .name = s->userDisplayName(id)});
+        }
+        return users;
+    };
+
+    // Show what is known at once and refresh it: membership changes without an
+    // event for most of it (only joins are pushed).
+    const auto *cached   = _session->cachedMembers(_currentConvId);
+    const int   expected = cached && !cached->empty()     ? int(cached->size())
+                           : conv->kind == ConvKind::Mpim ? int(conv->members.size())
+                                                          : conv->memberCount;
+    _membersPopup->open(anchorGlobal, expected);
+    if (cached && !cached->empty())
+        _membersPopup->setMembers(resolved(*cached), s->meUserId());
+
+    const ConversationId id = _currentConvId;
+    s->loadMembers(id, [this, s, id, resolved](std::vector<UserId> members, QString err) {
+        if (_session != s || _currentConvId != id || !_membersPopup->isVisible())
+            return;
+        if (members.empty() && !err.isEmpty()) {
+            _membersPopup->showError(tr("Couldn't load the members (%1).").arg(err));
+            return;
+        }
+        _membersPopup->setMembers(resolved(members), s->meUserId());
+    });
+}
+
+void MainWindow::openDmWith(UserId user) {
+    if (!_session)
+        return;
+    _session->openDm(
+        user,
+        [this](ConversationId conv) { _convList->selectConversation(conv); },
+        [this](const QString &err) { showNetworkError(err); }
+    );
 }
 
 void MainWindow::setHeaderGroupAvatars(const Conversation &conv) {

@@ -16,6 +16,7 @@ class ImageCache;
 class QLabel;
 class IconButton;
 class PopupTooltip;
+class QCheckBox;
 
 // Right-side panel showing a Slack thread: root message + replies + composer.
 // Slides in when the user clicks a "N replies" bar in the main message list.
@@ -79,6 +80,10 @@ private:
     void toggleMuted();
     // Point the header bell at the open thread's current mute state.
     void refreshMuteButton();
+    // Match the "Also send to channel" row to the open thread and the
+    // composer's state; the box shows the user's tick only while usable.
+    void refreshBroadcastCheckbox();
+    void setBroadcastWanted(bool wanted);
 
     Session                      *_session = nullptr;
     ConversationId                _conv;
@@ -86,6 +91,11 @@ private:
     // "teamId\x1fconvId\x1frootTs" → stashed reply input, so switching threads
     // (or workspaces and back) resumes where the user left off. See stashDraft().
     QHash<QString, ComposerDraft> _drafts;
+    // The open thread is in a channel, on a backend that can broadcast replies.
+    bool                          _broadcastThread = false;
+    // The user ticked "Also send to channel" for the next reply. Kept apart
+    // from the box, which unticks while an attachment or an edit rules it out.
+    bool                          _broadcastWanted = false;
 
     QWidget           *_headerWidget = nullptr;
     QWidget           *_leftShadow   = nullptr;
@@ -96,6 +106,8 @@ private:
     PopupTooltip      *_tooltip      = nullptr;
     MessageListWidget *_msgList      = nullptr;
     ComposerWidget    *_composer     = nullptr;
+    QWidget           *_broadcastRow = nullptr;
+    QCheckBox         *_broadcastBox = nullptr;
 
     rpl::lifetime _lifetime;
 };

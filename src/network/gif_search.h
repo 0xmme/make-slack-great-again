@@ -13,10 +13,10 @@ class QNetworkReply;
 namespace net {
 
 // One search hit: a small animated preview to paint in the picker grid, and the
-// full-size URL that actually gets posted to the conversation.
+// URL that actually gets posted to the conversation.
 struct GifResult {
     QString previewUrl;  // small animated GIF, sized for a grid cell
-    QString postUrl;     // what goes into the message (unfurls to an animation)
+    QString postUrl;     // what goes into the message (the rendition Slack's picker posts)
     QSize   previewSize; // intrinsic preview dimensions — drives the masonry layout
     QString description; // title / alt text, used as the cell's accessible name
 };

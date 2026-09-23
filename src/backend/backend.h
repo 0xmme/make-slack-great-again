@@ -377,6 +377,13 @@ public:
         if (done)
             done({}, QStringLiteral("not_supported"));
     }
+    // Everyone in a channel or group DM (Capabilities::memberList), the whole
+    // list in one answer. `err` is empty on success.
+    virtual void
+    loadMembers(ConversationId, std::function<void(std::vector<UserId>, QString err)> done) {
+        if (done)
+            done({}, QStringLiteral("not_supported"));
+    }
     // Update the authed user's profile (users.profile.set). `fields` maps Slack
     // profile keys (display_name, real_name, email, phone, …) to their new
     // values; only the supplied keys are changed. Note: Slack rejects self

@@ -53,6 +53,8 @@ Capabilities DemoBackend::capabilities() const {
     c.editMessage      = true;
     c.deleteMessage    = true;
     c.threads          = true;
+    c.memberList       = true;
+    c.gifAttachments   = true;
     c.fileUpload       = true;
     c.moveToThread     = true;
     c.slashCommands    = true;
@@ -128,6 +130,25 @@ rpl::producer<Conversation> DemoBackend::loadConversationInfo(ConversationId id,
         if (c.id == id)
             found = c;
     return maybeLater(std::move(found));
+}
+
+void DemoBackend::loadMembers(
+    ConversationId id, std::function<void(std::vector<UserId>, QString)> done
+) {
+    // A group DM names its members; a fixture channel only carries a count, so
+    // it holds everyone the fixture has.
+    std::vector<UserId> members;
+    for (const auto &c : _conversations.current())
+        if (c.id == id)
+            members = c.members;
+    if (members.empty())
+        for (const auto &u : _fx.users)
+            if (!u.isBot)
+                members.push_back(u.id);
+    QTimer::singleShot(kReadLatencyMs, &_timerGuard, [members, done] {
+        if (done)
+            done(members, {});
+    });
 }
 
 rpl::producer<MessagePage>
@@ -258,8 +279,10 @@ void DemoBackend::removeMessageReminder(
 void DemoBackend::sendMessage(
     ConversationId conv, OutgoingMessage out, std::function<void(bool ok, QString err)> done
 ) {
-    Message  msg = makeMessage(_fx.me, out.rawText, out.threadRoot);
-    const Ts ts  = msg.ts;
+    Message msg = makeMessage(_fx.me, out.rawText, out.threadRoot);
+    for (const auto &gif : out.gifs)
+        msg.attachments.push_back(gifAttachment(gif, int(msg.attachments.size()) + 1));
+    const Ts ts = msg.ts;
     // Confirm asynchronously: Session is still inside postMessage() when this is
     // called, and a real server never answers synchronously either.
     QTimer::singleShot(kSendConfirmMs, &_timerGuard, [this, conv, msg, done, out] {

@@ -24,6 +24,8 @@
 #include <QTimer>
 #include <QDebug>
 
+#include <algorithm>
+
 namespace slack {
 
 namespace {
@@ -372,6 +374,9 @@ Capabilities PublicBackend::capabilities() const {
     c.editMessage      = true;
     c.deleteMessage    = true;
     c.threads          = true;
+    c.replyBroadcast   = true;
+    c.memberList       = true; // conversations.members
+    c.gifAttachments   = true;
     c.moveToThread     = true; // sendMessage confirms from the chat.postMessage response
     c.fileUpload       = true;
     c.scheduledSend    = true; // chat.scheduleMessage
@@ -1330,6 +1335,33 @@ void PublicBackend::loadSidebarTheme(std::function<void(SidebarThemePrefs, QStri
     );
 }
 
+void PublicBackend::loadMembers(
+    ConversationId conv, std::function<void(std::vector<UserId>, QString)> done
+) {
+    QUrlQuery params;
+    params.addQueryItem("channel", conv.value);
+    params.addQueryItem("limit", "1000");
+    auto members = std::make_shared<std::vector<UserId>>();
+    _api->paginate(
+        "conversations.members",
+        "members",
+        params,
+        [members](QJsonArray page) {
+            for (const auto v : page)
+                members->push_back(UserId{v.toString()});
+        },
+        [members, done] {
+            if (done)
+                done(std::move(*members), {});
+        },
+        [done](QString e) {
+            qWarning() << "conversations.members error:" << e;
+            if (done)
+                done({}, e);
+        }
+    );
+}
+
 void PublicBackend::loadMyProfile(std::function<void(MyProfile)> done) {
     _api->call(
         "users.profile.get",
@@ -1530,6 +1562,44 @@ void addBlocks(QUrlQuery &params, const QJsonArray &blocks) {
         "blocks", QString::fromUtf8(QJsonDocument(blocks).toJson(QJsonDocument::Compact))
     );
 }
+
+// A picked GIF, posted the way Slack's own GIF picker posts one: an attachment
+// holding an image block titled "GIF". Nothing links it from the text, so there
+// is no unfurl card to go with it (gifAttachment in domain.h is how it reads back).
+void addGifAttachments(QUrlQuery &params, const std::vector<OutgoingGif> &gifs) {
+    if (gifs.empty())
+        return;
+    QJsonArray attachments;
+    for (const auto &gif : gifs) {
+        const QJsonObject image{
+            {"type", "image"},
+            {"image_url", gif.url},
+            {"alt_text", gif.altText.isEmpty() ? QStringLiteral("GIF") : gif.altText}, // required
+            {"title", QJsonObject{{"type", "plain_text"}, {"text", "GIF"}}},
+        };
+        attachments.append(
+            QJsonObject{
+                {"fallback", "shared a GIF"},
+                {"blocks", QJsonArray{image}},
+            }
+        );
+    }
+    params.addQueryItem(
+        "attachments", QString::fromUtf8(QJsonDocument(attachments).toJson(QJsonDocument::Compact))
+    );
+}
+
+// True when history message `o` carries every GIF of `gifs` — with the text
+// check, how reconcileSend recognises a GIF post whose text is empty.
+bool carriesGifs(const QJsonObject &o, const std::vector<OutgoingGif> &gifs) {
+    QSet<QString> urls;
+    for (const auto a : o.value("attachments").toArray())
+        for (const auto b : a.toObject().value("blocks").toArray())
+            urls.insert(b.toObject().value("image_url").toString());
+    return std::all_of(gifs.begin(), gifs.end(), [&](const OutgoingGif &g) {
+        return urls.contains(g.url);
+    });
+}
 } // namespace
 
 void PublicBackend::sendMessage(
@@ -1552,8 +1622,11 @@ void PublicBackend::postMessageAttempt(std::shared_ptr<SendState> st) {
     params.addQueryItem("channel", st->conv.value);
     params.addQueryItem("text", st->wireText);
     addBlocks(params, st->msg.blocks);
+    addGifAttachments(params, st->msg.gifs);
     if (st->msg.threadRoot)
         params.addQueryItem("thread_ts", *st->msg.threadRoot);
+    if (st->msg.threadRoot && st->msg.replyBroadcast)
+        params.addQueryItem("reply_broadcast", "true");
     _api->callNonIdempotent(
         "chat.postMessage",
         params,
@@ -1602,7 +1675,8 @@ void PublicBackend::reconcileSend(std::shared_ptr<SendState> st) {
                     continue; // the thread root itself, not a reply
                 if (!_meUserId.value.isEmpty() && o.value("user").toString() != _meUserId.value)
                     continue;
-                if (unescapedText(o.value("text").toString()) != want)
+                if (unescapedText(o.value("text").toString()) != want ||
+                    !carriesGifs(o, st->msg.gifs))
                     continue;
                 qDebug() << "sendMessage: message" << o.value("ts").toString()
                          << "was delivered after all — not resending";
@@ -1845,6 +1919,7 @@ void PublicBackend::scheduleMessage(ConversationId conv, OutgoingMessage msg, qi
     params.addQueryItem("channel", conv.value);
     params.addQueryItem("text", msg.rawText.isEmpty() ? msg.text.text : msg.rawText);
     addBlocks(params, msg.blocks);
+    addGifAttachments(params, msg.gifs);
     params.addQueryItem("post_at", QString::number(postAt));
     if (msg.threadRoot)
         params.addQueryItem("thread_ts", *msg.threadRoot);

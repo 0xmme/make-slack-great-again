@@ -380,10 +380,12 @@ void Session::start() {
                     if (changed)
                         _conversations = std::move(convs);
                 } else if (auto *ev = std::get_if<EvMemberJoined>(&e)) {
-                    // member_joined_channel fires for every member; we only care
-                    // when it's us joining a channel we don't already track as a
-                    // member (we were added/invited). Pull its info so the channel
-                    // slots into the list without a manual refresh.
+                    // The member list we hold for it is one short now.
+                    _members.remove(ev->conv.value);
+                    // member_joined_channel fires for every member; beyond that we
+                    // only care when it's us joining a channel we don't already
+                    // track as a member (we were added/invited). Pull its info so
+                    // the channel slots into the list without a manual refresh.
                     if (!_meUserId.value.isEmpty() && ev->user == _meUserId) {
                         const auto &convs = _conversations.current();
                         const auto  it =
@@ -1235,6 +1237,10 @@ static void carryLocalConvState(Conversation &fresh, const Conversation &old) {
     // Same for the group DM's local name.
     if (fresh.localName.isEmpty())
         fresh.localName = old.localName;
+    // conversations.list leaves a group DM's members out; keep the ones
+    // loadMembers fetched.
+    if (fresh.members.empty())
+        fresh.members = old.members;
     // last_read / latest were dropped from conversations.list responses; keep the
     // newest value we know (cached from a previous run's activity sweep or
     // realtime events).
@@ -2071,9 +2077,13 @@ void Session::labelMessage(
 }
 
 Ts Session::sendMessage(
-    ConversationId conv, const QString &text, std::optional<Ts> threadRoot, const QString &subject
+    ConversationId    conv,
+    const QString    &text,
+    std::optional<Ts> threadRoot,
+    const QString    &subject,
+    bool              replyBroadcast
 ) {
-    return postMessage(std::move(conv), text, std::move(threadRoot), subject, {});
+    return postMessage(std::move(conv), text, std::move(threadRoot), subject, {}, replyBroadcast);
 }
 
 void Session::undoSend(ConversationId conv, const Ts &ghostTs) {
@@ -2104,14 +2114,21 @@ Ts Session::postMessage(
     const QString                            &text,
     std::optional<Ts>                         threadRoot,
     const QString                            &subject,
-    std::function<void(bool ok, QString err)> done
+    std::function<void(bool ok, QString err)> done,
+    bool                                      replyBroadcast
 ) {
+    QString                  body = text;
+    std::vector<OutgoingGif> gifs;
+    if (_backend->capabilities().gifAttachments)
+        gifs = MarkdownCompose::takeGifLinks(body);
     return postComposed(
         std::move(conv),
-        MarkdownCompose::convert(text),
+        MarkdownCompose::convert(body),
         std::move(threadRoot),
         subject,
-        std::move(done)
+        std::move(done),
+        replyBroadcast,
+        std::move(gifs)
     );
 }
 
@@ -2120,9 +2137,12 @@ Ts Session::postComposed(
     const MarkdownCompose::Composed          &composed,
     std::optional<Ts>                         threadRoot,
     const QString                            &subject,
-    std::function<void(bool ok, QString err)> done
+    std::function<void(bool ok, QString err)> done,
+    bool                                      replyBroadcast,
+    std::vector<OutgoingGif>                  gifs
 ) {
-    const Ts fakeTs = makeFakeTs();
+    const Ts   fakeTs    = makeFakeTs();
+    const bool broadcast = threadRoot.has_value() && replyBroadcast;
     if (threadRoot)
         markThreadFollowed(conv, *threadRoot);
 
@@ -2134,17 +2154,27 @@ Ts Session::postComposed(
     optimistic.rawText    = composed.mrkdwn;
     optimistic.threadRoot = threadRoot;
     optimistic.pending    = true;
+    for (const auto &gif : gifs)
+        optimistic.attachments.push_back(
+            gifAttachment(gif, int(optimistic.attachments.size()) + 1)
+        );
+    // Same subtype the server gives the confirmed copy, so the channel view
+    // shows the ghost as well as the thread panel.
+    if (broadcast)
+        optimistic.subtype = QStringLiteral("thread_broadcast");
 
     _eventHub.fire(EvMessageNew{conv, optimistic});
 
     _pendingSends[conv.value].append({fakeTs, false});
 
     OutgoingMessage out;
-    out.text       = optimistic.text;
-    out.rawText    = composed.mrkdwn;
-    out.blocks     = composed.blocks;
-    out.threadRoot = threadRoot;
-    out.subject    = subject;
+    out.text           = optimistic.text;
+    out.rawText        = composed.mrkdwn;
+    out.blocks         = composed.blocks;
+    out.gifs           = std::move(gifs);
+    out.threadRoot     = threadRoot;
+    out.replyBroadcast = broadcast;
+    out.subject        = subject;
     // Anchor for the backend's lost-send reconciliation: only messages newer
     // than this server ts can be the one we are about to post.
     if (const Conversation *c = findConversation(conv))
@@ -2255,7 +2285,13 @@ void Session::sendTyping(ConversationId conv) {
 }
 
 void Session::scheduleMessage(ConversationId conv, const QString &text, qint64 postAt) {
-    _backend->scheduleMessage(conv, composeOutgoing(text), postAt);
+    QString                  body = text;
+    std::vector<OutgoingGif> gifs;
+    if (_backend->capabilities().gifAttachments)
+        gifs = MarkdownCompose::takeGifLinks(body);
+    OutgoingMessage out = composeOutgoing(body);
+    out.gifs            = std::move(gifs);
+    _backend->scheduleMessage(conv, std::move(out), postAt);
 }
 
 const SlashCommand *Session::findCommand(const QString &name) const {
@@ -2472,6 +2508,41 @@ void Session::loadMyProfile(std::function<void(MyProfile)> done) {
 
 void Session::loadSidebarTheme(std::function<void(SidebarThemePrefs, QString)> done) {
     _backend->loadSidebarTheme(std::move(done));
+}
+
+void Session::loadMembers(
+    ConversationId conv, std::function<void(std::vector<UserId>, QString)> done
+) {
+    const QString key     = conv.value;
+    auto         &waiters = _memberWaiters[key];
+    waiters.push_back(std::move(done));
+    if (waiters.size() > 1)
+        return; // already asking; this caller gets the same answer
+    _backend->loadMembers(conv, [this, conv](std::vector<UserId> members, QString err) {
+        const auto waiting = _memberWaiters.take(conv.value);
+        if (err.isEmpty()) {
+            _members.insert(conv.value, members);
+            auto convs = _conversations.current();
+            for (auto &c : convs) {
+                if (c.id == conv && c.kind == ConvKind::Mpim && c.members != members) {
+                    c.members      = members;
+                    _conversations = std::move(convs);
+                    break;
+                }
+            }
+        } else if (!_members.contains(conv.value)) {
+            _members.insert(conv.value, {});
+        }
+        const std::vector<UserId> &answer = _members.value(conv.value);
+        for (const auto &w : waiting)
+            if (w)
+                w(answer, err);
+    });
+}
+
+const std::vector<UserId> *Session::cachedMembers(const ConversationId &conv) const {
+    const auto it = _members.constFind(conv.value);
+    return it == _members.constEnd() ? nullptr : &it.value();
 }
 
 void Session::updateProfile(

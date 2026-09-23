@@ -673,6 +673,18 @@ add_msga_qt_test(test_enterprise_grid
 target_link_libraries(test_enterprise_grid PRIVATE Qt6::Network Qt6::WebSockets)
 set_target_properties(test_enterprise_grid PROPERTIES AUTOMOC ON)
 
+add_msga_qt_test(test_slack_members
+    test_slack_members.cpp
+    ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
+    ${SLACK_BACKEND_SRCS}
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+)
+target_link_libraries(test_slack_members PRIVATE Qt6::Network Qt6::WebSockets)
+set_target_properties(test_slack_members PROPERTIES AUTOMOC ON)
+
 add_msga_qt_test(test_send_retry
     test_send_retry.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
@@ -744,6 +756,21 @@ add_msga_widget_test(test_browse_channels_dialog
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+
+add_msga_widget_test(test_members_popup
+    test_members_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/members_popup/members_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_list_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/fuzzy_match.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
