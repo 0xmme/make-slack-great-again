@@ -1006,6 +1006,10 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _msgSplitter->addWidget(_threadPanel);
     _msgSplitter->setStretchFactor(0, 1);
     _msgSplitter->setStretchFactor(1, 0);
+    connect(_msgSplitter, &QSplitter::splitterMoved, this, [this] {
+        if (_threadPanel->isVisible() && _threadPanel->width() >= 100)
+            QSettings("msga", "msga").setValue("window/threadWidth", _threadPanel->width());
+    });
 
     // ── Signal wiring ─────────────────────────────────────────────────
     auto openSearch = [this] {
@@ -3385,12 +3389,15 @@ void MainWindow::moveMessageToThread(const Message &msg) {
 void MainWindow::openThreadPanel(const ConversationId &conv, const Ts &rootTs) {
     if (rootTs.isEmpty())
         return;
+    const bool wasOpen = _threadPanel->isVisible();
     _threadPanel->setVisible(true);
     _threadPanel->openThread(conv, rootTs);
     _messageList->setOpenThreadRoot(rootTs);
-    if (_msgSplitter->sizes().at(1) < 100) {
-        const int total = _msgSplitter->width();
-        _msgSplitter->setSizes({total - 360, 360});
+    if (!wasOpen) {
+        const int total   = _msgSplitter->width();
+        const int desired = QSettings("msga", "msga").value("window/threadWidth", 360).toInt();
+        const int width   = std::clamp(desired, 100, std::max(100, total - 200));
+        _msgSplitter->setSizes({total - width, width});
     }
 }
 

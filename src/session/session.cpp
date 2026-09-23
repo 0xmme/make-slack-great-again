@@ -2071,9 +2071,13 @@ void Session::labelMessage(
 }
 
 Ts Session::sendMessage(
-    ConversationId conv, const QString &text, std::optional<Ts> threadRoot, const QString &subject
+    ConversationId    conv,
+    const QString    &text,
+    std::optional<Ts> threadRoot,
+    const QString    &subject,
+    bool              replyBroadcast
 ) {
-    return postMessage(std::move(conv), text, std::move(threadRoot), subject, {});
+    return postMessage(std::move(conv), text, std::move(threadRoot), subject, {}, replyBroadcast);
 }
 
 void Session::undoSend(ConversationId conv, const Ts &ghostTs) {
@@ -2104,14 +2108,16 @@ Ts Session::postMessage(
     const QString                            &text,
     std::optional<Ts>                         threadRoot,
     const QString                            &subject,
-    std::function<void(bool ok, QString err)> done
+    std::function<void(bool ok, QString err)> done,
+    bool                                      replyBroadcast
 ) {
     return postComposed(
         std::move(conv),
         MarkdownCompose::convert(text),
         std::move(threadRoot),
         subject,
-        std::move(done)
+        std::move(done),
+        replyBroadcast
     );
 }
 
@@ -2120,7 +2126,8 @@ Ts Session::postComposed(
     const MarkdownCompose::Composed          &composed,
     std::optional<Ts>                         threadRoot,
     const QString                            &subject,
-    std::function<void(bool ok, QString err)> done
+    std::function<void(bool ok, QString err)> done,
+    bool                                      replyBroadcast
 ) {
     const Ts fakeTs = makeFakeTs();
     if (threadRoot)
@@ -2140,11 +2147,12 @@ Ts Session::postComposed(
     _pendingSends[conv.value].append({fakeTs, false});
 
     OutgoingMessage out;
-    out.text       = optimistic.text;
-    out.rawText    = composed.mrkdwn;
-    out.blocks     = composed.blocks;
-    out.threadRoot = threadRoot;
-    out.subject    = subject;
+    out.text           = optimistic.text;
+    out.rawText        = composed.mrkdwn;
+    out.blocks         = composed.blocks;
+    out.threadRoot     = threadRoot;
+    out.replyBroadcast = threadRoot.has_value() && replyBroadcast;
+    out.subject        = subject;
     // Anchor for the backend's lost-send reconciliation: only messages newer
     // than this server ts can be the one we are about to post.
     if (const Conversation *c = findConversation(conv))

@@ -481,6 +481,23 @@ TEST_CASE_METHOD(SendFixture, "send confirms from the chat.postMessage response"
 }
 
 TEST_CASE_METHOD(
+    SendFixture, "thread broadcast sends Slack's reply_broadcast flag", "[send_retry]"
+) {
+    server.enqueue(R"({"ok":true,"ts":"123.456","message":{"ts":"123.456","text":"hello"}})");
+
+    OutgoingMessage message = out("hello");
+    message.threadRoot      = Ts{"100.000"};
+    message.replyBroadcast  = true;
+    backend.sendMessage(ConversationId{"C1"}, std::move(message));
+
+    REQUIRE(waitFor([&] { return newMessageEvent() != nullptr; }));
+    REQUIRE(server.requestBodies.size() == 1);
+    const QUrlQuery body(QString::fromUtf8(server.requestBodies[0]));
+    CHECK(body.queryItemValue("thread_ts") == "100.000");
+    CHECK(body.queryItemValue("reply_broadcast") == "true");
+}
+
+TEST_CASE_METHOD(
     SendFixture, "lost send that WAS delivered is found in history, not resent", "[send_retry]"
 ) {
     server.dropConnections = 1; // chat.postMessage response is lost

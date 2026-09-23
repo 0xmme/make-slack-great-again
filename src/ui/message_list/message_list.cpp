@@ -78,6 +78,20 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
 
     _tooltip     = new PopupTooltip(this);
     _emojiPicker = new EmojiPickerPopup(this);
+    // The tooltip floats on the top-level window. Some platforms do not deliver
+    // a viewport Leave when focus changes or an overlay appears under the cursor.
+    _tooltipWatch.setInterval(200);
+    connect(&_tooltipWatch, &QTimer::timeout, this, [this] {
+        if (!_tooltip->isVisible() || !_tooltipPin.hasExpired())
+            return;
+        const QPoint global = QCursor::pos();
+        QWidget     *hit    = QApplication::widgetAt(global);
+        if (!isVisible() || !window()->isActiveWindow() ||
+            !viewport()->rect().contains(viewport()->mapFromGlobal(global)) || hit != viewport())
+            _tooltip->hide();
+    });
+    _tooltipWatch.start();
+    connect(verticalScrollBar(), &QScrollBar::valueChanged, _tooltip, &QWidget::hide);
 
     // Inline audio player: repaint just the chip whose state/position changed.
     connect(
@@ -1756,6 +1770,7 @@ void MessageListWidget::syncGifPlayback() const {
 }
 
 void MessageListWidget::hideEvent(QHideEvent *event) {
+    _tooltip->hide();
     pauseGifPlayback();
     VirtualListWidget::hideEvent(event);
 }
@@ -3750,9 +3765,10 @@ std::optional<MsgRender::AudioChipState> MessageListWidget::audioChipState(const
 }
 
 void MessageListWidget::doMouseLeave() {
-    // Showing the tooltip (a separate window) fires a spurious Leave event on
-    // the viewport on X11 even though the cursor never left.  Ignore it.
-    if (viewport()->rect().contains(viewport()->mapFromGlobal(QCursor::pos())))
+    // Some window systems send a spurious Leave while the pointer is still on
+    // the viewport. Only ignore it when the viewport is still the hit target.
+    if (viewport()->rect().contains(viewport()->mapFromGlobal(QCursor::pos())) &&
+        QApplication::widgetAt(QCursor::pos()) == viewport())
         return;
 
     _tooltip->hide();

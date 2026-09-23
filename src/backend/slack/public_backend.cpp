@@ -372,6 +372,7 @@ Capabilities PublicBackend::capabilities() const {
     c.editMessage      = true;
     c.deleteMessage    = true;
     c.threads          = true;
+    c.replyBroadcast   = true;
     c.moveToThread     = true; // sendMessage confirms from the chat.postMessage response
     c.fileUpload       = true;
     c.scheduledSend    = true; // chat.scheduleMessage
@@ -1554,6 +1555,8 @@ void PublicBackend::postMessageAttempt(std::shared_ptr<SendState> st) {
     addBlocks(params, st->msg.blocks);
     if (st->msg.threadRoot)
         params.addQueryItem("thread_ts", *st->msg.threadRoot);
+    if (st->msg.threadRoot && st->msg.replyBroadcast)
+        params.addQueryItem("reply_broadcast", "true");
     _api->callNonIdempotent(
         "chat.postMessage",
         params,

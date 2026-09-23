@@ -1040,6 +1040,7 @@ void ComposerWidget::hideEvent(QHideEvent *event) {
 }
 
 void ComposerWidget::updateSendState() {
+    emit       compositionChanged();
     // isEmpty() short-circuits the toPlainText() copy for the common empty doc;
     // the trimmed() check keeps whitespace-only text counting as empty.
     const bool active =
@@ -1734,6 +1735,7 @@ void ComposerWidget::enterEditMode(
 
     _editModeFiles = existingFiles;
     _attachStrip->rebuild(_pendingFiles, _editModeFiles);
+    emit compositionChanged();
 
     _edit->setFocus();
 }
@@ -1748,6 +1750,7 @@ void ComposerWidget::exitEditMode() {
 
     _editModeFiles.clear();
     _attachStrip->rebuild(_pendingFiles, _editModeFiles);
+    emit compositionChanged();
 }
 
 // ── Draft support ─────────────────────────────────────────────────────────────

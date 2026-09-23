@@ -130,10 +130,12 @@ public:
 
     // Pending file list (files queued for upload when the message is sent).
     const QStringList &pendingFiles() const { return _pendingFiles; }
+    bool               isEditing() const { return !_editingTs.isEmpty(); }
     void               addPendingFile(const QString &filePath);
     void               clearPendingFiles();
 
 signals:
+    void compositionChanged();
     void sendRequested(const QString &text);
     // Emitted instead of sendRequested when the message is a known slash
     // command: "/remind me …" → ("remind", "me …"). Name is lowercase, no slash.

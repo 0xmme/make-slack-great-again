@@ -920,6 +920,7 @@ private:
     mutable QHash<QString, QRect>    _gifRects;
 
     PopupTooltip        *_tooltip = nullptr;
+    QTimer               _tooltipWatch;
     QDeadlineTimer       _tooltipPin; // while running, hover logic leaves the tooltip alone
     EmojiPickerPopup    *_emojiPicker  = nullptr;
     ImageViewerOverlay  *_imageViewer  = nullptr; // lazily created, parented to window()

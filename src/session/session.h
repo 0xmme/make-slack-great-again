@@ -63,8 +63,9 @@ public:
     Ts sendMessage(
         ConversationId    conv,
         const QString    &text,
-        std::optional<Ts> threadRoot = {},
-        const QString    &subject    = {}
+        std::optional<Ts> threadRoot     = {},
+        const QString    &subject        = {},
+        bool              replyBroadcast = false
     );
 
     // Take back a message just sent through sendMessage()/uploadFiles(), given
@@ -302,7 +303,8 @@ public:
         const QString                            &text,
         std::optional<Ts>                         threadRoot,
         const QString                            &subject,
-        std::function<void(bool ok, QString err)> done
+        std::function<void(bool ok, QString err)> done,
+        bool                                      replyBroadcast = false
     );
 
     // The user read this thread up to `upTo`: move the server-side thread read
@@ -540,7 +542,8 @@ private:
         const MarkdownCompose::Composed          &composed,
         std::optional<Ts>                         threadRoot,
         const QString                            &subject,
-        std::function<void(bool ok, QString err)> done
+        std::function<void(bool ok, QString err)> done,
+        bool                                      replyBroadcast = false
     );
     // Composer text → OutgoingMessage (parsed text, mrkdwn, blocks) for the
     // paths that don't need an optimistic copy: edit and schedule.

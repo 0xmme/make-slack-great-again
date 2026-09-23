@@ -21,6 +21,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QDir>
 #include <QFile>
 #include <QKeyEvent>
@@ -71,9 +72,13 @@ struct StubBackend : Backend {
     std::vector<SendCall> sendCalls;
 
     rpl::producer<AuthState> authState() const override { return _authState.value(); }
-    Capabilities             capabilities() const override { return {}; }
-    void                     connectRealtime() override {}
-    void                     disconnectRealtime() override {}
+    Capabilities             capabilities() const override {
+        Capabilities c;
+        c.replyBroadcast = true;
+        return c;
+    }
+    void connectRealtime() override {}
+    void disconnectRealtime() override {}
 
     rpl::producer<UserId>                    loadMe() override { return _meId.value(); }
     rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
@@ -269,6 +274,26 @@ TEST_CASE("a plain text reply still carries the thread root", "[thread]") {
     REQUIRE(f.stub->sendCalls[0].msg.threadRoot.has_value());
     CHECK(*f.stub->sendCalls[0].msg.threadRoot == kRoot);
     CHECK(f.stub->uploadCalls.empty());
+}
+
+TEST_CASE("thread checkbox broadcasts one text reply and resets", "[thread]") {
+    Fixture     f;
+    ThreadPanel panel(nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    auto *box = panel.findChild<QCheckBox *>("threadBroadcastBox");
+    REQUIRE(box);
+    REQUIRE(box->isEnabled());
+    box->setChecked(true);
+
+    emit composerOf(panel)->sendRequested(QStringLiteral("heads up"));
+
+    REQUIRE(f.stub->sendCalls.size() == 1);
+    CHECK(f.stub->sendCalls[0].msg.replyBroadcast);
+    CHECK_FALSE(box->isChecked());
+
+    composerOf(panel)->addPendingFile(f.filePath);
+    CHECK_FALSE(box->isEnabled());
 }
 
 // ── Live refresh of an open thread ────────────────────────────────────────────

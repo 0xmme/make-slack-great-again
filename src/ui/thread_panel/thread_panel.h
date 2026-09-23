@@ -16,6 +16,7 @@ class ImageCache;
 class QLabel;
 class IconButton;
 class PopupTooltip;
+class QCheckBox;
 
 // Right-side panel showing a Slack thread: root message + replies + composer.
 // Slides in when the user clicks a "N replies" bar in the main message list.
@@ -79,6 +80,7 @@ private:
     void toggleMuted();
     // Point the header bell at the open thread's current mute state.
     void refreshMuteButton();
+    void refreshBroadcastCheckbox();
 
     Session                      *_session = nullptr;
     ConversationId                _conv;
@@ -96,6 +98,8 @@ private:
     PopupTooltip      *_tooltip      = nullptr;
     MessageListWidget *_msgList      = nullptr;
     ComposerWidget    *_composer     = nullptr;
+    QWidget           *_broadcastRow = nullptr;
+    QCheckBox         *_broadcastBox = nullptr;
 
     rpl::lifetime _lifetime;
 };

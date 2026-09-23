@@ -24,6 +24,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QCheckBox>
 
 namespace {
 
@@ -128,10 +129,25 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     _composer->setEnabled(false);
     layout->addWidget(_composer);
 
+    _broadcastRow         = new QWidget(this);
+    auto *broadcastLayout = new QHBoxLayout(_broadcastRow);
+    broadcastLayout->setContentsMargins(sp.xl, 0, sp.md, sp.sm);
+    _broadcastBox = new QCheckBox(tr("Also send to channel"), _broadcastRow);
+    _broadcastBox->setObjectName("threadBroadcastBox");
+    broadcastLayout->addWidget(_broadcastBox);
+    broadcastLayout->addStretch();
+    _broadcastRow->hide();
+    layout->addWidget(_broadcastRow);
+    connect(_composer, &ComposerWidget::compositionChanged, this, [this] {
+        refreshBroadcastCheckbox();
+    });
+
     connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
         if (!_session || _conv.value.isEmpty() || _rootTs.isEmpty())
             return;
-        const Ts ghost = _session->sendMessage(_conv, text, _rootTs);
+        const Ts ghost =
+            _session->sendMessage(_conv, text, _rootTs, {}, _broadcastBox->isChecked());
+        _broadcastBox->setChecked(false);
         _composer->offerUndoSend(_conv, ghost);
     });
     connect(
@@ -142,6 +158,7 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
             if (!_session || _conv.value.isEmpty() || _rootTs.isEmpty())
                 return;
             const Ts ghost = _session->uploadFiles(_conv, filePaths, text, _rootTs);
+            _broadcastBox->setChecked(false);
             _composer->offerUndoSend(_conv, ghost);
         }
     );
@@ -220,6 +237,7 @@ void ThreadPanel::setSession(Session *session) {
     _session = session;
     _msgList->setSession(session);
     _composer->setSession(session);
+    refreshBroadcastCheckbox();
 }
 
 void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
@@ -240,6 +258,7 @@ void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
     _msgList->openThread(conv, rootTs);
     _composer->setEnabled(true);
     _composer->setPlaceholderText(tr("Reply in thread…"));
+    refreshBroadcastCheckbox();
     refreshMuteButton();
 }
 
@@ -253,6 +272,8 @@ void ThreadPanel::close() {
     _rootTs = {};
     _msgList->clear();
     _composer->setEnabled(false);
+    _broadcastBox->setChecked(false);
+    refreshBroadcastCheckbox();
     refreshMuteButton();
 }
 
@@ -275,6 +296,20 @@ void ThreadPanel::refreshMuteButton() {
     _muteBtn->setSvgPath(
         muted ? QStringLiteral(":/ui/bell-off.svg") : QStringLiteral(":/ui/bell.svg")
     );
+}
+
+void ThreadPanel::refreshBroadcastCheckbox() {
+    if (!_broadcastBox || !_composer)
+        return;
+    const Conversation *c = _session ? _session->findConversation(_conv) : nullptr;
+    const bool          channel =
+        c && (c->kind == ConvKind::PublicChannel || c->kind == ConvKind::PrivateChannel);
+    _broadcastRow->setVisible(channel && _session->capabilities().replyBroadcast);
+    const bool canBroadcast = channel && !_composer->isEditing() &&
+                              _composer->pendingFiles().isEmpty() && !_rootTs.isEmpty();
+    _broadcastBox->setEnabled(canBroadcast);
+    if (!canBroadcast)
+        _broadcastBox->setChecked(false);
 }
 
 void ThreadPanel::refreshTimestamps() {
@@ -305,6 +340,8 @@ void ThreadPanel::applyTheme() {
         QString("QWidget#threadPanel { background: %1; }").arg(Th::qss(Th::c().surface.content))
     );
     _headerWidget->setStyleSheet("QWidget#threadHeader { background: transparent; }");
+    if (_broadcastBox)
+        _broadcastBox->setStyleSheet(Th::checkBoxQss(Th::c().fonts.sm));
     _header->setStyleSheet(QString("font-weight: bold; font-size: %1px; color: %2;")
                                .arg(Th::c().fonts.lg)
                                .arg(Th::qss(Th::c().text.primary)));

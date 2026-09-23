@@ -179,6 +179,7 @@ struct Capabilities {
                                    // Requires deleteMessage. Slack/Teams leave this false
                                    // (own-only, plus the separate admin path).
     bool threads          = false; // threaded replies
+    bool replyBroadcast   = false; // thread reply can also appear in its channel
     bool threadsView      = false; // workspace-wide "Threads" overview (loadThreadsView).
                                    // Separate from `threads`: a backend can support replies
                                    // without any server-side subscribed-threads feed (Slack's
@@ -1102,6 +1103,7 @@ struct OutgoingMessage {
     // Slack only; other services render rawText.
     QJsonArray        blocks;
     std::optional<Ts> threadRoot;
+    bool              replyBroadcast = false; // Slack chat.postMessage reply_broadcast
     // Latest server ts known for the conversation when the send started.
     // Anchors the duplicate-check window when a send must be reconciled after
     // a connection loss (server-assigned, so immune to local clock skew).
