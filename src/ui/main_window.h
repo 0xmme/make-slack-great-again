@@ -39,6 +39,7 @@ class ThreadsPage;
 class ConvTabsWidget;
 class HeaderAvatarWidget;
 class HuddleBanner;
+class MembersPopup;
 class ParallelUsageBanner;
 class PopupTooltip;
 class QSplitter;
@@ -141,6 +142,11 @@ private:
     // Header helpers
     void    updateHeaderForConv(const ConversationId &conv);
     void    setHeaderGroupAvatars(const Conversation &conv);
+    // The open conversation's member list, hanging below `anchorGlobal` (the
+    // header's members button, or a group DM's stacked avatars).
+    void    openMembersPopup(const QRect &anchorGlobal);
+    // Open (creating if needed) the DM with `user` and navigate to it.
+    void    openDmWith(UserId user);
     void    updateStarBtn(bool starred);
     // Toggle the huddle banner from the open conversation's huddleActive flag.
     void    updateHuddleBanner();
@@ -383,6 +389,9 @@ private:
     ParallelUsageBanner *_parallelUsageBanner = nullptr;
     QSystemTrayIcon     *_trayIcon            = nullptr;
     DesktopNotifier     *_desktopNotifier     = nullptr;
+    QPushButton         *_membersBtn          = nullptr; // channels; a group DM uses its avatars
+    PopupTooltip        *_membersBtnTooltip   = nullptr;
+    MembersPopup        *_membersPopup        = nullptr; // lazily created
     QPushButton         *_huddleBtn           = nullptr;
     PopupTooltip        *_huddleBtnTooltip    = nullptr;
     QPushButton         *_starBtn             = nullptr;

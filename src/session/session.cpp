@@ -380,10 +380,12 @@ void Session::start() {
                     if (changed)
                         _conversations = std::move(convs);
                 } else if (auto *ev = std::get_if<EvMemberJoined>(&e)) {
-                    // member_joined_channel fires for every member; we only care
-                    // when it's us joining a channel we don't already track as a
-                    // member (we were added/invited). Pull its info so the channel
-                    // slots into the list without a manual refresh.
+                    // The member list we hold for it is one short now.
+                    _members.remove(ev->conv.value);
+                    // member_joined_channel fires for every member; beyond that we
+                    // only care when it's us joining a channel we don't already
+                    // track as a member (we were added/invited). Pull its info so
+                    // the channel slots into the list without a manual refresh.
                     if (!_meUserId.value.isEmpty() && ev->user == _meUserId) {
                         const auto &convs = _conversations.current();
                         const auto  it =
@@ -1235,6 +1237,10 @@ static void carryLocalConvState(Conversation &fresh, const Conversation &old) {
     // Same for the group DM's local name.
     if (fresh.localName.isEmpty())
         fresh.localName = old.localName;
+    // conversations.list leaves a group DM's members out; keep the ones
+    // loadMembers fetched.
+    if (fresh.members.empty())
+        fresh.members = old.members;
     // last_read / latest were dropped from conversations.list responses; keep the
     // newest value we know (cached from a previous run's activity sweep or
     // realtime events).
@@ -2485,6 +2491,41 @@ void Session::loadMyProfile(std::function<void(MyProfile)> done) {
 
 void Session::loadSidebarTheme(std::function<void(SidebarThemePrefs, QString)> done) {
     _backend->loadSidebarTheme(std::move(done));
+}
+
+void Session::loadMembers(
+    ConversationId conv, std::function<void(std::vector<UserId>, QString)> done
+) {
+    const QString key     = conv.value;
+    auto         &waiters = _memberWaiters[key];
+    waiters.push_back(std::move(done));
+    if (waiters.size() > 1)
+        return; // already asking; this caller gets the same answer
+    _backend->loadMembers(conv, [this, conv](std::vector<UserId> members, QString err) {
+        const auto waiting = _memberWaiters.take(conv.value);
+        if (err.isEmpty()) {
+            _members.insert(conv.value, members);
+            auto convs = _conversations.current();
+            for (auto &c : convs) {
+                if (c.id == conv && c.kind == ConvKind::Mpim && c.members != members) {
+                    c.members      = members;
+                    _conversations = std::move(convs);
+                    break;
+                }
+            }
+        } else if (!_members.contains(conv.value)) {
+            _members.insert(conv.value, {});
+        }
+        const std::vector<UserId> &answer = _members.value(conv.value);
+        for (const auto &w : waiting)
+            if (w)
+                w(answer, err);
+    });
+}
+
+const std::vector<UserId> *Session::cachedMembers(const ConversationId &conv) const {
+    const auto it = _members.constFind(conv.value);
+    return it == _members.constEnd() ? nullptr : &it.value();
 }
 
 void Session::updateProfile(

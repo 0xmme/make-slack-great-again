@@ -373,6 +373,7 @@ Capabilities PublicBackend::capabilities() const {
     c.deleteMessage    = true;
     c.threads          = true;
     c.replyBroadcast   = true;
+    c.memberList       = true; // conversations.members
     c.moveToThread     = true; // sendMessage confirms from the chat.postMessage response
     c.fileUpload       = true;
     c.scheduledSend    = true; // chat.scheduleMessage
@@ -1328,6 +1329,33 @@ void PublicBackend::loadSidebarTheme(std::function<void(SidebarThemePrefs, QStri
                 done({}, e);
         },
         /*quietErrors=*/true
+    );
+}
+
+void PublicBackend::loadMembers(
+    ConversationId conv, std::function<void(std::vector<UserId>, QString)> done
+) {
+    QUrlQuery params;
+    params.addQueryItem("channel", conv.value);
+    params.addQueryItem("limit", "1000");
+    auto members = std::make_shared<std::vector<UserId>>();
+    _api->paginate(
+        "conversations.members",
+        "members",
+        params,
+        [members](QJsonArray page) {
+            for (const auto v : page)
+                members->push_back(UserId{v.toString()});
+        },
+        [members, done] {
+            if (done)
+                done(std::move(*members), {});
+        },
+        [done](QString e) {
+            qWarning() << "conversations.members error:" << e;
+            if (done)
+                done({}, e);
+        }
     );
 }
 

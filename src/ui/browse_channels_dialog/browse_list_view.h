@@ -77,6 +77,9 @@ public:
     // Invoked with the item id when a row is activated (clicked).
     std::function<void(const QString &id)> onActivated;
 
+    // Height of one row, for a host that sizes itself to a number of rows.
+    static constexpr int rowHeight() { return kRowH; }
+
 protected:
     void resizeEvent(QResizeEvent *) override;
     void wheelEvent(QWheelEvent *) override;

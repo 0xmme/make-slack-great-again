@@ -659,6 +659,18 @@ struct StubBackend : Backend {
     }
 
     void fireEvent(Event e) { _events.fire(std::move(e)); }
+
+    // loadMembers calls wait here until the test answers them, so a second
+    // caller can arrive while one is in flight.
+    struct MembersCall {
+        ConversationId                                    conv;
+        std::function<void(std::vector<UserId>, QString)> done;
+    };
+    std::vector<MembersCall> membersCalls;
+    void
+    loadMembers(ConversationId c, std::function<void(std::vector<UserId>, QString)> done) override {
+        membersCalls.push_back({c, std::move(done)});
+    }
 };
 
 // ── SessionFixture ────────────────────────────────────────────────────────────
@@ -5997,4 +6009,105 @@ TEST_CASE_METHOD(
     stub->attachmentDeletes[1].done(false, "cant_delete_message");
     CHECK(c.events.size() == 1); // no removal announced
     CHECK(err.contains("cant_delete_message"));
+}
+
+// ── loadMembers ───────────────────────────────────────────────────────────────
+//
+// The header's member list. conversations.list sends no member ids, so a
+// group DM's come from here too — the only source once Slack renamed it.
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "loadMembers shares one request and files a group DM's members",
+    "[session][members]"
+) {
+    Conversation renamed = kMpdm;
+    renamed.name         = "Launch crew"; // renamed in Slack: nothing left to parse
+    restartSession({kGeneral, renamed}, {kAlice, kBob});
+    CHECK(session->cachedMembers(renamed.id) == nullptr);
+
+    std::vector<std::vector<UserId>> answers;
+    const auto                       record = [&](std::vector<UserId> ids, QString err) {
+        CHECK(err.isEmpty());
+        answers.push_back(std::move(ids));
+    };
+    session->loadMembers(renamed.id, record);
+    session->loadMembers(renamed.id, record); // arrives while the first is in flight
+    REQUIRE(stub->membersCalls.size() == 1);
+
+    const std::vector<UserId> members{kAlice.id, kBob.id};
+    stub->membersCalls[0].done(members, {});
+    REQUIRE(answers.size() == 2);
+    CHECK(answers[0] == members);
+    CHECK(answers[1] == members);
+    REQUIRE(session->cachedMembers(renamed.id) != nullptr);
+    CHECK(*session->cachedMembers(renamed.id) == members);
+    REQUIRE(session->findConversation(renamed.id) != nullptr);
+    CHECK(session->findConversation(renamed.id)->members == members);
+
+    // A later request asks again rather than answering from the cache.
+    session->loadMembers(renamed.id);
+    CHECK(stub->membersCalls.size() == 2);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "a failed loadMembers keeps the last list it got", "[session][members]"
+) {
+    const ConversationId      channel = kGeneral.id;
+    const std::vector<UserId> members{kAlice.id};
+    session->loadMembers(channel, {});
+    REQUIRE(stub->membersCalls.size() == 1);
+    stub->membersCalls[0].done(members, {});
+
+    std::vector<UserId> got;
+    QString             error;
+    session->loadMembers(channel, [&](std::vector<UserId> ids, QString err) {
+        got   = std::move(ids);
+        error = err;
+    });
+    REQUIRE(stub->membersCalls.size() == 2);
+    stub->membersCalls[1].done({}, "ratelimited");
+    CHECK(error == "ratelimited");
+    CHECK(got == members);
+    CHECK(*session->cachedMembers(channel) == members);
+    // Channels have no member ids to keep; the conversation is left alone.
+    CHECK(session->findConversation(channel)->members.empty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "a first loadMembers failure still counts as tried", "[session][members]"
+) {
+    // The header asks once per group DM; without a record of the failure it
+    // would ask again on every redraw.
+    session->loadMembers(kGeneral.id, {});
+    stub->membersCalls[0].done({}, "missing_scope");
+    REQUIRE(session->cachedMembers(kGeneral.id) != nullptr);
+    CHECK(session->cachedMembers(kGeneral.id)->empty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "someone joining drops the cached member list", "[session][members]"
+) {
+    session->loadMembers(kGeneral.id, {});
+    stub->membersCalls[0].done({kAlice.id}, {});
+    REQUIRE(session->cachedMembers(kGeneral.id) != nullptr);
+
+    stub->fireEvent(EvMemberJoined{kGeneral.id, kBob.id});
+    CHECK(session->cachedMembers(kGeneral.id) == nullptr);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a conversation list refresh keeps a group DM's fetched members",
+    "[session][members]"
+) {
+    restartSession({kGeneral, kMpdm}, {kAlice, kBob});
+    session->loadMembers(kMpdm.id, {});
+    stub->membersCalls[0].done({kAlice.id, kBob.id}, {});
+    REQUIRE(session->findConversation(kMpdm.id)->members.size() == 2);
+
+    stub->_convs = std::vector<Conversation>{kGeneral, kMpdm}; // members left out again
+    session->reloadConversationsForTest();
+    REQUIRE(session->findConversation(kMpdm.id) != nullptr);
+    CHECK(session->findConversation(kMpdm.id)->members.size() == 2);
 }

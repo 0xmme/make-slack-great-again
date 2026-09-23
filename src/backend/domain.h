@@ -180,6 +180,8 @@ struct Capabilities {
                                    // (own-only, plus the separate admin path).
     bool threads          = false; // threaded replies
     bool replyBroadcast   = false; // thread reply can also appear in its channel
+    bool memberList       = false; // loadMembers(): who is in a channel or group DM (Slack:
+                                   // conversations.members) — the header's member list
     bool threadsView      = false; // workspace-wide "Threads" overview (loadThreadsView).
                                    // Separate from `threads`: a backend can support replies
                                    // without any server-side subscribed-threads feed (Slack's

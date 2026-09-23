@@ -27,6 +27,8 @@ public:
     rpl::producer<bool>         loadPresence(UserId) override;
     rpl::producer<User>         loadUser(UserId) override;
     rpl::producer<Conversation> loadConversationInfo(ConversationId, bool background) override;
+    void
+    loadMembers(ConversationId, std::function<void(std::vector<UserId>, QString)> done) override;
     rpl::producer<MessagePage> loadThread(ConversationId, Ts root, std::optional<QString>) override;
     rpl::producer<Message>     loadMessageAt(ConversationId, Ts) override;
     rpl::producer<std::vector<ConversationId>> loadStarredConversations() override;

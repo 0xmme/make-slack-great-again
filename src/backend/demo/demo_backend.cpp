@@ -53,6 +53,7 @@ Capabilities DemoBackend::capabilities() const {
     c.editMessage      = true;
     c.deleteMessage    = true;
     c.threads          = true;
+    c.memberList       = true;
     c.fileUpload       = true;
     c.moveToThread     = true;
     c.slashCommands    = true;
@@ -128,6 +129,25 @@ rpl::producer<Conversation> DemoBackend::loadConversationInfo(ConversationId id,
         if (c.id == id)
             found = c;
     return maybeLater(std::move(found));
+}
+
+void DemoBackend::loadMembers(
+    ConversationId id, std::function<void(std::vector<UserId>, QString)> done
+) {
+    // A group DM names its members; a fixture channel only carries a count, so
+    // it holds everyone the fixture has.
+    std::vector<UserId> members;
+    for (const auto &c : _conversations.current())
+        if (c.id == id)
+            members = c.members;
+    if (members.empty())
+        for (const auto &u : _fx.users)
+            if (!u.isBot)
+                members.push_back(u.id);
+    QTimer::singleShot(kReadLatencyMs, &_timerGuard, [members, done] {
+        if (done)
+            done(members, {});
+    });
 }
 
 rpl::producer<MessagePage>
